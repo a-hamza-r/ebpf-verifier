@@ -8,6 +8,7 @@
 #include <optional>
 #include <vector>
 
+#include "crab/abstract_domain.hpp"
 #include "crab/array_domain.hpp"
 #include "crab/split_dbm.hpp"
 #include "crab/variable.hpp"
@@ -38,12 +39,11 @@ class ebpf_domain_t final {
     void operator|=(ebpf_domain_t&& other);
     void operator|=(const ebpf_domain_t& other);
     ebpf_domain_t operator|(ebpf_domain_t&& other) const;
-    ebpf_domain_t operator|(const ebpf_domain_t& other) const&;
-    ebpf_domain_t operator|(const ebpf_domain_t& other) &&;
+    ebpf_domain_t operator|(const ebpf_domain_t& other) const;
     ebpf_domain_t operator&(const ebpf_domain_t& other) const;
     ebpf_domain_t widen(const ebpf_domain_t& other, bool to_constants);
     ebpf_domain_t widening_thresholds(const ebpf_domain_t& other, const crab::iterators::thresholds_t& ts);
-    ebpf_domain_t narrow(const ebpf_domain_t& other);
+    ebpf_domain_t narrow(const ebpf_domain_t& other) const;
 
     typedef bool check_require_func_t(NumAbsDomain&, const linear_constraint_t&, std::string);
     void set_require_check(std::function<check_require_func_t> f);
@@ -80,6 +80,9 @@ class ebpf_domain_t final {
     void operator()(const ValidStore&);
     void operator()(const ZeroCtxOffset&);
     void operator()(const IncrementLoopCounter&);
+
+    // write operation is important to keep in ebpf_domain_t because of the parametric abstract domain
+    void write(std::ostream& o) const;
 
     void initialize_loop_counter(label_t label);
     static ebpf_domain_t calculate_constant_limits();

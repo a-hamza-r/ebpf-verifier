@@ -6,7 +6,6 @@
 #include "crab/cfg.hpp"
 #include "crab/wto.hpp"
 
-#include "crab/ebpf_domain.hpp"
 #include "crab/fwd_analyzer.hpp"
 
 namespace crab {
@@ -45,6 +44,7 @@ class interleaved_fwd_fixpoint_iterator_t final {
     using iterator = typename invariant_table_t::iterator;
 
     cfg_t& _cfg;
+    abstract_domain_t _bottom_inv;
     wto_t _wto;
     invariant_table_t _pre, _post;
 
@@ -59,16 +59,28 @@ class interleaved_fwd_fixpoint_iterator_t final {
     bool _skip{true};
 
   private:
-    void set_pre(const label_t& label, const ebpf_domain_t& v) { _pre[label] = v; }
-
-    void transform_to_post(const label_t& label, ebpf_domain_t pre) {
-        basic_block_t& bb = _cfg.get_node(label);
-        pre(bb);
-        _post[label] = std::move(pre);
+    void set_pre(const label_t& label, const abstract_domain_t& v) {
+        auto res = _pre.insert({label, v});
+        if (!res.second) {
+            // if the insertion failed then we just update value
+            res.first->second = v;
+        }
     }
 
-    [[nodiscard]] static ebpf_domain_t extrapolate(ebpf_domain_t before, const ebpf_domain_t& after,
-                                                   unsigned int iteration) {
+    inline void transform_to_post(const label_t& label, abstract_domain_t pre) {
+        basic_block_t& bb = _cfg.get_node(label);
+        pre(bb);
+
+        auto it = _post.find(label);
+        if (it == _post.end()) {
+            _post.insert({label, std::move(pre)});
+        } else {
+            it->second = std::move(pre);
+        }
+    }
+
+    [[nodiscard]] abstract_domain_t extrapolate(abstract_domain_t before, const abstract_domain_t& after,
+                                                unsigned int iteration) const {
         /// number of iterations until triggering widening
         constexpr auto _widening_delay = 2;
 
@@ -78,7 +90,8 @@ class interleaved_fwd_fixpoint_iterator_t final {
         return before.widen(after, iteration == _widening_delay);
     }
 
-    static ebpf_domain_t refine(ebpf_domain_t before, const ebpf_domain_t& after, unsigned int iteration) {
+    static abstract_domain_t refine(abstract_domain_t before, const abstract_domain_t& after,
+                                    unsigned int iteration) {
         if (iteration == 1) {
             return before & after;
         } else {
@@ -86,8 +99,8 @@ class interleaved_fwd_fixpoint_iterator_t final {
         }
     }
 
-    ebpf_domain_t join_all_prevs(const label_t& node) {
-        ebpf_domain_t res = ebpf_domain_t::bottom();
+    abstract_domain_t join_all_prevs(const label_t& node) {
+        abstract_domain_t res(_bottom_inv);
         for (const label_t& prev : _cfg.prev_nodes(node)) {
             res |= get_post(prev);
         }
@@ -95,27 +108,33 @@ class interleaved_fwd_fixpoint_iterator_t final {
     }
 
   public:
-    explicit interleaved_fwd_fixpoint_iterator_t(cfg_t& cfg) : _cfg(cfg), _wto(cfg) {
+    explicit interleaved_fwd_fixpoint_iterator_t(cfg_t& cfg, const abstract_domain_t& entry)
+        : _cfg(cfg), _bottom_inv(entry), _wto(cfg) {
+
+        _bottom_inv.set_to_bottom();
+
         for (const auto& label : _cfg.labels()) {
-            _pre.emplace(label, ebpf_domain_t::bottom());
-            _post.emplace(label, ebpf_domain_t::bottom());
+            _pre.emplace(label, _bottom_inv);
+            _post.emplace(label, _bottom_inv);
         }
+        set_pre(_cfg.entry_label(), entry);
     }
 
-    ebpf_domain_t get_pre(const label_t& node) { return _pre.at(node); }
+    abstract_domain_t get_pre(const label_t& node) { return _pre.at(node); }
 
-    ebpf_domain_t get_post(const label_t& node) { return _post.at(node); }
+    abstract_domain_t get_post(const label_t& node) { return _post.at(node); }
 
     void operator()(const label_t& node);
 
     void operator()(std::shared_ptr<wto_cycle_t>& cycle);
 
-    friend std::pair<invariant_table_t, invariant_table_t> run_forward_analyzer(cfg_t& cfg, ebpf_domain_t entry_inv);
+    friend std::pair<invariant_table_t, invariant_table_t>
+    run_forward_analyzer(cfg_t& cfg, abstract_domain_t entry_inv);
 };
 
-std::pair<invariant_table_t, invariant_table_t> run_forward_analyzer(cfg_t& cfg, ebpf_domain_t entry_inv) {
+std::pair<invariant_table_t, invariant_table_t> run_forward_analyzer(cfg_t& cfg, abstract_domain_t entry_inv) {
     // Go over the CFG in weak topological order (accounting for loops).
-    interleaved_fwd_fixpoint_iterator_t analyzer(cfg);
+    interleaved_fwd_fixpoint_iterator_t analyzer(cfg, entry_inv);
     if (thread_local_options.check_termination) {
         std::vector<label_t> cycle_heads;
         for (auto& component : analyzer._wto) {
@@ -144,7 +163,7 @@ void interleaved_fwd_fixpoint_iterator_t::operator()(const label_t& node) {
         return;
     }
 
-    ebpf_domain_t pre = node == _cfg.entry_label() ? get_pre(node) : join_all_prevs(node);
+    abstract_domain_t pre = node == _cfg.entry_label() ? get_pre(node) : join_all_prevs(node);
 
     set_pre(node, pre);
     transform_to_post(node, pre);
@@ -167,7 +186,7 @@ void interleaved_fwd_fixpoint_iterator_t::operator()(std::shared_ptr<wto_cycle_t
         }
     }
 
-    ebpf_domain_t invariant = ebpf_domain_t::bottom();
+    abstract_domain_t invariant(_bottom_inv);
     if (entry_in_this_cycle) {
         invariant = get_pre(_cfg.entry_label());
     } else {
@@ -188,7 +207,7 @@ void interleaved_fwd_fixpoint_iterator_t::operator()(std::shared_ptr<wto_cycle_t
             if (!std::holds_alternative<label_t>(c) || (std::get<label_t>(c) != head))
                 std::visit(*this, *component);
         }
-        ebpf_domain_t new_pre = join_all_prevs(head);
+        abstract_domain_t new_pre = join_all_prevs(head);
         if (new_pre <= invariant) {
             // Post-fixpoint reached
             set_pre(head, new_pre);
@@ -208,7 +227,7 @@ void interleaved_fwd_fixpoint_iterator_t::operator()(std::shared_ptr<wto_cycle_t
             if (!std::holds_alternative<label_t>(c) || (std::get<label_t>(c) != head))
                 std::visit(*this, *component);
         }
-        ebpf_domain_t new_pre = join_all_prevs(head);
+        abstract_domain_t new_pre = join_all_prevs(head);
         if (invariant <= new_pre) {
             // No more refinement possible(pre == new_pre)
             break;
