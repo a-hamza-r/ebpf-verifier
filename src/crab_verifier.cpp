@@ -18,6 +18,7 @@
 #include "crab/abstract_domain.hpp"
 #include "crab/ebpf_domain.hpp"
 #include "crab/type_domain.hpp"
+#include "crab/offset_domain.hpp"
 #include "crab/fwd_analyzer.hpp"
 #include "crab_utils/lazy_allocator.hpp"
 
@@ -152,6 +153,10 @@ static abstract_domain_t make_initial(const ebpf_verifier_options_t* options) {
         type_domain_t entry_inv = type_domain_t::setup_entry();
         return abstract_domain_t(entry_inv);
     }
+    case abstract_domain_kind::OFFSET_DOMAIN: {
+        offset_domain_t entry_inv = offset_domain_t::setup_entry();
+        return abstract_domain_t(entry_inv);
+    }
     default:
         // FIXME: supported abstract domains should be checked in check.cpp
         std::cerr << "error: unsupported abstract domain\n";
@@ -170,6 +175,9 @@ static abstract_domain_t make_initial(abstract_domain_kind abstract_domain, cons
         return abstract_domain_t(entry_inv);
     }
     case abstract_domain_kind::TYPE_DOMAIN: {
+        // TODO
+    }
+    case abstract_domain_kind::OFFSET_DOMAIN: {
         // TODO
     }
     default:
