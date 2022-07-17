@@ -7,6 +7,7 @@
 
 #include "crab/abstract_domain.hpp"
 #include "crab/region_domain.hpp"
+#include "crab/constant_prop_domain.hpp"
 #include "crab/offset_domain.hpp"
 #include "crab/cfg.hpp"
 #include "linear_constraint.hpp"
