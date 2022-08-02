@@ -195,18 +195,18 @@ class offset_domain_t final {
     void operator-=(crab::variable_t var);
 
     //// abstract transformers
-    void operator()(const Undefined &, location_t loc = boost::none, int print = 0);
-    void operator()(const Bin &, location_t loc = boost::none, int print = 0);
-    void operator()(const Un &, location_t loc = boost::none, int print = 0);
+    void operator()(const Undefined &, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Bin &, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Un &, location_t loc = boost::none, int print = 0) {}
     void operator()(const LoadMapFd &, location_t loc = boost::none, int print = 0);
     void operator()(const Call &, location_t loc = boost::none, int print = 0);
-    void operator()(const Exit &, location_t loc = boost::none, int print = 0);
-    void operator()(const Jmp &, location_t loc = boost::none, int print = 0);
-    void operator()(const Mem &, location_t loc = boost::none, int print = 0);
+    void operator()(const Exit &, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Jmp &, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Mem &, location_t loc = boost::none, int print = 0) {}
     void operator()(const Packet &, location_t loc = boost::none, int print = 0);
-    void operator()(const LockAdd &, location_t loc = boost::none, int print = 0);
+    void operator()(const LockAdd &, location_t loc = boost::none, int print = 0) {}
     void operator()(const Assume &, location_t loc = boost::none, int print = 0);
-    void operator()(const Assert &, location_t loc = boost::none, int print = 0);
+    void operator()(const Assert &, location_t loc = boost::none, int print = 0) {}
     void operator()(const ValidAccess&, location_t loc = boost::none, int print = 0) {}
     void operator()(const Comparable& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const Addable& s, location_t loc = boost::none, int print = 0) {}
@@ -216,7 +216,7 @@ class offset_domain_t final {
     void operator()(const ValidMapKeyValue& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const ZeroCtxOffset& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const ValidDivisor& s, location_t loc = boost::none, int print = 0) {}
-    void operator()(const basic_block_t& bb, bool check_termination, int print = 0);
+    void operator()(const basic_block_t& bb, bool check_termination, int print = 0) {}
     void write(std::ostream& os) const;
     std::string domain_name() const;
     crab::bound_t get_instruction_count_upper_bound();
