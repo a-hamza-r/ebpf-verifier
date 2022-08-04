@@ -136,8 +136,7 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invarian
         for (const label_t& label : cfg.sorted_labels()) {
             auto pre_state = pre_invariants.at(label);
             auto post_state = post_invariants.at(label);
-            pre_state(cfg.get_node(label), options->check_termination,
-                    thread_local_options.print_invariants);
+            pre_state(cfg.get_node(label), 0, thread_local_options.print_invariants);
         }
     }
     else {
@@ -148,29 +147,6 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invarian
                 s << cfg.get_node(label);
                 s << "\nPost-invariant: " << post_invariants.at(label) << "\n";
             }
-        }
-    }
-    // Analyze the control-flow graph.
-    checks_db db = generate_report(cfg, pre_invariants, post_invariants);
-    if (thread_local_options.abstract_domain == abstract_domain_kind::TYPE_DOMAIN) {
-        auto exit_state = post_invariants.at(label_t::exit);
-        // only to print ctx and stack, fix later
-        exit_state(cfg.get_node(label_t::exit), 0, -1);
-        for (const label_t& label : cfg.sorted_labels()) {
-            auto pre_state = pre_invariants.at(label);
-            auto post_state = post_invariants.at(label);
-            if (thread_local_options.print_invariants)
-                s << "\nPre-types : " << pre_state << "\n";
-            pre_state(cfg.get_node(label), 0, thread_local_options.print_invariants ? 2 : 1);
-            if (thread_local_options.print_invariants)
-                s << "\nPost-types : " << post_state << "\n";
-        }
-    }
-    else if (thread_local_options.print_invariants) {
-        for (const label_t& label : cfg.sorted_labels()) {
-            s << "\nPre-invariant : " << pre_invariants.at(label) << "\n";
-            s << cfg.get_node(label);
-            s << "\nPost-invariant: " << post_invariants.at(label) << "\n";
         }
     }
     return db;
