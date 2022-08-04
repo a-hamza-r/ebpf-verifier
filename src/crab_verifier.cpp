@@ -127,6 +127,30 @@ static void print_report(std::ostream& os, const checks_db& db, const Instructio
 static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invariant_table_t& pre_invariants,
                                      crab::invariant_table_t& post_invariants) {
     // Analyze the control-flow graph.
+    //checks_db db = generate_report(cfg, pre_invariants, post_invariants);
+    checks_db db;
+    if (thread_local_options.abstract_domain == abstract_domain_kind::TYPE_DOMAIN) {
+        auto exit_state = post_invariants.at(label_t::exit);
+        // only to print ctx and stack, fix later
+        exit_state(cfg.get_node(label_t::exit), 0, -1);
+        for (const label_t& label : cfg.sorted_labels()) {
+            auto pre_state = pre_invariants.at(label);
+            auto post_state = post_invariants.at(label);
+            pre_state(cfg.get_node(label), options->check_termination,
+                    thread_local_options.print_invariants);
+        }
+    }
+    else {
+        db = generate_report(cfg, pre_invariants, post_invariants);
+        if (thread_local_options.print_invariants) {
+            for (const label_t& label : cfg.sorted_labels()) {
+                s << "\nPre-invariant : " << pre_invariants.at(label) << "\n";
+                s << cfg.get_node(label);
+                s << "\nPost-invariant: " << post_invariants.at(label) << "\n";
+            }
+        }
+    }
+    // Analyze the control-flow graph.
     checks_db db = generate_report(cfg, pre_invariants, post_invariants);
     if (thread_local_options.abstract_domain == abstract_domain_kind::TYPE_DOMAIN) {
         auto exit_state = post_invariants.at(label_t::exit);
