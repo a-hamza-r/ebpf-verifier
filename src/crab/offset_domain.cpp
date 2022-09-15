@@ -377,7 +377,7 @@ std::optional<bound_t> packet_constraint_t::get_limit() const {
     // TODO: normalize constraint, if required
     auto dist = m_eq.m_lhs.m_dist;
     if (dist.is_top()) return {};
-    return dist.lb();
+    return dist.ub();
 }
 
 extra_constraints_t extra_constraints_t::operator|(const extra_constraints_t& other) const {
@@ -737,8 +737,8 @@ bool offset_domain_t::upper_bound_satisfied(const dist_t& dist, int offset, int 
     }
 
     bound_t ub = is_comparison_check ? bound_t(MAX_PACKET_SIZE)
-        : (end_limit ? end_limit.value() : bound_t(crab::number_t(0)));
-    return (dist1.m_dist.lb()+crab::number_t(offset+width) <= ub);
+        : (end_limit ? end_limit.value() : crab::bound_t(crab::number_t(0)));
+    return (dist1.m_dist.ub()+crab::number_t(offset+width) <= ub);
 }
 
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
