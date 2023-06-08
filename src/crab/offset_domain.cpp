@@ -579,11 +579,8 @@ bool is_packet_pointer(std::optional<ptr_or_mapfd_t>& type) {
         return false;
     }
     auto ptr_or_mapfd_type = type.value();
-    if (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd_type)
-        && std::get<ptr_no_off_t>(ptr_or_mapfd_type).get_region() == crab::region_t::T_PACKET) {
-        return true;
-    }
-    return false;
+    return (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd_type)
+        && std::get<ptr_no_off_t>(ptr_or_mapfd_type).get_region() == crab::region_t::T_PACKET);
 }
 
 bool is_stack_pointer(std::optional<ptr_or_mapfd_t>& type) {
@@ -591,11 +588,8 @@ bool is_stack_pointer(std::optional<ptr_or_mapfd_t>& type) {
         return false;
     }
     auto ptr_or_mapfd_type = type.value();
-    if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_type)
-        && std::get<ptr_with_off_t>(ptr_or_mapfd_type).get_region() == crab::region_t::T_STACK) {
-        return true;
-    }
-    return false;
+    return (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_type)
+        && std::get<ptr_with_off_t>(ptr_or_mapfd_type).get_region() == crab::region_t::T_STACK);
 }
 
 void offset_domain_t::do_bin(const Bin &bin, std::optional<interval_t> src_const_value,
@@ -776,7 +770,7 @@ void offset_domain_t::check_valid_access(const ValidAccess& s,
         if (std::holds_alternative<ptr_with_off_t>(reg_ptr_or_mapfd_type)) {
             auto reg_with_off_ptr_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
             auto offset = reg_with_off_ptr_type.get_offset();
-            auto offset_to_check = offset+interval_t(number_t(s.offset));
+            auto offset_to_check = offset+interval_t(crab::number_t(s.offset));
             auto offset_lb = offset_to_check.lb();
             auto offset_plus_width_ub = offset_to_check.ub()+bound_t(width);
             if (reg_with_off_ptr_type.get_region() == crab::region_t::T_STACK) {

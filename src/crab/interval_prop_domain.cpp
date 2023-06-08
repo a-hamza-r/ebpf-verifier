@@ -477,27 +477,25 @@ void interval_prop_domain_t::operator()(const Bin& bin, location_t loc, int prin
         //std::cout << "value of vb: " << *src_interval << "\n";
     }
     else {
-        int imm = static_cast<int>(std::get<Imm>(bin.v).v);
-        interval_t imm_interval = interval_t(crab::number_t(imm));
+        auto imm = interval_t(crab::number_t(static_cast<int>(std::get<Imm>(bin.v).v)));
         switch (bin.op)
         {
             // ra = c, where c is a interval
             case Bin::Op::MOV: {
-
-                updated_dst_interval = imm_interval;
+                updated_dst_interval = imm;
                 break;
             }
             // ra += c, where c is a interval
             case Bin::Op::ADD: {
                 if (dst_v) {
-                    updated_dst_interval = dst_v.value() + imm_interval;
+                    updated_dst_interval = dst_v.value() + imm;
                 }
                 break;
             }
             // ra -= c
             case Bin::Op::SUB: {
                 if (dst_v) {
-                    updated_dst_interval = dst_v.value() - imm_interval;
+                    updated_dst_interval = dst_v.value() - imm;
                 }
                 break;
             }

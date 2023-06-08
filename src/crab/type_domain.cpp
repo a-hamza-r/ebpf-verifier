@@ -466,7 +466,7 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print
     if (maybe_ptr_or_mapfd) {
         if (std::holds_alternative<ptr_with_off_t>(maybe_ptr_or_mapfd.value())) {
             auto ptr_type_with_off = std::get<ptr_with_off_t>(maybe_ptr_or_mapfd.value());
-            if (ptr_type_with_off.get_offset() == interval_t(number_t(0))) return;
+            if (ptr_type_with_off.get_offset() == interval_t(crab::number_t(0))) return;
         }
         auto maybe_dist = m_offset.find_offset_info(u.reg.v);
         if (maybe_dist) {
