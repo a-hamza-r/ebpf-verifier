@@ -535,8 +535,8 @@ std::string region_domain_t::domain_name() const {
     return "region_domain";
 }
 
-int region_domain_t::get_instruction_count_upper_bound() {
-    return 0;
+crab::bound_t region_domain_t::get_instruction_count_upper_bound() {
+    return crab::bound_t(crab::number_t(0));
 }
 
 string_invariant region_domain_t::to_set() {
@@ -629,7 +629,7 @@ void region_domain_t::operator()(const Assert &u, location_t loc, int print) {
 
 region_domain_t region_domain_t::setup_entry() {
 
-    std::shared_ptr<ctx_t> ctx = std::make_shared<ctx_t>(global_program_info.type.context_descriptor);
+    std::shared_ptr<ctx_t> ctx = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
     std::shared_ptr<global_region_env_t> all_types = std::make_shared<global_region_env_t>();
 
     register_types_t typ(all_types);

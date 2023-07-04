@@ -246,7 +246,7 @@ std::optional<dist_t> ctx_t::find(int key) const {
 }
 
 offset_domain_t offset_domain_t::setup_entry() {
-    std::shared_ptr<ctx_t> ctx = std::make_shared<ctx_t>(global_program_info.type.context_descriptor);
+    std::shared_ptr<ctx_t> ctx = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
     std::shared_ptr<global_offset_env_t> all_types = std::make_shared<global_offset_env_t>();
     registers_state_t regs(all_types);
 
@@ -316,25 +316,15 @@ offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
     return offset_domain_t(m_reg_state | std::move(other.m_reg_state), m_stack_state | std::move(other.m_stack_state), m_extra_constraints | std::move(other.m_extra_constraints), m_ctx_dists, max(m_slack, other.m_slack));
 }
 
-// meet
-offset_domain_t offset_domain_t::operator&(const offset_domain_t& other) const { return other; }
-
-// widening
-offset_domain_t offset_domain_t::widen(const offset_domain_t& other) const { return other; }
-
-// narrowing
-offset_domain_t offset_domain_t::narrow(const offset_domain_t& other) const { return other; }
-
-//forget
-void offset_domain_t::operator-=(variable_t var) {}
-
 void offset_domain_t::write(std::ostream& os) const {}
 
 std::string offset_domain_t::domain_name() const {
     return "offset_domain";
 }
 
-int offset_domain_t::get_instruction_count_upper_bound() { return 0; }
+crab::bound_t offset_domain_t::get_instruction_count_upper_bound() {
+    return crab::bound_t(crab::number_t(0));
+}
 
 string_invariant offset_domain_t::to_set() { return string_invariant{}; }
 

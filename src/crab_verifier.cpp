@@ -132,7 +132,7 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invarian
             || thread_local_options.abstract_domain == abstract_domain_kind::REGION_DOMAIN) {
         auto state = post_invariants.at(label_t::exit);
         for (const label_t& label : cfg.sorted_labels()) {
-            state(cfg.get_node(label), options->check_termination, thread_local_options.print_invariants ? 2 : 1);
+            state(cfg.get_node(label), 0, thread_local_options.print_invariants ? 2 : 1);
         }
     }
     else if (thread_local_options.print_invariants) {

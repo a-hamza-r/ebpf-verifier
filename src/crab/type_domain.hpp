@@ -73,7 +73,8 @@ class type_domain_t final {
     void operator()(const TypeConstraint& s, location_t loc = boost::none, int print = 0);
     void operator()(const ValidSize& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const ValidMapKeyValue& s, location_t loc = boost::none, int print = 0) {}
-    void operator()(const ZeroOffset& s, location_t loc = boost::none, int print = 0) {}
+    void operator()(const ZeroCtxOffset& s, location_t loc = boost::none, int print = 0) {}
+    void operator()(const ValidDivisor& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const basic_block_t& bb, bool check_termination, int print = 0);
     void write(std::ostream& os) const;
     std::string domain_name() const;

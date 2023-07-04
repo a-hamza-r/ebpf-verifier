@@ -194,8 +194,8 @@ std::string constant_prop_domain_t::domain_name() const {
     return "constant_prop_domain";
 }
 
-int constant_prop_domain_t::get_instruction_count_upper_bound() {
-    return 0;
+crab::bound_t constant_prop_domain_t::get_instruction_count_upper_bound() {
+    return crab::bound_t(crab::number_t(0));
 }
 
 string_invariant constant_prop_domain_t::to_set() {
@@ -276,14 +276,14 @@ void constant_prop_domain_t::do_bin(const Bin& bin) {
                 break;
             }
             // ra /= rb
-            case Bin::Op::DIV: {
+            case Bin::Op::UDIV: {
                 if (dstV) {
                     updatedDstV = std::make_shared<int>((*dstV) / (*srcV));
                 }
                 break;
             }
             // ra %= rb
-            case Bin::Op::MOD: {
+            case Bin::Op::UMOD: {
                 if (dstV) {
                     updatedDstV = std::make_shared<int>((*dstV) % (*srcV));
                 }
@@ -365,14 +365,14 @@ void constant_prop_domain_t::do_bin(const Bin& bin) {
                 break;
             }
             // ra /= c
-            case Bin::Op::DIV: {
+            case Bin::Op::UDIV: {
                 if (dstV) {
                     updatedDstV = std::make_shared<int>((*dstV) / imm);
                 }
                 break;
             }
             // ra %= c
-            case Bin::Op::MOD: {
+            case Bin::Op::UMOD: {
                 if (dstV) {
                     updatedDstV = std::make_shared<int>((*dstV) % imm);
                 }

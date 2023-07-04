@@ -178,13 +178,13 @@ class offset_domain_t final {
     offset_domain_t operator|(const offset_domain_t& other) const;
     offset_domain_t operator|(offset_domain_t&& abs) const;
     // meet
-    offset_domain_t operator&(const offset_domain_t& other) const;
+    offset_domain_t operator&(const offset_domain_t& other) const { return other; }
     // widening
-    offset_domain_t widen(const offset_domain_t& other) const;
+    offset_domain_t widen(const offset_domain_t& other) const { return other; }
     // narrowing
-    offset_domain_t narrow(const offset_domain_t& other) const;
+    offset_domain_t narrow(const offset_domain_t& other) const { return other; }
     //forget
-    void operator-=(variable_t var);
+    void operator-=(crab::variable_t var) {};
 
     //// abstract transformers
     void operator()(const Undefined &, location_t loc = boost::none, int print = 0);
@@ -206,11 +206,12 @@ class offset_domain_t final {
     void operator()(const TypeConstraint& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const ValidSize& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const ValidMapKeyValue& s, location_t loc = boost::none, int print = 0) {}
-    void operator()(const ZeroOffset& s, location_t loc = boost::none, int print = 0) {}
+    void operator()(const ZeroCtxOffset& s, location_t loc = boost::none, int print = 0) {}
+    void operator()(const ValidDivisor& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const basic_block_t& bb, bool check_termination, int print = 0);
     void write(std::ostream& os) const;
     std::string domain_name() const;
-    int get_instruction_count_upper_bound();
+    crab::bound_t get_instruction_count_upper_bound();
     string_invariant to_set();
     void set_require_check(check_require_func_t f) {}
 
