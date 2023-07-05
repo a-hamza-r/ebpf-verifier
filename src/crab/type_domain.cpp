@@ -520,7 +520,7 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     }
     else {
         auto imm = std::get<Imm>(bin.v);
-        src_interval = interval_t(number_t(static_cast<int>(imm.v)));
+        src_interval = interval_t(crab::number_t(static_cast<int>(imm.v)));
     }
 
     using Op = Bin::Op;
