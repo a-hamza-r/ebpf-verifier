@@ -16,10 +16,10 @@ bool dist_t::operator==(const dist_t& d) const {
 
 weight_t dist_t::offset_from_reference() const {
     if (is_meta_pointer()) {
-        return (-m_dist+interval_t(crab::number_t(PACKET_META)));
+        return (-m_dist+interval_t{PACKET_META});
     }
     if (is_backward_pointer()) {
-        return (m_dist-interval_t(crab::number_t(PACKET_END)));
+        return (m_dist-interval_t{PACKET_END});
     }
     return m_dist;
 }
@@ -56,13 +56,13 @@ void dist_t::set_to_bottom() {
 }
 
 bool dist_t::is_meta_pointer() const {
-    return (m_dist.lb() > crab::number_t(PACKET_END) && m_dist.ub() <= crab::number_t(PACKET_META));
+    return (m_dist.lb() > number_t(PACKET_END) && m_dist.ub() <= number_t(PACKET_META));
 }
 bool dist_t::is_forward_pointer() const {
-    return (m_dist.lb() >= crab::number_t(PACKET_BEGIN));
+    return (m_dist.lb() >= number_t(PACKET_BEGIN));
 }
 bool dist_t::is_backward_pointer() const {
-    return (m_dist.ub() <= crab::number_t(PACKET_END));
+    return (m_dist.ub() <= number_t(PACKET_END));
 }
 
 std::ostream& operator<<(std::ostream& o, const dist_t& d) {
@@ -335,11 +335,11 @@ packet_constraint_t packet_constraint_t::operator|(const packet_constraint_t& ot
 
     dist_t lhs = dist_t(dist1 | dist2, s);
     dist_t rhs;
-    if (m_is_meta_constraint) rhs = dist_t(weight_t(crab::number_t(PACKET_BEGIN)));
-    else rhs = dist_t(weight_t(crab::number_t(PACKET_END)));
+    if (m_is_meta_constraint) rhs = dist_t(weight_t(number_t(PACKET_BEGIN)));
+    else rhs = dist_t(weight_t(number_t(PACKET_END)));
 
     equality_t out_eq(lhs, rhs);
-    inequality_t out_ineq(s, m_ineq.m_rel, weight_t(crab::number_t(0)));
+    inequality_t out_ineq(s, m_ineq.m_rel, weight_t(number_t{0}));
     return packet_constraint_t(std::move(out_eq), std::move(out_ineq), m_is_meta_constraint);
         // have to handle case for different slack vars
 }
@@ -396,13 +396,13 @@ std::optional<bound_t> extra_constraints_t::get_meta_limit() const {
 
 ctx_t::ctx_t(const ebpf_context_descriptor_t* desc) {
     if (desc->data >= 0) {
-        m_dists[desc->data] = dist_t(weight_t(crab::number_t(PACKET_BEGIN)));
+        m_dists[desc->data] = dist_t(weight_t(PACKET_BEGIN));
     }
     if (desc->end >= 0) {
-        m_dists[desc->end] = dist_t(weight_t(crab::number_t(PACKET_END)));
+        m_dists[desc->end] = dist_t(weight_t(PACKET_END));
     }
     if (desc->meta >= 0) {
-        m_dists[desc->meta] = dist_t(weight_t(crab::number_t(PACKET_META)));
+        m_dists[desc->meta] = dist_t(weight_t(PACKET_META));
     }
     m_size = desc->size;
 }
@@ -518,9 +518,9 @@ std::string offset_domain_t::domain_name() const {
     return "offset_domain";
 }
 
-crab::bound_t offset_domain_t::get_instruction_count_upper_bound() {
+bound_t offset_domain_t::get_instruction_count_upper_bound() {
     /* WARNING: The operation is not implemented yet.*/
-    return crab::bound_t(crab::number_t(0));
+    return bound_t{number_t{0}};
 }
 
 string_invariant offset_domain_t::to_set() { return string_invariant{}; }
@@ -559,7 +559,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc, int print) {
             dist_t f = dist_t(left_reg_dist.m_dist, s);
             dist_t b = dist_t(right_reg_dist.m_dist);
             auto eq = equality_t(f, b);
-            auto ineq = inequality_t(s, rop_t::R_GE, weight_t(crab::number_t(0)));
+            auto ineq = inequality_t(s, rop_t::R_GE, weight_t(0));
             if (f.is_meta_pointer() && b.is_forward_pointer()) {
                 m_extra_constraints.add_meta_and_begin_constraint(std::move(eq), std::move(ineq));
             }
@@ -724,17 +724,17 @@ bool offset_domain_t::lower_bound_satisfied(const dist_t& dist, int offset) cons
     dist_t dist1 = dist;
     if (dist.is_meta_pointer()) {
         dist1 = dist_t(dist.offset_from_reference()
-                + (meta_limit ? weight_t(meta_limit.value()-crab::number_t(PACKET_META))
-                    : weight_t(crab::number_t(0))));
+                + (meta_limit ? weight_t(meta_limit.value()-number_t(PACKET_META))
+                    : weight_t(0)));
     }
     if (dist.is_backward_pointer()) {
         dist1 = dist_t(dist.offset_from_reference()
-                + (end_limit ? weight_t(end_limit.value()) : weight_t(crab::number_t(0))));
+                + (end_limit ? weight_t(end_limit.value()) : weight_t(0)));
     }
 
-    bound_t lb = meta_limit ? meta_limit.value()-crab::number_t(PACKET_META)
-        : crab::bound_t(crab::number_t(0));
-    return (dist1.m_dist.lb()+crab::number_t(offset) >= lb);
+    bound_t lb = meta_limit ? meta_limit.value()-number_t(PACKET_META)
+        : number_t{0};
+    return (dist1.m_dist.lb()+number_t(offset) >= lb);
 }
 
 bool offset_domain_t::upper_bound_satisfied(const dist_t& dist, int offset, int width,
@@ -745,18 +745,18 @@ bool offset_domain_t::upper_bound_satisfied(const dist_t& dist, int offset, int 
     dist_t dist1 = dist;
     if (dist.is_meta_pointer()) {
         dist1 = dist_t(dist.offset_from_reference() + (meta_limit ?
-                    weight_t(meta_limit.value()-crab::number_t(PACKET_META))
-                    : weight_t(crab::number_t((0)))));
+                    weight_t(meta_limit.value()-number_t(PACKET_META))
+                    : weight_t(0)));
     }
     if (dist.is_backward_pointer()) {
         dist1 = dist_t(dist.offset_from_reference()
                 + (end_limit ? weight_t(end_limit.value()) :
-                    weight_t(bound_t(is_comparison_check ? MAX_PACKET_SIZE : 0))));
+                    weight_t{is_comparison_check ? MAX_PACKET_SIZE : 0}));
     }
 
-    bound_t ub = is_comparison_check ? bound_t(MAX_PACKET_SIZE)
-        : (end_limit ? end_limit.value() : crab::bound_t(crab::number_t(0)));
-    return (dist1.m_dist.ub()+crab::number_t(offset+width) <= ub);
+    bound_t ub = is_comparison_check ? bound_t{MAX_PACKET_SIZE}
+        : (end_limit ? end_limit.value() : bound_t{number_t{0}});
+    return (dist1.m_dist.ub()+number_t(offset+width) <= ub);
 }
 
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
@@ -774,10 +774,10 @@ void offset_domain_t::check_valid_access(const ValidAccess& s,
         std::optional<interval_t>& width_interval) const {
 
     bool is_comparison_check = s.width == (Value)Imm{0};
-    crab::number_t width_from_interval;
+    number_t width_from_interval;
     if (width_interval) {
         auto& val = width_interval.value();
-        std::optional<crab::number_t> valid_num = val.ub().number();
+        std::optional<number_t> valid_num = val.ub().number();
         if (!valid_num) {
             return;
         }
@@ -794,21 +794,21 @@ void offset_domain_t::check_valid_access(const ValidAccess& s,
         if (std::holds_alternative<ptr_with_off_t>(reg_ptr_or_mapfd_type)) {
             auto reg_with_off_ptr_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
             auto offset = reg_with_off_ptr_type.get_offset();
-            auto offset_to_check = offset+interval_t(crab::number_t(s.offset));
+            auto offset_to_check = offset+interval_t{s.offset};
             auto offset_lb = offset_to_check.lb();
-            auto offset_plus_width_ub = offset_to_check.ub()+bound_t(width);
+            auto offset_plus_width_ub = offset_to_check.ub()+bound_t{width};
             if (reg_with_off_ptr_type.get_region() == crab::region_t::T_STACK) {
-                if (bound_t(STACK_BEGIN) <= offset_lb
-                        && offset_plus_width_ub <= bound_t(EBPF_STACK_SIZE))
+                if (bound_t{STACK_BEGIN} <= offset_lb
+                        && offset_plus_width_ub <= bound_t{EBPF_STACK_SIZE})
                     return;
             }
             else if (reg_with_off_ptr_type.get_region() == crab::region_t::T_CTX) {
-                if (bound_t(CTX_BEGIN) <= offset_lb
-                        && offset_plus_width_ub <= bound_t(m_ctx_dists->get_size()))
+                if (bound_t{CTX_BEGIN} <= offset_lb
+                        && offset_plus_width_ub <= bound_t{m_ctx_dists->get_size()})
                     return;
             }
             else { // shared
-                if (bound_t(SHARED_BEGIN) <= offset_lb &&
+                if (bound_t{SHARED_BEGIN} <= offset_lb &&
                         offset_plus_width_ub <= reg_with_off_ptr_type.get_region_size().lb()) return;
                 // TODO: check null access
                 //return;
@@ -831,7 +831,7 @@ void offset_domain_t::check_valid_access(const ValidAccess& s,
         if (is_comparison_check) return;
         auto singleton = interval.singleton();
         if (s.or_null) {
-            if (singleton && singleton.value() == crab::number_t(0)) return;
+            if (singleton && singleton.value() == 0) return;
             std::cout << "type error: non-null number\n";
         }
         else std::cout << "type error: only pointers can be dereferenced\n";

@@ -19,7 +19,7 @@ using crab::ptr_with_off_t;
 using crab::ptr_no_off_t;
 using crab::reg_with_loc_t;
 using crab::interval_t;
-using crab::bound_t;
+using crab::number_t;
 using crab::region_t;
 
 using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, 11>;

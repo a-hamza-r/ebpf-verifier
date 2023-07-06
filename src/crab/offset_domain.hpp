@@ -28,6 +28,7 @@ using crab::ptr_no_off_t;
 using crab::reg_with_loc_t;
 using crab::interval_t;
 using crab::bound_t;
+using crab::number_t;
 
 using weight_t = interval_t;
 using slack_var_t = int;

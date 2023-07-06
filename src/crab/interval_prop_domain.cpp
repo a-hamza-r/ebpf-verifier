@@ -354,7 +354,7 @@ std::string interval_prop_domain_t::domain_name() const {
 
 crab::bound_t interval_prop_domain_t::get_instruction_count_upper_bound() {
     /* WARNING: The operation is not implemented yet.*/
-    return crab::bound_t(crab::number_t(0));
+    return crab::bound_t{number_t{0}};
 }
 
 string_invariant interval_prop_domain_t::to_set() {
@@ -382,8 +382,8 @@ void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc, int 
     auto reg_v = m_registers_interval_values.find(s.reg.v);
     if (reg_v) {
         auto reg_value = reg_v.value();
-        if ((s.can_be_zero && reg_value.lb() >= bound_t(crab::number_t(0)))
-                || (!s.can_be_zero && reg_value.lb() > bound_t(crab::number_t(0)))) {
+        if ((s.can_be_zero && reg_value.lb() >= number_t{0})
+                || (!s.can_be_zero && reg_value.lb() > number_t{0})) {
             return;
         }
     }
@@ -429,7 +429,7 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
         return;
     }
     auto left_value = left_reg_optional.value();
-    bound_t right_value = bound_t(-1);
+    auto right_value = crab::bound_t{-1};
     if (std::holds_alternative<Reg>(cond.right)) {
         auto reg = std::get<Reg>(cond.right).v;
         auto right_reg_optional = m_registers_interval_values.find(reg);
@@ -448,24 +448,24 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
     else {
         imm = std::get<Imm>(cond.right).v;
         is_imm = true;
-        right_value = bound_t(static_cast<int>(imm));
+        right_value = crab::bound_t{static_cast<int>(imm)};
     }
     bool is_right_within_left_interval = left_value.lb() <= right_value
         && right_value <= left_value.ub();
     switch (cond.op) {
         case Op::EQ: {
             if (is_right_within_left_interval)
-                m_registers_interval_values.insert(cond.left.v, reg_with_loc, interval_t(right_value));
+                m_registers_interval_values.insert(cond.left.v, reg_with_loc, interval_t{right_value});
             return;
         }
         case Op::NE: {
             if (right_value <= left_value.lb() || right_value >= left_value.ub()) {
                 if (right_value == left_value.lb())
                     m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                            interval_t(left_value.lb() + bound_t(crab::number_t(1)), left_value.ub()));
+                            interval_t{left_value.lb() + number_t{1}, left_value.ub()});
                 else if (right_value == left_value.ub())
                     m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                            interval_t(left_value.lb(), left_value.ub() - bound_t(crab::number_t(1))));
+                            interval_t{left_value.lb(), left_value.ub() - number_t{1}});
                 return;
             }
             break;
@@ -476,13 +476,13 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
             if (is_right_within_left_interval || right_value < left_value.lb()) {
                 if (is_right_within_left_interval) {
                     if (cond.op == Op::GE && is_imm) {
-                        auto value = bound_t(static_cast<unsigned int>(imm));
+                        auto value = crab::bound_t{static_cast<unsigned int>(imm)};
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(value, left_value.ub()));
+                                interval_t{value, left_value.ub()});
                     }
                     else {
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(right_value, left_value.ub()));
+                                interval_t{right_value, left_value.ub()});
                     }
                 }
                 return;
@@ -494,13 +494,13 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
         {
             if (is_right_within_left_interval || right_value > left_value.ub()) {
                 if (is_right_within_left_interval) {
-                    if (cond.op == Op::LE && is_imm && left_value.lb() < bound_t(crab::number_t(0))) {
+                    if (cond.op == Op::LE && is_imm && left_value.lb() < number_t{0}) {
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(bound_t(crab::number_t(0)), right_value));
+                                interval_t{number_t{0}, right_value});
                     }
                     else {
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(left_value.lb(), right_value));
+                                interval_t{left_value.lb(), right_value});
                     }
                 }
                 return;
@@ -509,19 +509,19 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
         }
         case Op::SGT:
         case Op::GT: {
-            auto right_value_plus_1 = right_value + bound_t(1);
+            auto right_value_plus_1 = right_value + number_t{1};
             bool is_right_plus_1_within_left_interval = left_value.lb() <= right_value_plus_1
                 && right_value_plus_1 <= left_value.ub();
             if (is_right_plus_1_within_left_interval || right_value_plus_1 < left_value.lb()) {
                 if (is_right_plus_1_within_left_interval) {
                     if (cond.op == Op::GT && is_imm) {
-                        auto value = bound_t(static_cast<unsigned int>(imm));
+                        auto value = crab::bound_t{static_cast<unsigned int>(imm)};
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(value + bound_t(1), left_value.ub()));
+                                interval_t{value + number_t{1}, left_value.ub()});
                     }
                     else {
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(right_value_plus_1, left_value.ub()));
+                                interval_t{right_value_plus_1, left_value.ub()});
                     }
                 }
                 return;
@@ -530,19 +530,19 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
         }
         case Op::SLT:
         case Op::LT: {
-            auto right_value_minus_1 = right_value - bound_t(1);
+            auto right_value_minus_1 = right_value - number_t{1};
             bool is_right_minus_1_within_left_interval = left_value.lb() <= right_value_minus_1
                 && right_value_minus_1 <= left_value.ub();
             if (is_right_minus_1_within_left_interval || right_value_minus_1 > left_value.ub()) {
                 if (is_right_minus_1_within_left_interval) {
                     if (cond.op == Op::LT && is_imm) {
-                        auto value = bound_t(static_cast<unsigned int>(imm));
+                        auto value = crab::bound_t{static_cast<unsigned int>(imm)};
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(left_value.lb(), value - bound_t(1)));
+                                interval_t{left_value.lb(), value - number_t{1}});
                     }
                     else {
                         m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(left_value.lb(), right_value_minus_1));
+                                interval_t{left_value.lb(), right_value_minus_1});
                     }
                 }
                 return;
@@ -637,7 +637,7 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
         case Op::AND: {
             dst_interval = dst_interval.And(src_interval);
             if ((int32_t)imm > 0)
-                dst_interval = interval_t(crab::number_t(0), crab::number_t(static_cast<int>(imm)));
+                dst_interval = interval_t{number_t{0}, number_t{static_cast<int>(imm)}};
             break;
         }
         // ra <<= b
@@ -686,7 +686,7 @@ void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
         auto p_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
         if (p_with_off.get_region() == crab::region_t::T_STACK) {
             auto ptr_offset = p_with_off.get_offset();
-            auto load_at_interval = ptr_offset + interval_t(crab::number_t(static_cast<int>(offset)));
+            auto load_at_interval = ptr_offset + interval_t{static_cast<int>(offset)};
             auto load_at_singleton = load_at_interval.singleton();
             if (load_at_singleton) {
                 auto load_at = load_at_singleton.value();
@@ -708,7 +708,7 @@ void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
             auto load_at_lb = load_at_lb_opt.value();
             auto load_at_ub = load_at_ub_opt.value();
             auto start = (uint64_t)load_at_lb;
-            auto width_to_check = (int)(load_at_ub+crab::number_t(width)-load_at_lb);
+            auto width_to_check = (int)(load_at_ub+number_t{width}-load_at_lb);
 
             if (m_stack_slots_interval_values.all_numeric(start, width_to_check)) {
                 m_registers_interval_values.insert(target_reg.v, reg_with_loc,

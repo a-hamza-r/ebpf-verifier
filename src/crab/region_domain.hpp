@@ -15,7 +15,7 @@
 #include "platform.hpp"
 
 using crab::interval_t;
-using crab::bound_t;
+using crab::number_t;
 
 namespace crab {
 

@@ -186,7 +186,7 @@ std::string type_domain_t::domain_name() const {
 
 crab::bound_t type_domain_t::get_instruction_count_upper_bound() {
     /* WARNING: The operation is not implemented yet.*/
-    return crab::bound_t(crab::number_t(0));
+    return crab::bound_t{crab::number_t{0}};
 }
 
 string_invariant type_domain_t::to_set() {
@@ -471,7 +471,7 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print
     if (maybe_ptr_or_mapfd) {
         if (std::holds_alternative<ptr_with_off_t>(maybe_ptr_or_mapfd.value())) {
             auto ptr_type_with_off = std::get<ptr_with_off_t>(maybe_ptr_or_mapfd.value());
-            if (ptr_type_with_off.get_offset() == interval_t(crab::number_t(0))) return;
+            if (ptr_type_with_off.get_offset() == interval_t{crab::number_t{0}}) return;
         }
         auto maybe_dist = m_offset.find_offset_info(u.reg.v);
         if (maybe_dist) {
@@ -479,7 +479,7 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print
             auto single_val = dist_val.singleton();
             if (single_val) {
                 auto dist_value = single_val.value();
-                if (dist_value == crab::number_t(0)) return;
+                if (dist_value == crab::number_t{0}) return;
             }
         }
     }
@@ -520,7 +520,7 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     }
     else {
         auto imm = std::get<Imm>(bin.v);
-        src_interval = interval_t(crab::number_t(static_cast<int>(imm.v)));
+        src_interval = interval_t{crab::number_t{static_cast<int>(imm.v)}};
     }
 
     using Op = Bin::Op;

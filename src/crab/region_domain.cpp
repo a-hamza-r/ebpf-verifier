@@ -115,7 +115,7 @@ bool operator!=(const ptr_with_off_t& p1, const ptr_with_off_t& p2) {
 
 void ptr_with_off_t::write(std::ostream& o) const {
     o << get_reg_ptr(m_r) << "<" << m_offset;
-    if (m_region_size.lb() >= crab::number_t(0)) o << "," << m_region_size;
+    if (m_region_size.lb() >= number_t{0}) o << "," << m_region_size;
     o << ">";
 }
 
@@ -580,7 +580,7 @@ std::string region_domain_t::domain_name() const {
 
 crab::bound_t region_domain_t::get_instruction_count_upper_bound() {
     /* WARNING: The operation is not implemented yet.*/
-    return crab::bound_t(crab::number_t(0));
+    return crab::bound_t{number_t{0}};
 }
 
 string_invariant region_domain_t::to_set() {
@@ -631,8 +631,8 @@ void region_domain_t::operator()(const Call &u, location_t loc, int print) {
             m_registers.insert(r0_reg, r0, type);
         }
         else {
-            auto type = ptr_with_off_t(crab::region_t::T_SHARED, interval_t(crab::number_t(0)),
-                    interval_t(crab::number_t(mapfd.get_value_size())));
+            auto type = ptr_with_off_t(crab::region_t::T_SHARED, interval_t{number_t{0}},
+                    interval_t{mapfd.get_value_size()});
             m_registers.insert(r0_reg, r0, type);
         }
     }
@@ -678,9 +678,9 @@ region_domain_t region_domain_t::setup_entry() {
     auto r1 = reg_with_loc_t(R1_ARG, std::make_pair(label_t::entry, static_cast<unsigned int>(0)));
     auto r10 = reg_with_loc_t(R10_STACK_POINTER, std::make_pair(label_t::entry, static_cast<unsigned int>(0)));
 
-    typ.insert(R1_ARG, r1, ptr_with_off_t(crab::region_t::T_CTX, interval_t(crab::number_t(0))));
+    typ.insert(R1_ARG, r1, ptr_with_off_t(crab::region_t::T_CTX, interval_t{number_t{0}}));
     typ.insert(R10_STACK_POINTER, r10,
-            ptr_with_off_t(crab::region_t::T_STACK, interval_t(crab::number_t(512))));
+            ptr_with_off_t(crab::region_t::T_STACK, interval_t{number_t{512}}));
 
     region_domain_t inv(std::move(typ), crab::stack_t::top(), ctx);
     return inv;
@@ -901,8 +901,9 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t lo
             if (!offset_singleton) {
                 for (auto const& k : m_stack.get_keys()) {
                     auto start = p_offset.lb();
-                    auto end = p_offset.ub()+bound_t(offset+width);
-                    if (bound_t((int)k) >= start && bound_t((int)k) < end) {
+                    auto end = p_offset.ub()+number_t{offset+width-1};
+                    interval_t range{start, end};
+                    if (range[number_t{(int)k}]) {
                         std::cout <<
                             "stack load at unknown offset, and offset range contains pointers\n";
                         break;
@@ -933,8 +934,9 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t lo
             if (!offset_singleton) {
                 for (auto const& k : m_ctx->get_keys()) {
                     auto start = p_offset.lb();
-                    auto end = p_offset.ub()+bound_t(offset+width);
-                    if (bound_t((int)k) >= start && bound_t((int)k) < end) {
+                    auto end = p_offset.ub()+crab::bound_t{offset+width-1};
+                    interval_t range{start, end};
+                    if (range[number_t{(int)k}]) {
                         std::cout <<
                             "ctx load at unknown offset, and offset range contains pointers\n";
                         break;
