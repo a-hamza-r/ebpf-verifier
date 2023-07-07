@@ -653,7 +653,8 @@ void region_domain_t::operator()(const Addable& u, location_t loc, int print) {
     if (!maybe_ptr_type1 || !maybe_ptr_type2) {
         return;
     }
-    std::cout << "Addable assertion fail\n";
+    //std::cout << "type error: Addable assertion fail\n";
+    m_errors.push_back("Addable assertion fail");
 }
 
 void region_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
@@ -664,7 +665,8 @@ void region_domain_t::operator()(const ValidStore& u, location_t loc, int print)
     if (is_stack_p || !maybe_ptr_type2) {
         return;
     }
-    std::cout << "Valid store assertion fail\n";
+    //std::cout << "type error: Valid store assertion fail\n";
+    m_errors.push_back("Valid store assertion fail");
 }
 
 region_domain_t region_domain_t::setup_entry() {
@@ -738,8 +740,8 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc, int pr
                 || s.types == TypeGroup::mem_or_num)
             return;
     }
-    std::cout << "type constraint assert fail: " << s << "\n";
-    //exit(1);
+    //std::cout << "type error: type constraint assert fail: " << s << "\n";
+    m_errors.push_back("type constraint assert fail");
 }
 
 void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, const interval_t&& change,
@@ -755,7 +757,8 @@ void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, const i
         m_registers.insert(reg, reg_with_loc, ptr_or_mapfd);
     }
     else {
-        std::cout << "type error: mapfd register cannot be incremented/decremented\n";
+        //std::cout << "type error: mapfd register cannot be incremented/decremented\n";
+        m_errors.push_back("mapfd register cannot be incremented/decremented");
         m_registers -= reg;
     }
 }
@@ -804,7 +807,8 @@ interval_t region_domain_t::do_bin(const Bin& bin,
                     m_stack.set_to_top();
                 else {
                     // TODO: handle other cases properly
-                    std::cout << "type error: addition of two pointers\n";
+                    //std::cout << "type error: addition of two pointers\n";
+                    m_errors.push_back("addition of two pointers");
                 }
                 m_registers -= bin.dst.v;
             }
@@ -831,7 +835,8 @@ interval_t region_domain_t::do_bin(const Bin& bin,
             if (dst_ptr_or_mapfd_opt && src_ptr_or_mapfd_opt) {
                 if (std::holds_alternative<mapfd_t>(dst_ptr_or_mapfd) &&
                         std::holds_alternative<mapfd_t>(src_ptr_or_mapfd)) {
-                    std::cout << "type error: mapfd registers subtraction not defined\n";
+                    //std::cout << "type error: mapfd registers subtraction not defined\n";
+                    m_errors.push_back("mapfd registers subtraction not defined");
                 }
                 else if (std::holds_alternative<ptr_with_off_t>(dst_ptr_or_mapfd) &&
                         std::holds_alternative<ptr_with_off_t>(src_ptr_or_mapfd)) {
@@ -843,12 +848,14 @@ interval_t region_domain_t::do_bin(const Bin& bin,
                         return (dst_ptr_or_mapfd_with_off.get_offset() -
                             src_ptr_or_mapfd_with_off.get_offset());
                     }
-                    else
-                        std::cout <<
-                            "type error: subtraction between pointers of different region\n";
+                    else {
+                        //std::cout << "type error: subtraction between pointers of different region\n";
+                        m_errors.push_back("subtraction between pointers of different region");
+                    }
                 }
                 else if (!same_region(get_ptr(dst_ptr_or_mapfd), get_ptr(src_ptr_or_mapfd))) {
-                    std::cout << "type error: subtraction between pointers of different region\n";
+                    //std::cout << "type error: subtraction between pointers of different region\n";
+                    m_errors.push_back("subtraction between pointers of different region");
                 }
                 m_registers -= bin.dst.v;
             }
@@ -877,8 +884,7 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t lo
     if (!it) {
         std::string s = std::to_string(static_cast<unsigned int>(basereg.v));
         std::string desc = std::string("\tloading from an unknown pointer, or from number - r") + s + "\n";
-        //report_type_error(desc, loc);
-        std::cout << desc;
+        //std::cout << desc;
         m_registers -= target_reg.v;
         return;
     }
@@ -903,8 +909,8 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t lo
                     auto end = p_offset.ub()+number_t{offset+width-1};
                     interval_t range{start, end};
                     if (range[number_t{(int)k}]) {
-                        std::cout <<
-                            "stack load at unknown offset, and offset range contains pointers\n";
+                        //std::cout << "stack load at unknown offset, and offset range contains pointers\n";
+                        m_errors.push_back("stack load at unknown offset, and offset range contains pointers");
                         break;
                     }
                 }
@@ -936,8 +942,8 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t lo
                     auto end = p_offset.ub()+crab::bound_t{offset+width-1};
                     interval_t range{start, end};
                     if (range[number_t{(int)k}]) {
-                        std::cout <<
-                            "ctx load at unknown offset, and offset range contains pointers\n";
+                        //std::cout << "ctx load at unknown offset, and offset range contains pointers\n";
+                        m_errors.push_back("ctx load at unknown offset, and offset range contains pointers");
                         break;
                     }
                 }
@@ -978,8 +984,8 @@ void region_domain_t::do_mem_store(const Mem& b, const Reg& target_reg, location
     if (!maybe_basereg_type) {
         std::string s = std::to_string(static_cast<unsigned int>(basereg.v));
         std::string desc = std::string("\tstoring at an unknown pointer, or from number - r") + s + "\n";
-        //report_type_error(desc, loc);
-        std::cout << desc;
+        //std::cout << desc;
+        m_errors.push_back(desc);
         return;
     }
     auto basereg_type = maybe_basereg_type.value();
@@ -992,7 +998,8 @@ void region_domain_t::do_mem_store(const Mem& b, const Reg& target_reg, location
         if (basereg_type_with_off.get_region() == crab::region_t::T_STACK) {
             auto offset_singleton = basereg_type_with_off.get_offset().singleton();
             if (!offset_singleton) {
-                std::cout << "type error: storing to a pointer with unknown offset\n";
+                //std::cout << "type error: storing to a pointer with unknown offset\n";
+                m_errors.push_back("storing to a pointer with unknown offset");
                 return;
             }
             auto store_at = (uint64_t)offset+(uint64_t)offset_singleton.value();
@@ -1011,14 +1018,17 @@ void region_domain_t::do_mem_store(const Mem& b, const Reg& target_reg, location
             if (targetreg_type) {
                 std::string s = std::to_string(static_cast<unsigned int>(target_reg.v));
                 std::string desc = std::string("\twe cannot store a pointer, r") + s + ", into ctx\n";
-                // report_type_error(desc, loc);
-                std::cout << desc;
+                //std::cout << desc;
+                m_errors.push_back(desc);
                 return;
             }
         }
         else {
             // type of basereg is SHARED_P
-            if (targetreg_type) std::cout << "\twe cannot store a pointer into shared\n";
+            if (targetreg_type) {
+                //std::cout << "type error: we cannot store a pointer into shared\n";
+                m_errors.push_back("we cannot store a pointer into shared");
+            }
         }
     }
     else if (std::holds_alternative<ptr_no_off_t>(basereg_type)) {
@@ -1026,13 +1036,14 @@ void region_domain_t::do_mem_store(const Mem& b, const Reg& target_reg, location
         if (targetreg_type) {
             std::string s = std::to_string(static_cast<unsigned int>(target_reg.v));
             std::string desc = std::string("\twe cannot store a pointer, r") + s + ", into packet\n";
-            //report_type_error(desc, loc);
-            std::cout << desc;
+            //std::cout << desc;
+            m_errors.push_back(desc);
             return;
         }
     }
     else {
-        std::cout << "\twe cannot store a pointer into a mapfd\n";
+        //std::cout << "type error: we cannot store a pointer into a mapfd\n";
+        m_errors.push_back("we cannot store a pointer into a mapfd");
         return;
     }
 }

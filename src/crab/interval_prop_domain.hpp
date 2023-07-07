@@ -85,6 +85,7 @@ class interval_prop_domain_t final {
     registers_cp_state_t m_registers_interval_values;
     stack_cp_state_t m_stack_slots_interval_values;
     bool m_is_bottom = false;
+    std::vector<std::string> m_errors;
 
   public:
 
@@ -165,4 +166,5 @@ class interval_prop_domain_t final {
     void print_all_register_types() const;
     std::vector<uint64_t> get_stack_keys() const;
     bool all_numeric_in_stack(uint64_t, int) const;
+    std::vector<std::string>& get_errors() { return m_errors; }
 }; // end interval_prop_domain_t

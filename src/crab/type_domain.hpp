@@ -24,6 +24,7 @@ class type_domain_t final {
     offset_domain_t m_offset;
     interval_prop_domain_t m_interval;
     bool m_is_bottom = false;
+    std::vector<std::string> m_errors;
 
   public:
 
@@ -89,6 +90,7 @@ class type_domain_t final {
     crab::bound_t get_instruction_count_upper_bound();
     string_invariant to_set();
     void set_require_check(check_require_func_t f) {}
+    std::vector<std::string>& get_errors() { return m_errors; }
 
   private:
 
@@ -99,4 +101,7 @@ class type_domain_t final {
     void print_ctx() const;
     void print_stack() const;
     void adjust_bb_for_types(location_t);
+    void operator+=(std::vector<std::string>& errs) {
+        m_errors.insert(m_errors.end(), errs.begin(), errs.end());
+    }
 }; // end type_domain_t

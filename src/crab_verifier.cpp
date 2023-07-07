@@ -92,6 +92,20 @@ static checks_db generate_report(cfg_t& cfg,
     return m_db;
 }
 
+static checks_db generate_report_type_domain(cfg_t& cfg,
+                                 crab::invariant_table_t& post_invariants) {
+    checks_db m_db;
+    for (const label_t& label : cfg.sorted_labels()) {
+        abstract_domain_t from_inv(post_invariants.at(label));
+        
+        auto errors = from_inv.get_errors();
+        for (auto& error : errors) {
+            m_db.add_warning(label, error);
+        }
+    }
+    return m_db;
+}
+
 static auto get_line_info(const InstructionSeq& insts) {
     std::map<int, btf_line_info_t> label_to_line_info;
     for (auto& [label, inst, line_info] : insts) {
@@ -130,6 +144,7 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invarian
     //checks_db db = generate_report(cfg, pre_invariants, post_invariants);
     checks_db db;
     if (thread_local_options.abstract_domain == abstract_domain_kind::TYPE_DOMAIN) {
+        db = generate_report_type_domain(cfg, post_invariants);
         auto exit_state = post_invariants.at(label_t::exit);
         // only to print ctx and stack, fix later
         exit_state(cfg.get_node(label_t::exit), 0, -1);

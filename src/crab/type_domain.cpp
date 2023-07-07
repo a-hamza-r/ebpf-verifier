@@ -223,7 +223,8 @@ void type_domain_t::operator()(const Call &u, location_t loc, int print) {
                 if (ptr_with_off.get_region() == region_t::T_STACK) {
                     auto offset_singleton = ptr_with_off.get_offset().singleton();
                     if (!offset_singleton) {
-                        std::cout << "storing at an unknown offset in stack\n";
+                        //std::cout << "type error: storing at an unknown offset in stack\n";
+                        m_errors.push_back("storing at an unknown offset in stack");
                         continue;
                     }
                     auto offset = (uint64_t)offset_singleton.value();
@@ -333,7 +334,8 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
         // all other cases when we do not have a ptr or mapfd, the type is a number
         return;
     }
-    std::cout << "Non-comparable types\n";
+    //std::cout << "type error: Non-comparable types\n";
+    m_errors.push_back("Non-comparable types");
 }
 
 void type_domain_t::operator()(const Addable& u, location_t loc, int print) {
@@ -370,7 +372,8 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
                 if (ptr_with_off.get_region() == region_t::T_STACK) {
                     auto offset_singleton = ptr_with_off.get_offset().singleton();
                     if (!offset_singleton) {
-                        std::cout << "reading the stack at an unknown offset\n";
+                        //std::cout << "type error: reading the stack at an unknown offset\n";
+                        m_errors.push_back("reading the stack at an unknown offset");
                         return;
                     }
                     auto offset_to_check = (uint64_t)offset_singleton.value();
@@ -378,7 +381,8 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
                     if (it) return;
                     auto it2 = m_region.find_in_stack(offset_to_check);
                     if (it2) {
-                        std::cout << "type error: map update with a non-numerical value\n";
+                        //std::cout << "type error: map update with a non-numerical value\n";
+                        m_errors.push_back("map update with a non-numerical value");
                     }
                 }
             }
@@ -390,7 +394,8 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
             }
         }
     }
-    std::cout << "valid map key value assertion failed\n";
+    //std::cout << "type error: valid map key value assertion failed\n";
+    m_errors.push_back("valid map key value assertion failed");
 }
 
 void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print) {
@@ -411,7 +416,8 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print
             }
         }
     }
-    std::cout << "Zero Offset assertion fail\n";
+    //std::cout << "type error: Zero Offset assertion fail\n";
+    m_errors.push_back("Zero Offset assertion fail");
 }
 
 type_domain_t type_domain_t::setup_entry() {
@@ -447,7 +453,8 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     // for all operations except mov, add, sub, the src and dst should be numbers
     if ((src_ptr_or_mapfd || dst_ptr_or_mapfd)
             && (bin.op != Op::MOV && bin.op != Op::ADD && bin.op != Op::SUB)) {
-        std::cout << "type error: operation on pointers not allowed\n";
+        //std::cout << "type error: operation on pointers not allowed\n";
+        m_errors.push_back("operation on pointers not allowed");
         m_region -= bin.dst.v;
         m_offset -= bin.dst.v;
         m_interval -= bin.dst.v;
@@ -497,8 +504,8 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
     } else {
         std::string s = std::to_string(static_cast<unsigned int>(std::get<Imm>(b.value).v));
         std::string desc = std::string("\tEither loading to a number (not allowed) or storing a number (not allowed yet) - ") + s + "\n";
-        //report_type_error(desc, loc);
-        std::cout << desc;
+        //std::cout << desc;
+        m_errors.push_back(desc);
         return;
     }
 }
@@ -591,6 +598,10 @@ void type_domain_t::operator()(const basic_block_t& bb, bool check_termination, 
         loc = location_t(std::make_pair(label, ++curr_pos));
         std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, statement);
     }
+
+    operator+=(m_region.get_errors());
+    operator+=(m_offset.get_errors());
+    operator+=(m_interval.get_errors());
 }
 
 void type_domain_t::write(std::ostream& o, const basic_block_t& bb, int print) const {

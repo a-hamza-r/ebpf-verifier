@@ -208,6 +208,7 @@ class offset_domain_t final {
     extra_constraints_t m_extra_constraints;
     std::shared_ptr<ctx_t> m_ctx_dists;
     slack_var_t m_slack = 0;
+    std::vector<std::string> m_errors;
 
   public:
     offset_domain_t() = default;
@@ -288,7 +289,7 @@ class offset_domain_t final {
     bool lower_bound_satisfied(const dist_t&, int) const;
     bool check_packet_access(const Reg&, int, int, bool) const;
     void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&,
-            std::optional<interval_t>&, std::optional<interval_t>&) const;
+            std::optional<interval_t>&, std::optional<interval_t>&);
 
     std::optional<dist_t> find_in_ctx(int) const;
     std::optional<dist_t> find_in_stack(int) const;
@@ -299,4 +300,5 @@ class offset_domain_t final {
     dist_t update_offset(const dist_t&, const weight_t&, const interval_t&, Bin::Op);
     void adjust_bb_for_types(location_t);
     void print_all_register_types() const;
+    std::vector<std::string>& get_errors() { return m_errors; }
 }; // end offset_domain_t

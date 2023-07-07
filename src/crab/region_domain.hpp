@@ -199,6 +199,7 @@ class region_domain_t final {
     crab::stack_t m_stack;
     crab::register_types_t m_registers;
     std::shared_ptr<crab::ctx_t> m_ctx;
+    std::vector<std::string> m_errors;
 
   public:
 
@@ -284,4 +285,5 @@ class region_domain_t final {
     bool is_stack_pointer(register_t) const;
     void adjust_bb_for_types(location_t loc);
     void print_all_register_types() const;
+    std::vector<std::string>& get_errors() { return m_errors; }
 }; // end region_domain_t

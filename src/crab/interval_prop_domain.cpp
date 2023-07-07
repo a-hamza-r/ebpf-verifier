@@ -387,7 +387,8 @@ void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc, int 
             return;
         }
     }
-    std::cout << "Valid Size assertion fail\n";
+    //std::cout << "type error: Valid Size assertion fail\n";
+    m_errors.push_back("Valid Size assertion fail");
 }
 
 void interval_prop_domain_t::do_call(const Call& u, const interval_values_stack_t& store_in_stack,
@@ -434,13 +435,15 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
         auto reg = std::get<Reg>(cond.right).v;
         auto right_reg_optional = m_registers_interval_values.find(reg);
         if (!right_reg_optional) {
-            std::cout << "type error: assumption for an unknown register\n";
+            //std::cout << "type error: assumption for an unknown register\n";
+            m_errors.push_back("assumption for an unknown register");
             return;
         }
         auto right_reg = right_reg_optional.value();
         auto right_reg_singleton = right_reg.singleton();
         if (!right_reg_singleton) {
-            std::cout << "assumption for a non-singleton register\n";
+            //std::cout << "type error: assumption for a non-singleton register\n";
+            m_errors.push_back("assumption for a non-singleton register");
             return;
         }
         right_value = right_reg_singleton.value();
@@ -702,7 +705,8 @@ void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
             auto load_at_ub_opt = load_at_interval.ub().number();
             if (!load_at_lb_opt || !load_at_ub_opt) {
                 m_registers_interval_values -= target_reg.v;
-                std::cout << "type error: missing offset information\n";
+                //std::cout << "type error: missing offset information\n";
+                m_errors.push_back("missing offset information");
                 return;
             }
             auto load_at_lb = load_at_lb_opt.value();
@@ -744,7 +748,8 @@ void interval_prop_domain_t::do_mem_store(const Mem& b, const Reg& target_reg,
         auto basereg_ptr_with_off_type = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
         auto offset_singleton = basereg_ptr_with_off_type.get_offset().singleton();
         if (!offset_singleton) {
-            std::cout << "doing a store with unknown offset\n";
+            //std::cout << "type error: doing a store with unknown offset\n";
+            m_errors.push_back("doing a store with unknown offset");
             return;
         }
         auto store_at = (uint64_t)offset_singleton.value() + (uint64_t)offset;
