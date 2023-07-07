@@ -134,9 +134,8 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invarian
         // only to print ctx and stack, fix later
         exit_state(cfg.get_node(label_t::exit), 0, -1);
         for (const label_t& label : cfg.sorted_labels()) {
-            auto pre_state = pre_invariants.at(label);
             auto post_state = post_invariants.at(label);
-            pre_state(cfg.get_node(label), 0, thread_local_options.print_invariants);
+            post_state(cfg.get_node(label), 0, thread_local_options.print_invariants);
         }
     }
     else {

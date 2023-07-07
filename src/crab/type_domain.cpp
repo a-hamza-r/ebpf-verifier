@@ -65,39 +65,37 @@ static void print_register(Reg r, std::optional<ptr_or_mapfd_t>& p, std::optiona
     }
 }
 
-static void print_annotated(const Call& call, std::optional<ptr_or_mapfd_t>& p,
+static void print_annotated(std::ostream& o, const Call& call, std::optional<ptr_or_mapfd_t>& p,
         std::optional<dist_t>& d, std::optional<interval_t>& n) {
-    std::cout << "  ";
+    o << "  ";
     print_register(Reg{(uint8_t)R0_RETURN_VALUE}, p, d, n);
-    std::cout << " = " << call.name << ":" << call.func << "(...)\n";
+    o << " = " << call.name << ":" << call.func << "(...)\n";
 }
 
-static void print_annotated(const Bin& b, std::optional<ptr_or_mapfd_t>& p,
+static void print_annotated(std::ostream& o, const Bin& b, std::optional<ptr_or_mapfd_t>& p,
         std::optional<dist_t>& d, std::optional<interval_t>& n) {
-    std::cout << "  ";
+    o << "  ";
     print_register(b.dst, p, d, n);
-    std::cout << " " << b.op << "= " << b.v << "\n";
+    o << " " << b.op << "= " << b.v << "\n";
 }
 
-static void print_annotated(const LoadMapFd& u, std::optional<ptr_or_mapfd_t>& p) {
-    std::cout << "  ";
+static void print_annotated(std::ostream& o, const LoadMapFd& u, std::optional<ptr_or_mapfd_t>& p) {
+    o << "  ";
     std::optional<dist_t> d;
     std::optional<interval_t> n;
     print_register(u.dst, p, d, n);
-    std::cout << " = map_fd " << u.mapfd << "\n";
+    o << " = map_fd " << u.mapfd << "\n";
 }
 
-static void print_annotated(const Mem& b, std::optional<ptr_or_mapfd_t>& p,
+static void print_annotated(std::ostream& o, const Mem& b, std::optional<ptr_or_mapfd_t>& p,
         std::optional<dist_t>& d, std::optional<interval_t>& n) {
-    if (b.is_load) {
-        std::cout << "  ";
-        print_register(std::get<Reg>(b.value), p, d, n);
-        std::cout << " = ";
-    }
+    o << "  ";
+    print_register(std::get<Reg>(b.value), p, d, n);
+    o << " = ";
     std::string sign = b.access.offset < 0 ? " - " : " + ";
     int offset = std::abs(b.access.offset);
-    std::cout << "*(" << size(b.access.width) << " *)";
-    std::cout << "(" << b.access.basereg << sign << offset << ")\n";
+    o << "*(" << size(b.access.width) << " *)";
+    o << "(" << b.access.basereg << sign << offset << ")\n";
 }
 
 bool type_domain_t::is_bottom() const {
@@ -194,46 +192,22 @@ string_invariant type_domain_t::to_set() {
 }
 
 void type_domain_t::operator()(const Undefined & u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Un &u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const LoadMapFd &u, location_t loc, int print) {
-    if (print > 0) {
-        auto reg = reg_with_loc_t(u.dst.v, loc);
-        auto region = m_region.find_ptr_or_mapfd_at_loc(reg);
-        print_annotated(u, region);
-        return;
-    }
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Call &u, location_t loc, int print) {
-    auto r0 = register_t{R0_RETURN_VALUE};
-
-    if (print > 0) {
-        auto r0_reg = reg_with_loc_t(r0, loc);
-        auto region = m_region.find_ptr_or_mapfd_at_loc(r0_reg);
-        auto offset = m_offset.find_offset_at_loc(r0_reg);
-        auto interval = m_interval.find_interval_at_loc(r0_reg);
-        print_annotated(u, region, offset, interval);
-        return;
-    }
 
     using interval_values_stack_t = std::map<uint64_t, interval_cells_t>;
     interval_values_stack_t stack_values;
@@ -267,50 +241,30 @@ void type_domain_t::operator()(const Call &u, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const Exit &u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Jmp &u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Packet & u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const LockAdd &u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Assume &u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     Condition cond = u.cond;
     auto ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(cond.left.v);
     if (ptr_or_mapfd) {
@@ -336,10 +290,6 @@ void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int prin
 }
 
 void type_domain_t::operator()(const Assert &u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, u.cst);
 }
 
@@ -357,10 +307,6 @@ static region_t get_region(const ptr_t& ptr) {
 }
 
 void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
 
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
@@ -391,35 +337,20 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const Addable& u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
 }
 
 void type_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_region(u, loc);
 }
 
 
 void type_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
     m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
+
     int width;
     auto maybe_ptr_or_mapfd_basereg = m_region.find_ptr_or_mapfd_type(u.access_reg.v);
     auto maybe_mapfd = m_region.find_ptr_or_mapfd_type(u.map_fd_reg.v);
@@ -463,10 +394,7 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
 }
 
 void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print) {
-    if (print > 0) {
-        std::cout << "  " << u << "\n";
-        return;
-    }
+
     auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(u.reg.v);
     if (maybe_ptr_or_mapfd) {
         if (std::holds_alternative<ptr_with_off_t>(maybe_ptr_or_mapfd.value())) {
@@ -495,14 +423,6 @@ type_domain_t type_domain_t::setup_entry() {
 }
 
 void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
-    if (print > 0) {
-        auto reg_with_loc = reg_with_loc_t(bin.dst.v, loc);
-        auto region = m_region.find_ptr_or_mapfd_at_loc(reg_with_loc);
-        auto offset = m_offset.find_offset_at_loc(reg_with_loc);
-        auto interval = m_interval.find_interval_at_loc(reg_with_loc);
-        print_annotated(bin, region, offset, interval);
-        return;
-    }
 
     auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
     auto dst_interval = m_interval.find_interval_value(bin.dst.v);
@@ -545,15 +465,6 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t loc, int print) {
 
-    if (print > 0) {
-        auto target_reg_loc = reg_with_loc_t(target_reg.v, loc);
-        auto region = m_region.find_ptr_or_mapfd_at_loc(target_reg_loc);
-        auto offset = m_offset.find_offset_at_loc(target_reg_loc);
-        auto interval = m_interval.find_interval_at_loc(target_reg_loc);
-        print_annotated(b, region, offset, interval);
-        return;
-    }
-
     Reg basereg = b.access.basereg;
     auto basereg_type = m_region.find_ptr_or_mapfd_type(basereg.v);
 
@@ -566,11 +477,6 @@ void type_domain_t::do_load(const Mem& b, const Reg& target_reg, location_t loc,
 }
 
 void type_domain_t::do_mem_store(const Mem& b, const Reg& target_reg, location_t loc, int print) {
-
-    if (print > 0) {
-        std::cout << "  " << b << ";\n";
-        return;
-    }
 
     Reg basereg = b.access.basereg;
     auto basereg_type = m_region.find_ptr_or_mapfd_type(basereg.v);
@@ -602,41 +508,41 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
 // but it is available when we are processing a basic block for all its instructions:w
 //
 void type_domain_t::print_registers() const {
-    std::cout << "\tregister types: {\n";
+    std::cout << "  register types: {\n";
     for (size_t i = 0; i < NUM_REGISTERS; i++) {
         register_t reg = (register_t)i;
         auto maybe_ptr_or_mapfd_type = m_region.find_ptr_or_mapfd_type(reg);
         auto maybe_offset = m_offset.find_offset_info(reg);
         auto maybe_interval = m_interval.find_interval_value(reg);
         if (maybe_ptr_or_mapfd_type || maybe_interval) {
-            std::cout << "\t\t";
+            std::cout << "    ";
             print_register(Reg{(uint8_t)reg}, maybe_ptr_or_mapfd_type, maybe_offset,
                     maybe_interval);
             std::cout << "\n";
         }
     }
-    std::cout << "\t}\n";
+    std::cout << "  }\n";
 }
 
 void type_domain_t::print_ctx() const {
     std::vector<uint64_t> ctx_keys = m_region.get_ctx_keys();
-    std::cout << "\tctx: {\n";
+    std::cout << "  ctx: {\n";
     for (auto const& k : ctx_keys) {
         auto ptr = m_region.find_in_ctx(k);
         auto dist = m_offset.find_in_ctx(k);
         if (ptr) {
-            std::cout << "\t\t" << k << ": ";
+            std::cout << "    " << k << ": ";
             print_ptr_type(ptr.value(), dist);
             std::cout << ",\n";
         }
     }
-    std::cout << "\t}\n";
+    std::cout << "  }\n";
 }
 
 void type_domain_t::print_stack() const {
     std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
     std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
-    std::cout << "\tstack: {\n";
+    std::cout << "  stack: {\n";
     for (auto const& k : stack_keys_region) {
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
         auto dist = m_offset.find_in_stack(k);
@@ -644,7 +550,7 @@ void type_domain_t::print_stack() const {
             auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
-            std::cout << "\t\t[" << k << "-" << k+width-1 << "] : ";
+            std::cout << "    [" << k << "-" << k+width-1 << "] : ";
             print_ptr_or_mapfd_type(ptr_or_mapfd, dist);
             std::cout << ",\n";
         }
@@ -653,12 +559,13 @@ void type_domain_t::print_stack() const {
         auto maybe_interval_cells = m_interval.find_in_stack(k);
         if (maybe_interval_cells) {
             auto interval_cells = maybe_interval_cells.value();
-            std::cout << "\t\t" << "[" << k << "-" << k+interval_cells.second-1 << "] : ";
+            int width = interval_cells.second;
+            std::cout << "    [" << k << "-" << k+width-1 << "] : ";
             print_number(interval_cells.first);
             std::cout << ",\n";
         }
     }
-    std::cout << "\t}\n";
+    std::cout << "  }\n";
 }
 
 void type_domain_t::adjust_bb_for_types(location_t loc) {
@@ -668,21 +575,13 @@ void type_domain_t::adjust_bb_for_types(location_t loc) {
 }
 
 void type_domain_t::operator()(const basic_block_t& bb, bool check_termination, int print) {
-    auto label = bb.label();
-    if (print < 0) {
-        std::cout << "state of stack and ctx in program:\n";
-        print_ctx();
-        print_stack();
-        std::cout << "\n";
+
+    if (print != 0) {
+        write(std::cout, bb, print);
         return;
     }
-    if (print > 0) {
-        if (label == label_t::entry) {
-            m_is_bottom = false;
-        }
-        std::cout << label << ":\n";
-    }
 
+    auto label = bb.label();
     uint32_t curr_pos = 0;
     location_t loc = location_t(std::make_pair(label, curr_pos));
     if (print == 0)
@@ -690,35 +589,79 @@ void type_domain_t::operator()(const basic_block_t& bb, bool check_termination, 
 
     for (const Instruction& statement : bb) {
         loc = location_t(std::make_pair(label, ++curr_pos));
-        if (print > 0)
-            std::cout << "   " << curr_pos << ".";
-        //if (print <= 0) std::cout << statement << "\n";
         std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, statement);
-        //if (print > 0 && error_location->first == loc->first && error_location->second == loc->second) std::cout << "type_error\n";
-    }
-
-    if (print > 0) {
-        auto [it, et] = bb.next_blocks();
-        if (it != et) {
-            std::cout << "  " << "goto ";
-            for (; it != et;) {
-                std::cout << *it;
-                ++it;
-                if (it == et) {
-                    std::cout << ";";
-                } else {
-                    std::cout << ",";
-                }
-            }
-        }
-        std::cout << "\n\n";
     }
 }
 
-void type_domain_t::write(std::ostream& o) const {
+void type_domain_t::write(std::ostream& o, const basic_block_t& bb, int print) const {
     if (is_bottom()) {
-        o << "_|_";
+        o << bb << "\n";
+        return;
     }
+    if (print < 0) {
+        o << "state of stack and ctx in program:\n";
+        print_ctx();
+        print_stack();
+        o << "\n";
+        return;
+    }
+
+    o << bb.label() << ":\n";
+    uint32_t curr_pos = 0;
+    for (const Instruction& statement : bb) {
+        ++curr_pos;
+        location_t loc = location_t(std::make_pair(bb.label(), curr_pos));
+        o << "   " << curr_pos << ".";
+        if (std::holds_alternative<Call>(statement)) {
+            auto r0_reg = reg_with_loc_t(register_t{R0_RETURN_VALUE}, loc);
+            auto region = m_region.find_ptr_or_mapfd_at_loc(r0_reg);
+            auto offset = m_offset.find_offset_at_loc(r0_reg);
+            auto interval = m_interval.find_interval_at_loc(r0_reg);
+            print_annotated(o, std::get<Call>(statement), region, offset, interval);
+        }
+        else if (std::holds_alternative<Bin>(statement)) {
+            auto b = std::get<Bin>(statement);
+            auto reg_with_loc = reg_with_loc_t(b.dst.v, loc);
+            auto region = m_region.find_ptr_or_mapfd_at_loc(reg_with_loc);
+            auto offset = m_offset.find_offset_at_loc(reg_with_loc);
+            auto interval = m_interval.find_interval_at_loc(reg_with_loc);
+            print_annotated(o, b, region, offset, interval);
+        }
+        else if (std::holds_alternative<Mem>(statement)) {
+            auto u = std::get<Mem>(statement);
+            if (u.is_load) {
+                auto target_reg = std::get<Reg>(u.value);
+                auto target_reg_loc = reg_with_loc_t(target_reg.v, loc);
+                auto region = m_region.find_ptr_or_mapfd_at_loc(target_reg_loc);
+                auto offset = m_offset.find_offset_at_loc(target_reg_loc);
+                auto interval = m_interval.find_interval_at_loc(target_reg_loc);
+                print_annotated(o, u, region, offset, interval);
+            }
+            else o << "  " << u << "\n";
+        }
+        else if (std::holds_alternative<LoadMapFd>(statement)) {
+            auto u = std::get<LoadMapFd>(statement);
+            auto reg = reg_with_loc_t(u.dst.v, loc);
+            auto region = m_region.find_ptr_or_mapfd_at_loc(reg);
+            print_annotated(o, u, region);
+        }
+        else o << "  " << statement << "\n";
+    }
+
+    auto [it, et] = bb.next_blocks();
+    if (it != et) {
+        o << "  " << "goto ";
+        for (; it != et;) {
+            o << *it;
+            ++it;
+            if (it == et) {
+                o << ";";
+            } else {
+                o << ",";
+            }
+        }
+    }
+    o << "\n\n";
 }
 
 std::ostream& operator<<(std::ostream& o, const type_domain_t& typ) {

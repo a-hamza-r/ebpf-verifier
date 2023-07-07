@@ -82,7 +82,8 @@ class type_domain_t final {
     void operator()(const ZeroCtxOffset&, location_t loc = boost::none, int print = 0);
     void operator()(const ValidDivisor& s, location_t loc = boost::none, int print = 0) {}
     void operator()(const basic_block_t& bb, bool check_termination, int print = 0);
-    void write(std::ostream& os) const;
+    void write(std::ostream& os, const basic_block_t&, int) const;
+    void write(std::ostream& os) const {}
     friend std::ostream& operator<<(std::ostream& o, const type_domain_t& dom);
     std::string domain_name() const;
     crab::bound_t get_instruction_count_upper_bound();

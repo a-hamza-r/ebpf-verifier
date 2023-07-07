@@ -669,7 +669,6 @@ void region_domain_t::operator()(const ValidStore& u, location_t loc, int print)
 
 region_domain_t region_domain_t::setup_entry() {
 
-    print_map_descriptors(global_program_info.get().map_descriptors, std::cout);
     std::shared_ptr<ctx_t> ctx = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
     std::shared_ptr<global_region_env_t> all_types = std::make_shared<global_region_env_t>();
 
