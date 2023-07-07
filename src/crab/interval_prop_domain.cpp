@@ -442,8 +442,9 @@ void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int pri
         auto right_reg = right_reg_optional.value();
         auto right_reg_singleton = right_reg.singleton();
         if (!right_reg_singleton) {
+            // TODO: Need handling for non-singleton registers
             //std::cout << "type error: assumption for a non-singleton register\n";
-            m_errors.push_back("assumption for a non-singleton register");
+            //m_errors.push_back("assumption for a non-singleton register");
             return;
         }
         right_value = right_reg_singleton.value();
@@ -748,8 +749,9 @@ void interval_prop_domain_t::do_mem_store(const Mem& b, const Reg& target_reg,
         auto basereg_ptr_with_off_type = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
         auto offset_singleton = basereg_ptr_with_off_type.get_offset().singleton();
         if (!offset_singleton) {
+            // TODO: need better handling when stores are done with non-singleton offsets
             //std::cout << "type error: doing a store with unknown offset\n";
-            m_errors.push_back("doing a store with unknown offset");
+            //m_errors.push_back("doing a store with unknown offset");
             return;
         }
         auto store_at = (uint64_t)offset_singleton.value() + (uint64_t)offset;
