@@ -1567,7 +1567,7 @@ void ebpf_domain_t::operator()(const TypeConstraint& s, location_t loc, int prin
         require(m_inv, linear_constraint_t::FALSE(), "Invalid type");
 }
 
-void ebpf_domain_t::operator()(const FuncConstraint& s) {
+void ebpf_domain_t::operator()(const FuncConstraint& s, location_t loc, int print) {
     // Look up the helper function id.
     const reg_pack_t& reg = reg_pack(s.reg);
     auto src_interval = m_inv.eval_interval(reg.svalue);

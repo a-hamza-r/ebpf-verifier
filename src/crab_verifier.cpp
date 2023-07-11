@@ -107,7 +107,9 @@ static void print_report(std::ostream& os, const checks_db& db, const Instructio
 static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, crab::invariant_table_t& pre_invariants,
                                      crab::invariant_table_t& post_invariants) {
     // Analyze the control-flow graph.
-    if (thread_local_options.abstract_domain == abstract_domain_kind::REGION_DOMAIN) {
+    checks_db db = generate_report(cfg, pre_invariants, post_invariants);
+    if (thread_local_options.abstract_domain == abstract_domain_kind::TYPE_DOMAIN
+            || thread_local_options.abstract_domain == abstract_domain_kind::REGION_DOMAIN) {
         auto state = post_invariants.at(label_t::exit);
         for (const label_t& label : cfg.sorted_labels()) {
             state(cfg.get_node(label), thread_local_options.print_invariants ? 2 : 1);

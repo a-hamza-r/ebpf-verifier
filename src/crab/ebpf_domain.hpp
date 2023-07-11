@@ -65,7 +65,7 @@ class ebpf_domain_t final {
     void operator()(const Callx&, location_t loc = boost::none, int print = 0);
     void operator()(const Comparable&, location_t loc = boost::none, int print = 0);
     void operator()(const Exit&, location_t loc = boost::none, int print = 0);
-    void operator()(const FuncConstraint&);
+    void operator()(const FuncConstraint&, location_t loc = boost::none, int print = 0);
     void operator()(const Jmp&, location_t loc = boost::none, int print = 0);
     void operator()(const LoadMapFd&, location_t loc = boost::none, int print = 0);
     void operator()(const Atomic&, location_t loc = boost::none, int print = 0);
