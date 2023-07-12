@@ -50,6 +50,7 @@ class ebpf_domain_t final {
     void set_require_check(std::function<check_require_func_t> f);
     bound_t get_loop_count_upper_bound();
     static ebpf_domain_t setup_entry(bool init_r1);
+    std::vector<std::string> get_errors() { return std::vector<std::string>(); }
 
     static ebpf_domain_t from_constraints(const std::set<std::string>& constraints, bool setup_constraints);
     string_invariant to_set();
