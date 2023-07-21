@@ -5,12 +5,14 @@
 
 #include "crab/abstract_domain.hpp"
 #include "crab/region_domain.hpp"
+#include "crab/offset_domain.hpp"
 #include "crab/common.hpp"
 
 namespace crab {
 
 class type_domain_t final {
     crab::region_domain_t m_region;
+    crab::offset_domain_t m_offset;
     bool m_is_bottom = false;
     std::vector<std::string> m_errors;
 
@@ -19,8 +21,8 @@ class type_domain_t final {
     type_domain_t() = default;
     type_domain_t(type_domain_t&& o) = default;
     type_domain_t(const type_domain_t& o) = default;
-    explicit type_domain_t(crab::region_domain_t&& reg, bool is_bottom = false) :
-        m_region(reg), m_is_bottom(is_bottom) {}
+    explicit type_domain_t(region_domain_t&& reg, offset_domain_t&& off, bool is_bottom = false) :
+        m_region(reg), m_offset(off), m_is_bottom(is_bottom) {}
     type_domain_t& operator=(type_domain_t&& o) = default;
     type_domain_t& operator=(const type_domain_t& o) = default;
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
@@ -83,14 +85,16 @@ class type_domain_t final {
 
   private:
 
-    void do_load(const Mem&, const Reg&, bool, location_t, int print = 0);
-    void do_mem_store(const Mem&, location_t, int print = 0);
+    void do_load(const Mem&, const Reg&, bool, std::optional<ptr_or_mapfd_t>,
+            location_t, int print = 0);
+    void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>&, location_t, int print = 0);
     void report_type_error(std::string, location_t);
     void print_registers() const;
     void adjust_bb_for_types(location_t);
     void operator+=(std::vector<std::string>& errs) {
         m_errors.insert(m_errors.end(), errs.begin(), errs.end());
     }
+    void print_initial_registers() const;
 }; // end type_domain_t
 
 } // namespace crab

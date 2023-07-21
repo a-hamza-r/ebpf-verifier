@@ -19,6 +19,7 @@
 #include "crab/ebpf_domain.hpp"
 #include "crab/type_domain.hpp"
 #include "crab/region_domain.hpp"
+#include "crab/offset_domain.hpp"
 #include "crab/fwd_analyzer.hpp"
 #include "crab_utils/lazy_allocator.hpp"
 
