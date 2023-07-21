@@ -1,7 +1,7 @@
 // Copyright (c) Prevail Verifier contributors.
 // SPDX-License-Identifier: MIT
 
-#include "type_domain.hpp"
+#include "crab/type_domain.hpp"
 
 namespace crab {
 
@@ -11,7 +11,7 @@ bool type_domain_t::is_bottom() const {
 
 bool type_domain_t::is_top() const {
     if (m_is_bottom) return false;
-    return (m_region.is_top());
+    return (m_region.is_top() && m_offset.is_top());
 }
 
 type_domain_t type_domain_t::bottom() {
@@ -26,6 +26,7 @@ void type_domain_t::set_to_bottom() {
 
 void type_domain_t::set_to_top() {
     m_region.set_to_top();
+    m_offset.set_to_top();
 }
 
 bool type_domain_t::operator<=(const type_domain_t& abs) const {
@@ -59,7 +60,7 @@ type_domain_t type_domain_t::operator|(const type_domain_t& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | other.m_region);
+    return type_domain_t(m_region | other.m_region, m_offset | other.m_offset);
 }
 
 type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
@@ -69,7 +70,7 @@ type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | std::move(other.m_region));
+    return type_domain_t(m_region | std::move(other.m_region), m_offset | std::move(m_offset));
 }
 
 type_domain_t type_domain_t::operator&(const type_domain_t& abs) const {
@@ -95,7 +96,9 @@ string_invariant type_domain_t::to_set() {
     return string_invariant{};
 }
 
-void type_domain_t::operator()(const Undefined& u, location_t loc, int print) {}
+void type_domain_t::operator()(const Undefined& u, location_t loc, int print) {
+    // nothing to do here
+}
 
 void type_domain_t::operator()(const Un& u, location_t loc, int print) {
     /* WARNING: The operation is not implemented yet.*/
@@ -103,6 +106,7 @@ void type_domain_t::operator()(const Un& u, location_t loc, int print) {
 
 void type_domain_t::operator()(const LoadMapFd& u, location_t loc, int print) {
     m_region(u, loc);
+    m_offset(u, loc);
 }
 
 void type_domain_t::operator()(const Atomic &u, location_t loc, int print) {
@@ -134,18 +138,22 @@ void type_domain_t::operator()(const Call& u, location_t loc, int print) {
         }
     }
     m_region(u, loc);
+    m_offset(u, loc);
 }
 
 void type_domain_t::operator()(const Callx &u, location_t loc, int print) {
     // WARNING: Not implemented yet
 }
 
-void type_domain_t::operator()(const Exit& u, location_t loc, int print) {}
+void type_domain_t::operator()(const Exit& u, location_t loc, int print) {
+    // nothing to do here
+}
 
 void type_domain_t::operator()(const Jmp& u, location_t loc, int print) {}
 
 void type_domain_t::operator()(const Packet& u, location_t loc, int print) {
     m_region(u, loc);
+    m_offset(u, loc);
 }
 
 void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
@@ -169,6 +177,7 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
         }
     }
     else {}
+    m_offset(s, loc, print);
 }
 
 void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print) {
@@ -177,6 +186,8 @@ void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print)
 
 void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
     m_region(s, loc);
+    auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
+    m_offset.check_valid_access(s, reg_type);
 }
 
 void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int print) {
@@ -184,6 +195,7 @@ void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int prin
 }
 
 void type_domain_t::operator()(const Assert& u, location_t loc, int print) {
+    if (is_bottom()) return;
     std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, u.cst);
 }
 
@@ -192,7 +204,6 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
     if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
-        // an extra check just to make sure registers are not labelled both ptrs and numbers
         if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
         if (!is_shared_ptr(maybe_ptr_or_mapfd1)
                 && same_region(*maybe_ptr_or_mapfd1, *maybe_ptr_or_mapfd2)) return;
@@ -279,16 +290,18 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print
 
 type_domain_t type_domain_t::setup_entry() {
     auto&& reg = crab::region_domain_t::setup_entry();
-    type_domain_t typ(std::move(reg));
+    auto&& off = offset_domain_t::setup_entry();
+    type_domain_t typ(std::move(reg), std::move(off));
     return typ;
 }
 
 void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
-
+    if (is_bottom()) return;
     auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
 
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
     std::optional<interval_t> src_interval;
+
     if (std::holds_alternative<Reg>(bin.v)) {
         Reg r = std::get<Reg>(bin.v);
         src_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(r.v);
@@ -313,17 +326,20 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
         m_region -= bin.dst.v;
         return;
     }
-
     m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+    m_offset.do_bin(bin, std::nullopt, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
 }
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
-        location_t loc, int print) {
+        std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc, int print) {
     m_region.do_load(b, target_reg, unknown_ptr, loc);
+    m_offset.do_load(b, target_reg, basereg_opt, loc);
 }
 
-void type_domain_t::do_mem_store(const Mem& b, location_t loc, int print) {
+void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt,
+        location_t loc, int print) {
     m_region.do_mem_store(b, loc);
+    m_offset.do_mem_store(b, basereg_opt);
 }
 
 void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
@@ -336,11 +352,11 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
                 std::string("load/store using an unknown pointer, or number - r") + s);
     }
     if (!unknown_ptr && !b.is_load) {
-        do_mem_store(b, loc, print);
+        do_mem_store(b, ptr_or_mapfd_opt, loc, print);
     }
     else if (std::holds_alternative<Reg>(b.value)) {
         auto targetreg = std::get<Reg>(b.value);
-        if (b.is_load) do_load(b, targetreg, unknown_ptr, loc, print);
+        if (b.is_load) do_load(b, targetreg, unknown_ptr, ptr_or_mapfd_opt, loc, print);
     }
 }
 
@@ -395,6 +411,7 @@ void type_domain_t::print_stack() const {
 
 void type_domain_t::adjust_bb_for_types(location_t loc) {
     m_region.adjust_bb_for_types(loc);
+    m_offset.adjust_bb_for_types(loc);
 }
 
 void type_domain_t::operator()(const basic_block_t& bb, int print) {
@@ -416,6 +433,7 @@ void type_domain_t::operator()(const basic_block_t& bb, int print) {
     }
 
     operator+=(m_region.get_errors());
+    operator+=(m_offset.get_errors());
 }
 
 std::optional<crab::ptr_or_mapfd_t>
