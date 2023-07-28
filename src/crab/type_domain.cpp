@@ -64,7 +64,7 @@ type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | std::move(other.m_region), m_offset | std::move(m_offset));
+    return type_domain_t(m_region | std::move(other.m_region), m_offset | std::move(other.m_offset));
 }
 
 type_domain_t type_domain_t::operator&(const type_domain_t& abs) const {
@@ -168,7 +168,6 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
             m_region.set_registers_to_top();
         }
     }
-    else {}
     m_offset(s, loc, print);
 }
 
@@ -179,7 +178,8 @@ void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print)
 void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
     m_region(s, loc);
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
-    m_offset.check_valid_access(s, reg_type);
+    std::optional<interval_t> width_interval = {};
+    m_offset.check_valid_access(s, reg_type, std::nullopt, width_interval);
 }
 
 void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int print) {
@@ -245,7 +245,9 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
     auto maybe_ptr_or_mapfd_basereg = m_region.find_ptr_or_mapfd_type(u.access_reg.v);
     auto maybe_mapfd = m_region.find_ptr_or_mapfd_type(u.map_fd_reg.v);
     if (maybe_ptr_or_mapfd_basereg && maybe_mapfd) {
+        auto mapfd = maybe_mapfd.value();
         if (is_mapfd_type(maybe_mapfd)) {
+            // TODO: define width
             auto ptr_or_mapfd_basereg = maybe_ptr_or_mapfd_basereg.value();
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_basereg)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd_basereg);
@@ -266,10 +268,11 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
                 }
             }
             else if (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd_basereg)) {
-                // We do not check packet ptr accesses yet
-                return;
+                if (m_offset.check_packet_access(u.access_reg, width, 0, true)) return;
             }
-            m_errors.push_back("Only stack or packet can be used as a parameter");
+            else {
+                m_errors.push_back("Only stack or packet can be used as a parameter");
+            }
         }
     }
     //std::cout << "type error: valid map key value assertion failed\n";
@@ -313,13 +316,17 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     // for all operations except mov, add, sub, the src and dst should be numbers
     if ((src_ptr_or_mapfd || dst_ptr_or_mapfd)
             && (bin.op != Op::MOV && bin.op != Op::ADD && bin.op != Op::SUB)) {
-        //std::cout << "type error: operation on pointers not allowed\n";
-        m_errors.push_back("operation on pointers not allowed");
+        std::cout << "type error: operation on pointers not allowed\n";
         m_region -= bin.dst.v;
+        m_offset -= bin.dst.v;
         return;
     }
-    m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
-    m_offset.do_bin(bin, std::nullopt, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+
+    interval_t subtracted_reg =
+        m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+    interval_t subtracted_off =
+        m_offset.do_bin(bin, src_interval, interval_t::top(), src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+    auto subtracted = subtracted_reg.is_bottom() ? subtracted_off : subtracted_reg;
 }
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
