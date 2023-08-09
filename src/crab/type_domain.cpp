@@ -324,7 +324,8 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     // for all operations except mov, add, sub, the src and dst should be numbers
     if ((src_ptr_or_mapfd || dst_ptr_or_mapfd)
             && (bin.op != Op::MOV && bin.op != Op::ADD && bin.op != Op::SUB)) {
-        std::cout << "type error: operation on pointers not allowed\n";
+        m_errors.push_back("operation on pointers not allowed");
+        //std::cout << "type error: operation on pointers not allowed\n";
         m_region -= bin.dst.v;
         m_offset -= bin.dst.v;
         return;

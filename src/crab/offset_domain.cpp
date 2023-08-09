@@ -533,8 +533,8 @@ void offset_domain_t::operator()(const Assume &b, location_t loc, int print) {
             if (!dist_left && !dist_right) {
                 // this should not happen, comparison between a packet pointer and either
                 // other region's pointers or numbers; possibly raise type error
-                //exit(1);
-                std::cout << "type_error: one of the pointers being compared isn't packet pointer\n";
+                m_errors.push_back("one of the pointers being compared isn't packet pointer");
+                //std::cout << "type_error: one of the pointers being compared isn't packet pointer\n";
                 return;
             }
             dist_t left_reg_dist = dist_left.value();
@@ -627,7 +627,8 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             }
             auto src_offset_opt = m_reg_state.find(src.v);
             if (!src_offset_opt) {
-                std::cout << "type_error: src is a packet_pointer and no offset info found\n";
+                m_errors.push_back("src is a packet_pointer and no offset info found");
+                //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
                 return interval_t::bottom();
             }
             m_reg_state.insert(bin.dst.v, reg_with_loc, src_offset_opt.value());
@@ -645,7 +646,8 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             else if (is_packet_pointer(dst_ptr_or_mapfd_opt) && src_interval_opt) {
                 auto dst_offset_opt = m_reg_state.find(bin.dst.v);
                 if (!dst_offset_opt) {
-                    std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
+                    m_errors.push_back("dst is a packet_pointer and no offset info found");
+                    //std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
                     m_reg_state -= bin.dst.v;
                     return interval_t::bottom();
                 }
@@ -655,7 +657,8 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             else {
                 auto src_offset_opt = m_reg_state.find(src.v);
                 if (!src_offset_opt) {
-                    std::cout << "type_error: src is a packet_pointer and no offset info found\n";
+                    m_errors.push_back("src is a packet_pointer and no offset info found");
+                    //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
                     m_reg_state -= bin.dst.v;
                     return interval_t::bottom();
                 }
@@ -678,7 +681,8 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             else if (is_packet_pointer(dst_ptr_or_mapfd_opt) && src_interval_opt) {
                 auto dst_offset_opt = m_reg_state.find(bin.dst.v);
                 if (!dst_offset_opt) {
-                    std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
+                    m_errors.push_back("dst is a packet_pointer and no offset info found");
+                    //std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
                     m_reg_state -= bin.dst.v;
                     return interval_t::bottom();
                 }
@@ -688,7 +692,8 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             else {
                 auto src_offset_opt = m_reg_state.find(src.v);
                 if (!src_offset_opt) {
-                    std::cout << "type_error: src is a packet_pointer and no offset info found\n";
+                    m_errors.push_back("src is a packet_pointer and no offset info found");
+                    //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
                     m_reg_state -= bin.dst.v;
                     return interval_t::bottom();
                 }
@@ -824,14 +829,15 @@ bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
 
 void offset_domain_t::check_valid_access(const ValidAccess& s,
         std::optional<ptr_or_mapfd_t>& reg_type,
-        std::optional<interval_t>, std::optional<interval_t>) const {
+        std::optional<interval_t>, std::optional<interval_t>) {
     if (std::holds_alternative<Reg>(s.width)) return;
     int w = std::get<Imm>(s.width).v;
     if (w == 0 || !reg_type) return;
 
     bool is_comparison_check = s.width == (Value)Imm{0};
     if (check_packet_access(s.reg, w, s.offset, is_comparison_check)) return;
-    std::cout << "valid access assert fail\n";
+    m_errors.push_back("valid access check failed");
+    //std::cout << "type_error: valid access assert fail\n";
     //exit(1);
 }
 
@@ -857,14 +863,16 @@ void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& 
         auto basereg_off = basereg_with_off.get_offset().to_interval();
         auto basereg_off_singleton = basereg_off.singleton();
         if (!basereg_off_singleton) {
-            std::cout << "type_error: basereg offset is not a singleton\n";
+            m_errors.push_back("basereg offset is not a singleton");
+            //std::cout << "type_error: basereg offset is not a singleton\n";
             return;
         }
         auto store_at = (int)(*basereg_off_singleton + offset);
         //if (is_packet_pointer(targetreg_type)) {
             auto it = m_reg_state.find(target_reg.v);
             if (!it) {
-                std::cout << "type_error: register is a packet_pointer and no offset info found\n";
+                m_errors.push_back("register is a packet_pointer and no offset info found");
+                //std::cout << "type_error: register is a packet_pointer and no offset info found\n";
                 m_stack_state -= store_at;
                 return;
             }
@@ -890,7 +898,8 @@ void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
         auto p_with_off = std::get<ptr_with_off_t>(basereg_ptr_type);
         auto offset_singleton = p_with_off.get_offset().to_interval().singleton();
         if (!offset_singleton) {
-            std::cout << "type_error: basereg offset is not a singleton\n";
+            m_errors.push_back("basereg offset is not a singleton");
+            //std::cout << "type_error: basereg offset is not a singleton\n";
             m_reg_state -= target_reg.v;
             return;
         }
