@@ -85,6 +85,7 @@ class type_domain_t final {
     void print_ctx() const;
     void print_stack() const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
+    std::optional<crab::dist_t> find_offset_at_loc(const crab::reg_with_loc_t&) const;
 
   private:
 
