@@ -131,17 +131,20 @@ class registers_state_t {
         void print_all_register_types() const;
 };
 
+using dist_cells_t = std::pair<dist_t, int>;
+using stack_slot_dists_t = std::map<uint64_t, dist_cells_t>;    // represents `sp[n] = dist;`, where n \belongs [0,511], e.g., `sp[508] = begin+16`
+
 class stack_state_t {
-    using stack_slot_dists_t = std::unordered_map<int, dist_t>;    // represents `sp[n] = dist;`, where n \belongs [0,511], e.g., `sp[508] = begin+16`
 
     stack_slot_dists_t m_slot_dists;
     bool m_is_bottom = false;
 
     public:
         stack_state_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
-        std::optional<dist_t> find(int) const;
-        void store(int, dist_t);
-        void operator-=(int);
+        std::optional<dist_cells_t> find(uint64_t) const;
+        void store(uint64_t, dist_t, int);
+        void operator-=(uint64_t);
+        void operator-=(const std::vector<uint64_t>&);
         void set_to_top();
         void set_to_bottom();
         bool is_bottom() const;
@@ -150,6 +153,7 @@ class stack_state_t {
         stack_state_t operator|(const stack_state_t&) const;
         explicit stack_state_t(stack_slot_dists_t&& stack_dists, bool is_bottom = false)
             : m_slot_dists(std::move(stack_dists)), m_is_bottom(is_bottom) {}
+        std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
 };
 
 class extra_constraints_t {
@@ -271,7 +275,7 @@ class offset_domain_t final {
     void set_require_check(check_require_func_t f) {}
 
     void do_load(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>, location_t loc);
-    void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>&);
+    void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>, std::optional<ptr_or_mapfd_t>&);
     interval_t do_bin(const Bin&, const std::optional<interval_t>&,
             const std::optional<interval_t>&,
             std::optional<ptr_or_mapfd_t>&,
@@ -283,7 +287,7 @@ class offset_domain_t final {
             std::optional<interval_t>, std::optional<interval_t>);
 
     std::optional<dist_t> find_in_ctx(int) const;
-    std::optional<dist_t> find_in_stack(int) const;
+    std::optional<dist_cells_t> find_in_stack(int) const;
     std::optional<dist_t> find_offset_at_loc(const reg_with_loc_t) const;
     std::optional<dist_t> find_offset_info(register_t reg) const;
     void update_offset_info(const dist_t&&, const interval_t&&,
