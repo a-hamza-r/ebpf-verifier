@@ -143,6 +143,27 @@ std::optional<dist_t> registers_state_t::find(register_t key) const {
     return find(reg);
 }
 
+std::vector<uint64_t> stack_state_t::find_overlapping_cells(uint64_t start, int width) const {
+    std::vector<uint64_t> overlapping_cells;
+    auto it = m_slot_dists.begin();
+    while (it != m_slot_dists.end() && it->first < start) {
+        it++;
+    }
+    if (it != m_slot_dists.begin()) {
+        it--;
+        auto key = it->first;
+        auto width_key = it->second.second;
+        if (key < start && key+width_key > start) overlapping_cells.push_back(key);
+    }
+
+    for (; it != m_slot_dists.end(); it++) {
+        auto key = it->first;
+        if (key >= start && key < start+width) overlapping_cells.push_back(key);
+        if (key >= start+width) break;
+    }
+    return overlapping_cells;
+}
+
 void registers_state_t::set_to_top() {
     m_cur_def = live_registers_t{nullptr};
     m_is_bottom = false;
@@ -246,21 +267,27 @@ stack_state_t stack_state_t::top() {
     return stack_state_t(false);
 }
 
-std::optional<dist_t> stack_state_t::find(int key) const {
+std::optional<dist_cells_t> stack_state_t::find(uint64_t key) const {
     auto it = m_slot_dists.find(key);
     if (it == m_slot_dists.end()) return {};
     return it->second;
 }
 
-void stack_state_t::store(int key, dist_t d) {
-    m_slot_dists[key] = d;
+void stack_state_t::store(uint64_t key, dist_t d, int width) {
+    m_slot_dists[key] = std::make_pair(d, width);
 }
 
-void stack_state_t::operator-=(int to_erase) {
+void stack_state_t::operator-=(uint64_t to_erase) {
     if (is_bottom()) {
         return;
     }
     m_slot_dists.erase(to_erase);
+}
+
+void stack_state_t::operator-=(const std::vector<uint64_t>& keys) {
+    for (auto &key : keys) {
+       *this -= key;
+    }
 }
 
 stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
@@ -270,10 +297,20 @@ stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
         return *this;
     }
     stack_slot_dists_t out_stack_dists;
+    // We do not join dist cells because different dist values different types of offsets
     for (auto const&kv: m_slot_dists) {
-        auto it = other.m_slot_dists.find(kv.first);
-        if (it != m_slot_dists.end() && kv.second == it->second)
-            out_stack_dists.insert(kv);
+        auto maybe_dist_cells = other.find(kv.first);
+        if (maybe_dist_cells) {
+            auto dist_cells1 = kv.second;
+            auto dist_cells2 = *maybe_dist_cells;
+            auto dist1 = dist_cells1.first;
+            auto dist2 = dist_cells2.first;
+            int width1 = dist_cells1.second;
+            int width2 = dist_cells2.second;
+            if (dist1 == dist2 && width1 == width2) {
+                out_stack_dists.insert(kv);
+            }
+        }
     }
     return stack_state_t(std::move(out_stack_dists), false);
 }
@@ -526,7 +563,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc, int print) {
             auto right_reg = std::get<Reg>(cond.right).v;
             auto dist_left = m_reg_state.find(cond.left.v);
             auto dist_right = m_reg_state.find(right_reg);
-            if (!dist_left && !dist_right) {
+            if (!dist_left || !dist_right) {
                 // this should not happen, comparison between a packet pointer and either
                 // other region's pointers or numbers; possibly raise type error
                 m_errors.push_back("one of the pointers being compared isn't packet pointer");
@@ -849,40 +886,32 @@ void offset_domain_t::operator()(const basic_block_t& bb, bool check_termination
     // nothing to do here
 }
 
-void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_type) {
-    std::optional<ptr_or_mapfd_t> reg_type = {};
-    if (!std::holds_alternative<Reg>(b.value)) {
-        // remove the offset from the stack or nothing
-        return;
+void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> maybe_targetreg_type, std::optional<ptr_or_mapfd_t>& maybe_basereg_type) {
+    bool target_is_reg = std::holds_alternative<Reg>(b.value);
+    if (target_is_reg) {
     }
-    Reg target_reg = std::get<Reg>(b.value);
 
     int offset = b.access.offset;
-    if (is_stack_pointer(basereg_type)) {
-        auto basereg_with_off = std::get<ptr_with_off_t>(*basereg_type);
-        auto basereg_off = basereg_with_off.get_offset().to_interval();
-        auto basereg_off_singleton = basereg_off.singleton();
-        if (!basereg_off_singleton) {
-            m_errors.push_back("basereg offset is not a singleton");
-            //std::cout << "type_error: basereg offset is not a singleton\n";
-            return;
-        }
-        auto store_at = (int)(*basereg_off_singleton + offset);
-        //if (is_packet_pointer(targetreg_type)) {
-            auto it = m_reg_state.find(target_reg.v);
-            if (!it) {
-                m_errors.push_back("register is a packet_pointer and no offset info found");
-                //std::cout << "type_error: register is a packet_pointer and no offset info found\n";
-                m_stack_state -= store_at;
+    int width = b.access.width;
+
+    if (is_stack_pointer(maybe_basereg_type)) {
+        auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
+        auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
+        if (!basereg_off_singleton) return;
+        auto store_at = (uint64_t)(*basereg_off_singleton + offset);
+        auto overlapping_cells = m_stack_state.find_overlapping_cells(store_at, width);
+        m_stack_state -= overlapping_cells;
+
+        if (!is_packet_pointer(maybe_targetreg_type)) return;
+        auto target_reg = std::get<Reg>(b.value);
+        auto offset_info = m_reg_state.find(target_reg.v);
+        if (!offset_info) {
+            m_errors.push_back("register is a packet_pointer and no offset info found");
+            //std::cout << "type_error: register is a packet_pointer and no offset info found\n";
                 return;
-            }
-            m_stack_state.store(store_at, it.value());
-        //}
-        //else {
-            //m_stack_state -= store_at;
-        //}
+        }
+        m_stack_state.store(store_at, *offset_info, width);
     }
-    else {}  // in the rest cases, we do not store
 }
 
 void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
@@ -932,9 +961,9 @@ void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
                 m_reg_state -= target_reg.v;
                 return;
             }
-            dist_t d = it.value();
+            dist_t d = it->first;
             auto reg = reg_with_loc_t(target_reg.v, loc);
-            m_reg_state.insert(target_reg.v, reg, dist_t(d));
+            m_reg_state.insert(target_reg.v, reg, d);
         }
         else {  // shared
             m_reg_state -= target_reg.v;
@@ -953,7 +982,7 @@ std::optional<dist_t> offset_domain_t::find_in_ctx(int key) const {
     return m_ctx_dists->find(key);
 }
 
-std::optional<dist_t> offset_domain_t::find_in_stack(int key) const {
+std::optional<dist_cells_t> offset_domain_t::find_in_stack(int key) const {
     return m_stack_state.find(key);
 }
 

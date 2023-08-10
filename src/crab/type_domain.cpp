@@ -156,6 +156,9 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
         const auto& right_reg = std::get<Reg>(right);
         const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
         if (maybe_left_type && maybe_right_type) {
+            if (is_packet_ptr(maybe_left_type) && is_packet_ptr(maybe_right_type)) {
+                m_offset(s, loc, print);
+            }
             // both pointers
         }
         else if (!maybe_left_type && !maybe_right_type) {
@@ -168,7 +171,6 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
             m_region.set_registers_to_top();
         }
     }
-    m_offset(s, loc, print);
 }
 
 void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print) {
@@ -176,10 +178,14 @@ void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print)
 }
 
 void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
-    m_region(s, loc);
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
-    std::optional<interval_t> width_interval = {};
-    m_offset.check_valid_access(s, reg_type, std::nullopt, width_interval);
+    if (reg_type) {
+        m_region(s, loc);
+        std::optional<interval_t> width_interval = {};
+        if (is_packet_ptr(reg_type)) {
+            m_offset.check_valid_access(s, reg_type, std::nullopt, width_interval);
+        }
+    }
 }
 
 void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int print) {
@@ -336,10 +342,10 @@ void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_pt
     m_offset.do_load(b, target_reg, basereg_opt, loc);
 }
 
-void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt,
-        location_t loc, int print) {
+void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> target_opt,
+        std::optional<ptr_or_mapfd_t>& basereg_opt, location_t loc, int print) {
     m_region.do_mem_store(b, loc);
-    m_offset.do_mem_store(b, basereg_opt);
+    m_offset.do_mem_store(b, target_opt, basereg_opt);
 }
 
 void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
@@ -351,12 +357,14 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
         m_errors.push_back(
                 std::string("load/store using an unknown pointer, or number - r") + s);
     }
-    if (!unknown_ptr && !b.is_load) {
-        do_mem_store(b, ptr_or_mapfd_opt, loc, print);
-    }
-    else if (std::holds_alternative<Reg>(b.value)) {
+    if (std::holds_alternative<Reg>(b.value)) {
         auto targetreg = std::get<Reg>(b.value);
+        auto targetreg_type = m_region.find_ptr_or_mapfd_type(targetreg.v);
         if (b.is_load) do_load(b, targetreg, unknown_ptr, ptr_or_mapfd_opt, loc, print);
+        else if (!unknown_ptr) do_mem_store(b, targetreg_type, ptr_or_mapfd_opt, loc, print);
+    }
+    else if (!unknown_ptr && !b.is_load) {
+        do_mem_store(b, std::nullopt, ptr_or_mapfd_opt, loc, print);
     }
 }
 
