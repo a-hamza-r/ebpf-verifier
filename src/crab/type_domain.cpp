@@ -368,18 +368,15 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
     }
 }
 
-// the method does not work well as it requires info about the label of basic block we are in
-// this info is not available when we are only printing any state
-// but it is available when we are processing a basic block for all its instructions:w
-//
 void type_domain_t::print_registers() const {
     std::cout << "  register types: {\n";
     for (size_t i = 0; i < NUM_REGISTERS; i++) {
         register_t reg = (register_t)i;
         auto maybe_ptr_or_mapfd_type = m_region.find_ptr_or_mapfd_type(reg);
+        auto maybe_offset_info = m_offset.find_offset_info(reg);
         if (maybe_ptr_or_mapfd_type) {
             std::cout << "    ";
-            print_register(std::cout, Reg{(uint8_t)reg}, maybe_ptr_or_mapfd_type);
+            print_register(std::cout, Reg{(uint8_t)reg}, maybe_ptr_or_mapfd_type, maybe_offset_info);
             std::cout << "\n";
         }
     }
@@ -390,10 +387,11 @@ void type_domain_t::print_ctx() const {
     std::vector<uint64_t> ctx_keys = m_region.get_ctx_keys();
     std::cout << "  ctx: {\n";
     for (auto const& k : ctx_keys) {
-        auto ptr = m_region.find_in_ctx(k);
-        if (ptr) {
+        auto maybe_ptr = m_region.find_in_ctx(k);
+        auto maybe_dist = m_offset.find_in_ctx(k);
+        if (maybe_ptr) {
             std::cout << "    " << k << ": ";
-            print_ptr_type(std::cout, ptr_or_mapfd_t{ptr.value()});
+            print_ptr_type(std::cout, *maybe_ptr, maybe_dist);
             std::cout << ",\n";
         }
     }
@@ -405,18 +403,25 @@ void type_domain_t::print_stack() const {
     std::cout << "  stack: {\n";
     for (auto const& k : stack_keys_region) {
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
+        auto maybe_dist_cells = m_offset.find_in_stack(k);
         if (maybe_ptr_or_mapfd_cells) {
-            auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
+            auto ptr_or_mapfd_cells = *maybe_ptr_or_mapfd_cells;
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
+            std::optional<dist_t> maybe_dist = maybe_dist_cells ?
+                std::optional<dist_t>{maybe_dist_cells->first} : std::nullopt;
             std::cout << "    [" << k << "-" << k+width-1 << "] : ";
-            print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd);
+            print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd, maybe_dist);
             std::cout << ",\n";
         }
     }
     std::cout << "  }\n";
 }
 
+// the method does not work well as it requires info about the label of basic block we are in
+// this info is not available when we are only printing any state
+// but it is available when we are processing a basic block for all its instructions:w
+//
 void type_domain_t::adjust_bb_for_types(location_t loc) {
     m_region.adjust_bb_for_types(loc);
     m_offset.adjust_bb_for_types(loc);
@@ -447,6 +452,11 @@ void type_domain_t::operator()(const basic_block_t& bb, bool check_termination, 
 std::optional<crab::ptr_or_mapfd_t>
 type_domain_t::find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_region.find_ptr_or_mapfd_at_loc(loc);
+}
+
+std::optional<crab::dist_t>
+type_domain_t::find_offset_at_loc(const crab::reg_with_loc_t& loc) const {
+    return m_offset.find_offset_at_loc(loc);
 }
 
 std::ostream& operator<<(std::ostream& o, const type_domain_t& typ) {
@@ -485,7 +495,8 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
             auto b = std::get<Bin>(statement);
             auto reg_with_loc = crab::reg_with_loc_t(b.dst.v, loc);
             auto region = typ.find_ptr_or_mapfd_at_loc(reg_with_loc);
-            print_annotated(o, b, region);
+            auto offset = typ.find_offset_at_loc(reg_with_loc);
+            print_annotated(o, b, region, offset);
         }
         else if (std::holds_alternative<Mem>(statement)) {
             auto u = std::get<Mem>(statement);
@@ -493,7 +504,8 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
                 auto target_reg = std::get<Reg>(u.value);
                 auto target_reg_loc = crab::reg_with_loc_t(target_reg.v, loc);
                 auto region = typ.find_ptr_or_mapfd_at_loc(target_reg_loc);
-                print_annotated(o, u, region);
+                auto offset = typ.find_offset_at_loc(target_reg_loc);
+                print_annotated(o, u, region, offset);
             }
             else o << "  " << u << "\n";
         }

@@ -236,14 +236,6 @@ void registers_state_t::adjust_bb_for_registers(location_t loc) {
     }
 }
 
-void registers_state_t::print_all_register_types() const {
-    std::cout << "\toffset types: {\n";
-    for (auto const& kv : *m_offset_env) {
-        std::cout << "\t\t" << kv.first << " : " << kv.second << "\n";
-    }
-    std::cout << "\t}\n";
-}
-
 void stack_state_t::set_to_top() {
     m_slot_dists.clear();
     m_is_bottom = false;
@@ -588,30 +580,6 @@ void offset_domain_t::operator()(const Assume &b, location_t loc, int print) {
     else {}     //we do not need to deal with other cases
 }
 
-bool is_packet_pointer(std::optional<ptr_or_mapfd_t>& type) {
-    if (!type) {    // not a pointer
-        return false;
-    }
-    auto ptr_or_mapfd_type = type.value();
-    if (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd_type)
-        && std::get<ptr_no_off_t>(ptr_or_mapfd_type).get_region() == crab::region_t::T_PACKET) {
-        return true;
-    }
-    return false;
-}
-
-bool is_stack_pointer(std::optional<ptr_or_mapfd_t>& type) {
-    if (!type) {    // not a pointer
-        return false;
-    }
-    auto ptr_or_mapfd_type = type.value();
-    if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_type)
-        && std::get<ptr_with_off_t>(ptr_or_mapfd_type).get_region() == crab::region_t::T_STACK) {
-        return true;
-    }
-    return false;
-}
-
 void offset_domain_t::update_offset_info(const dist_t&& dist, const interval_t&& change,
         const reg_with_loc_t& reg_with_loc, uint8_t reg, Bin::Op op) {
     auto offset = dist.m_dist;
@@ -632,6 +600,7 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
         const std::optional<interval_t>& dst_interval_opt,
         std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
         std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt, location_t loc) {
+
     using Op = Bin::Op;
     // if both src and dst are numbers, nothing to do in offset domain
     // if we are doing a move, where src is a number and dst is not set, nothing to do
@@ -639,7 +608,7 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             || (src_interval_opt && !dst_ptr_or_mapfd_opt && bin.op == Op::MOV))
         return interval_t::bottom();
     // offset domain only handles packet pointers
-    if (!is_packet_pointer(src_ptr_or_mapfd_opt) && !is_packet_pointer(dst_ptr_or_mapfd_opt))
+    if (!is_packet_ptr(src_ptr_or_mapfd_opt) && !is_packet_ptr(dst_ptr_or_mapfd_opt))
         return interval_t::bottom();
 
     interval_t src_interval = interval_t::bottom(), dst_interval = interval_t::bottom();
@@ -654,7 +623,7 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
     {
         // ra = rb;
         case Op::MOV: {
-            if (!is_packet_pointer(src_ptr_or_mapfd_opt)) {
+            if (!is_packet_ptr(src_ptr_or_mapfd_opt)) {
                 m_reg_state -= bin.dst.v;
                 return interval_t::bottom();
             }
@@ -671,12 +640,12 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
         case Op::ADD: {
             dist_t dist_to_update;
             interval_t interval_to_add = interval_t::bottom();
-            if (is_packet_pointer(dst_ptr_or_mapfd_opt)
-                    && is_packet_pointer(src_ptr_or_mapfd_opt)) {
+            if (is_packet_ptr(dst_ptr_or_mapfd_opt)
+                    && is_packet_ptr(src_ptr_or_mapfd_opt)) {
                 m_reg_state -= bin.dst.v;
                 return interval_t::bottom();
             }
-            else if (is_packet_pointer(dst_ptr_or_mapfd_opt) && src_interval_opt) {
+            else if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_interval_opt) {
                 auto dst_offset_opt = m_reg_state.find(bin.dst.v);
                 if (!dst_offset_opt) {
                     m_errors.push_back("dst is a packet_pointer and no offset info found");
@@ -706,12 +675,12 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
         case Op::SUB: {
             dist_t dist_to_update;
             interval_t interval_to_sub = interval_t::bottom();
-            if (is_packet_pointer(dst_ptr_or_mapfd_opt)
-                    && is_packet_pointer(src_ptr_or_mapfd_opt)) {
+            if (is_packet_ptr(dst_ptr_or_mapfd_opt)
+                    && is_packet_ptr(src_ptr_or_mapfd_opt)) {
                 m_reg_state -= bin.dst.v;
                 return interval_t::top();
             }
-            else if (is_packet_pointer(dst_ptr_or_mapfd_opt) && src_interval_opt) {
+            else if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_interval_opt) {
                 auto dst_offset_opt = m_reg_state.find(bin.dst.v);
                 if (!dst_offset_opt) {
                     m_errors.push_back("dst is a packet_pointer and no offset info found");
@@ -894,7 +863,7 @@ void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> m
     int offset = b.access.offset;
     int width = b.access.width;
 
-    if (is_stack_pointer(maybe_basereg_type)) {
+    if (is_stack_ptr(maybe_basereg_type)) {
         auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
         auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
         if (!basereg_off_singleton) return;
@@ -902,7 +871,7 @@ void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> m
         auto overlapping_cells = m_stack_state.find_overlapping_cells(store_at, width);
         m_stack_state -= overlapping_cells;
 
-        if (!is_packet_pointer(maybe_targetreg_type)) return;
+        if (!is_packet_ptr(maybe_targetreg_type)) return;
         auto target_reg = std::get<Reg>(b.value);
         auto offset_info = m_reg_state.find(target_reg.v);
         if (!offset_info) {
@@ -972,6 +941,10 @@ void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
     else {  // we are loading from packet, or we have mapfd
         m_reg_state -= target_reg.v;
     }
+}
+
+void offset_domain_t::operator()(const Mem& b, location_t loc, int print) {
+    // nothing to do here
 }
 
 std::optional<dist_t> offset_domain_t::find_offset_at_loc(const reg_with_loc_t reg) const {
