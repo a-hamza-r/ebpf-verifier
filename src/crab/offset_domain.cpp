@@ -656,7 +656,8 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
                 dist_to_update = std::move(dst_offset_opt.value());
                 interval_to_add = std::move(src_interval_opt.value());
             }
-            else {
+            // Condition might not be necessary once interval domain is added
+            else if (is_packet_ptr(src_ptr_or_mapfd_opt) && dst_interval_opt) {
                 auto src_offset_opt = m_reg_state.find(src.v);
                 if (!src_offset_opt) {
                     m_errors.push_back("src is a packet_pointer and no offset info found");
@@ -666,6 +667,11 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
                 }
                 dist_to_update = std::move(src_offset_opt.value());
                 interval_to_add = std::move(dst_interval_opt.value());
+            }
+            else if (is_packet_ptr(dst_ptr_or_mapfd_opt)) {
+                // this case is only needed till interval domain is added
+                m_reg_state.insert(bin.dst.v, reg_with_loc, dist_t());
+                break;
             }
             update_offset_info(std::move(dist_to_update), std::move(interval_to_add),
                     reg_with_loc, bin.dst.v, bin.op);
@@ -885,61 +891,45 @@ void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> m
 
 void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
         std::optional<ptr_or_mapfd_t> basereg_type, location_t loc) {
-    if (!basereg_type) {
+
+    bool is_stack_p = is_stack_ptr(basereg_type);
+    bool is_ctx_p = is_ctx_ptr(basereg_type);
+
+    if (!is_stack_p && !is_ctx_p) {
         m_reg_state -= target_reg.v;
         return;
     }
-    auto basereg_ptr_type = basereg_type.value();
+
     int offset = b.access.offset;
-    
-    if (std::holds_alternative<ptr_with_off_t>(basereg_ptr_type)) {
-        auto p_with_off = std::get<ptr_with_off_t>(basereg_ptr_type);
-        auto offset_singleton = p_with_off.get_offset().to_interval().singleton();
-        if (!offset_singleton) {
-            m_errors.push_back("basereg offset is not a singleton");
-            //std::cout << "type_error: basereg offset is not a singleton\n";
+    auto type_with_off = std::get<ptr_with_off_t>(*basereg_type);
+    auto p_offset = type_with_off.get_offset();
+    auto offset_singleton = p_offset.to_interval().singleton();
+    if (!offset_singleton) {
+        m_reg_state -= target_reg.v;
+        return;
+    }
+    auto ptr_offset = *offset_singleton;
+    auto load_at = (uint64_t)(ptr_offset + offset);
+
+    if (is_stack_p) {
+        auto it = m_stack_state.find(load_at);
+        if (!it) {
             m_reg_state -= target_reg.v;
             return;
         }
-
-        if (p_with_off.get_region() == crab::region_t::T_CTX) {
-            if (!offset_singleton) {
-                m_reg_state -= target_reg.v;
-                return;
-            }
-            auto load_at = (uint64_t)offset_singleton.value() + (uint64_t)offset;
-            auto it = m_ctx_dists->find(load_at);
-            if (!it) {
-                m_reg_state -= target_reg.v;
-                return;
-            }
-            dist_t d = it.value();
-            auto reg = reg_with_loc_t(target_reg.v, loc);
-            m_reg_state.insert(target_reg.v, reg, dist_t(d));
-        }
-        else if (p_with_off.get_region() == crab::region_t::T_STACK) {
-            if (!offset_singleton) {
-                m_reg_state -= target_reg.v;
-                return;
-            }
-            auto ptr_offset = offset_singleton.value();
-            auto load_at = (uint64_t)(ptr_offset + offset);
-            auto it = m_stack_state.find(load_at);
-
-            if (!it) {
-                m_reg_state -= target_reg.v;
-                return;
-            }
-            dist_t d = it->first;
-            auto reg = reg_with_loc_t(target_reg.v, loc);
-            m_reg_state.insert(target_reg.v, reg, d);
-        }
-        else {  // shared
-            m_reg_state -= target_reg.v;
-        }
+        dist_t d = it->first;
+        auto reg = reg_with_loc_t(target_reg.v, loc);
+        m_reg_state.insert(target_reg.v, reg, d);
     }
-    else {  // we are loading from packet, or we have mapfd
-        m_reg_state -= target_reg.v;
+    else if (is_ctx_p) {
+        auto it = m_ctx_dists->find(load_at);
+        if (!it) {
+            m_reg_state -= target_reg.v;
+            return;
+        }
+        dist_t d = it.value();
+        auto reg = reg_with_loc_t(target_reg.v, loc);
+        m_reg_state.insert(target_reg.v, reg, dist_t(d));
     }
 }
 

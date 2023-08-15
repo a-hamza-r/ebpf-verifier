@@ -332,7 +332,7 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     interval_t subtracted_reg =
         m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
     interval_t subtracted_off =
-        m_offset.do_bin(bin, src_interval, interval_t::top(), src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+        m_offset.do_bin(bin, src_interval, std::nullopt, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
     auto subtracted = subtracted_reg.is_bottom() ? subtracted_off : subtracted_reg;
 }
 
@@ -418,10 +418,6 @@ void type_domain_t::print_stack() const {
     std::cout << "  }\n";
 }
 
-// the method does not work well as it requires info about the label of basic block we are in
-// this info is not available when we are only printing any state
-// but it is available when we are processing a basic block for all its instructions:w
-//
 void type_domain_t::adjust_bb_for_types(location_t loc) {
     m_region.adjust_bb_for_types(loc);
     m_offset.adjust_bb_for_types(loc);
@@ -433,6 +429,10 @@ void type_domain_t::operator()(const basic_block_t& bb, bool check_termination, 
         print_annotated(std::cout, *this, bb, print);
         return;
     }
+    // A temporary fix to avoid printing errors for multiple basic blocks
+    m_errors.clear();
+    m_region.reset_errors();
+    m_offset.reset_errors();
 
     auto label = bb.label();
     uint32_t curr_pos = 0;
