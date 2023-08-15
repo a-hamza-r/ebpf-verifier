@@ -21,7 +21,7 @@ void print_ptr_or_mapfd_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr_or
     }
 }
 
-void print_register(std::ostream& o, const Reg& r, std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t> d) {
+void print_register(std::ostream& o, const Reg& r, const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t> d) {
     o << r << " : ";
     if (p) {
         print_ptr_or_mapfd_type(o, *p, d);

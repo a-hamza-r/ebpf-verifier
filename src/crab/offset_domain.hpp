@@ -295,6 +295,7 @@ class offset_domain_t final {
     dist_t update_offset(const dist_t&, const weight_t&, const interval_t&, Bin::Op);
     void adjust_bb_for_types(location_t);
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
+    void reset_errors() { m_errors.clear(); }
 }; // end offset_domain_t
 
 } // end namespace crab
