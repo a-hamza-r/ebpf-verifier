@@ -862,10 +862,6 @@ void offset_domain_t::operator()(const basic_block_t& bb, int print) {
 }
 
 void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> maybe_targetreg_type, std::optional<ptr_or_mapfd_t>& maybe_basereg_type) {
-    bool target_is_reg = std::holds_alternative<Reg>(b.value);
-    if (target_is_reg) {
-    }
-
     int offset = b.access.offset;
     int width = b.access.width;
 
