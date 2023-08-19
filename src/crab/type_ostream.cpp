@@ -12,6 +12,13 @@ void print_ptr_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr, std::optio
     }
 }
 
+void print_number(std::ostream& o, crab::interval_t n) {
+    o << "number";
+    if (!n.is_top()) {
+        o << "<" << n << ">";
+    }
+}
+
 void print_ptr_or_mapfd_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr_or_mapfd, std::optional<crab::dist_t> d) {
     if (std::holds_alternative<crab::mapfd_t>(ptr_or_mapfd)) {
         o << std::get<crab::mapfd_t>(ptr_or_mapfd);
@@ -25,6 +32,9 @@ void print_register(std::ostream& o, const Reg& r, const std::optional<crab::ptr
     o << r << " : ";
     if (p) {
         print_ptr_or_mapfd_type(o, *p, d);
+    }
+    else {
+        print_number(o, crab::interval_t::top());
     }
 }
 
