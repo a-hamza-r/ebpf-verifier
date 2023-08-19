@@ -15,6 +15,7 @@
 #include "crab/abstract_domain.hpp"
 #include "crab/ebpf_domain.hpp"
 #include "crab/type_domain.hpp"
+#include "crab/interval_prop_domain.hpp"
 #include "crab/region_domain.hpp"
 #include "crab/offset_domain.hpp"
 #include "crab/fwd_analyzer.hpp"

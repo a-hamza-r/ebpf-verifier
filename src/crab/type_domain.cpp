@@ -11,7 +11,7 @@ bool type_domain_t::is_bottom() const {
 
 bool type_domain_t::is_top() const {
     if (m_is_bottom) return false;
-    return (m_region.is_top() && m_offset.is_top());
+    return (m_region.is_top() && m_offset.is_top() && m_interval.is_top());
 }
 
 type_domain_t type_domain_t::bottom() {
@@ -27,6 +27,7 @@ void type_domain_t::set_to_bottom() {
 void type_domain_t::set_to_top() {
     m_region.set_to_top();
     m_offset.set_to_top();
+    m_interval.set_to_top();
 }
 
 bool type_domain_t::operator<=(const type_domain_t& abs) const {
@@ -60,7 +61,8 @@ type_domain_t type_domain_t::operator|(const type_domain_t& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | other.m_region, m_offset | other.m_offset);
+    return type_domain_t(m_region | other.m_region, m_offset | other.m_offset,
+            m_interval | other.m_interval);
 }
 
 type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
@@ -70,7 +72,8 @@ type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | std::move(other.m_region), m_offset | std::move(other.m_offset));
+    return type_domain_t(m_region | std::move(other.m_region),
+            m_offset | std::move(other.m_offset), m_interval | std::move(other.m_interval));
 }
 
 type_domain_t type_domain_t::operator&(const type_domain_t& abs) const {
@@ -107,6 +110,7 @@ void type_domain_t::operator()(const Un& u, location_t loc, int print) {
 void type_domain_t::operator()(const LoadMapFd& u, location_t loc, int print) {
     m_region(u, loc);
     m_offset(u, loc);
+    m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Atomic &u, location_t loc, int print) {
@@ -118,11 +122,15 @@ void type_domain_t::operator()(const IncrementLoopCounter &u, location_t loc, in
 
 void type_domain_t::operator()(const Call& u, location_t loc, int print) {
 
+    using interval_values_stack_t = std::map<uint64_t, interval_cells_t>;
+    interval_values_stack_t stack_values;
     for (ArgPair param : u.pairs) {
         if (param.kind == ArgPair::Kind::PTR_TO_WRITABLE_MEM) {
             auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(param.mem.v);
-            if (!maybe_ptr_or_mapfd) continue;
+            auto maybe_width_interval = m_interval.find_interval_value(param.size.v);
+            if (!maybe_ptr_or_mapfd || !maybe_width_interval) continue;
             auto ptr_or_mapfd = maybe_ptr_or_mapfd.value();
+            auto width_interval = maybe_width_interval->to_interval();
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd);
                 if (ptr_with_off.get_region() == region_t::T_STACK) {
@@ -133,12 +141,18 @@ void type_domain_t::operator()(const Call& u, location_t loc, int print) {
                         continue;
                     }
                     // TODO: forget the stack at [offset, offset+width]
+                    auto offset = (uint64_t)offset_singleton.value();
+                    if (auto single_width = width_interval.singleton(); single_width) {
+                        int width = (int)single_width.value();
+                        stack_values[offset] = std::make_pair(interval_t::top(), width);
+                    }
                 }
             }
         }
     }
     m_region(u, loc);
     m_offset(u, loc);
+    m_interval.do_call(u, stack_values, loc);
 }
 
 void type_domain_t::operator()(const Callx &u, location_t loc, int print) {
@@ -154,6 +168,7 @@ void type_domain_t::operator()(const Jmp& u, location_t loc, int print) {}
 void type_domain_t::operator()(const Packet& u, location_t loc, int print) {
     m_region(u, loc);
     m_offset(u, loc);
+    m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
@@ -171,6 +186,7 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
         }
         else if (!maybe_left_type && !maybe_right_type) {
             // both numbers
+            m_interval(s, loc);
         }
         else {
             // We should only reach here if `--assume-assert` is off
@@ -182,16 +198,28 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print) {
-    m_region(s, loc);
+    /* WARNING: The operation is not implemented yet.*/
 }
 
 void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
+    auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
+    auto interval_type = 
+        mock_interval_type ? mock_interval_type->to_interval() : std::optional<interval_t>{};
     if (reg_type) {
         m_region(s, loc);
-        std::optional<interval_t> width_interval = {};
+        std::optional<mock_interval_t> width_mock_interval;
+        if (std::holds_alternative<Reg>(s.width)) {
+            width_mock_interval = m_interval.find_interval_value(std::get<Reg>(s.width).v);
+        }
+        else {
+            auto imm = std::get<Imm>(s.width); 
+            width_mock_interval = mock_interval_t{interval_t(number_t{imm.v}, number_t{imm.v})};
+        }
+        auto width_interval = 
+            width_mock_interval ? width_mock_interval->to_interval() : std::optional<interval_t>{};
         if (is_packet_ptr(reg_type)) {
-            m_offset.check_valid_access(s, reg_type, std::nullopt, width_interval);
+            m_offset.check_valid_access(s, reg_type, interval_type, width_interval);
         }
     }
 }
@@ -201,7 +229,6 @@ void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int prin
 }
 
 void type_domain_t::operator()(const Assert& u, location_t loc, int print) {
-    if (is_bottom()) return;
     std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, u.cst);
 }
 
@@ -209,12 +236,15 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
 
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
+    auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);
+    auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
     if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
         if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
         if (!is_shared_ptr(maybe_ptr_or_mapfd1)
                 && same_region(*maybe_ptr_or_mapfd1, *maybe_ptr_or_mapfd2)) return;
     }
     else if (!maybe_ptr_or_mapfd2) {
+        // TODO: interval check here
         // two numbers can be compared
         // if r1 is a pointer, r2 must be a number
         return;
@@ -232,7 +262,7 @@ void type_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
-    /* WARNING: The operation is not implemented yet.*/
+    m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int print) {
@@ -273,6 +303,8 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
                         return;
                     }
                     auto offset_to_check = (uint64_t)offset_singleton.value();
+                    auto it = m_interval.all_numeric_in_stack(offset_to_check, width);
+                    if (it) return;
                     auto it2 = m_region.find_in_stack(offset_to_check);
                     if (it2) {
                         //std::cout << "type error: map update with a non-numerical value\n";
@@ -300,13 +332,16 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print
 type_domain_t type_domain_t::setup_entry() {
     auto&& reg = crab::region_domain_t::setup_entry();
     auto&& off = offset_domain_t::setup_entry();
-    type_domain_t typ(std::move(reg), std::move(off));
+    auto&& interval = interval_prop_domain_t::setup_entry();
+    type_domain_t typ(std::move(reg), std::move(off), std::move(interval));
     return typ;
 }
 
 void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     if (is_bottom()) return;
     auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
+    auto dst_interval = m_interval.find_interval_value(bin.dst.v);
+    assert(!dst_ptr_or_mapfd || !dst_interval);
 
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
     std::optional<interval_t> src_interval;
@@ -314,6 +349,10 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     if (std::holds_alternative<Reg>(bin.v)) {
         Reg r = std::get<Reg>(bin.v);
         src_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(r.v);
+        auto src_mock_interval = m_interval.find_interval_value(r.v);
+        if (src_mock_interval) {
+            src_interval = src_mock_interval->to_interval();
+        }
     }
     else {
         int64_t imm;
@@ -323,8 +362,9 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
         else {
             imm = static_cast<int>(std::get<Imm>(bin.v).v);
         }
-        src_interval = interval_t{crab::number_t{imm}};
+        src_interval = interval_t{number_t{imm}};
     }
+    //assert(!src_ptr_or_mapfd || !src_interval);
 
     using Op = Bin::Op;
     // for all operations except mov, add, sub, the src and dst should be numbers
@@ -334,25 +374,30 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
         //std::cout << "type error: operation on pointers not allowed\n";
         m_region -= bin.dst.v;
         m_offset -= bin.dst.v;
+        m_interval -= bin.dst.v;
         return;
     }
 
     interval_t subtracted_reg =
         m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
     interval_t subtracted_off =
-        m_offset.do_bin(bin, src_interval, std::nullopt, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+        m_offset.do_bin(bin, src_interval, interval_t::top(), src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
     auto subtracted = subtracted_reg.is_bottom() ? subtracted_off : subtracted_reg;
+    m_interval.do_bin(bin, src_interval, interval_t::top(), src_ptr_or_mapfd, dst_ptr_or_mapfd,
+            subtracted, loc);
 }
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
         std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc, int print) {
     m_region.do_load(b, target_reg, unknown_ptr, loc);
     m_offset.do_load(b, target_reg, basereg_opt, loc);
+    m_interval.do_load(b, target_reg, basereg_opt, std::nullopt, loc);
 }
 
 void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> target_opt,
         std::optional<ptr_or_mapfd_t>& basereg_opt, location_t loc, int print) {
     m_region.do_mem_store(b, loc);
+    m_interval.do_mem_store(b, get<Reg>(b.value), basereg_opt);
     m_offset.do_mem_store(b, target_opt, basereg_opt);
 }
 
@@ -376,59 +421,56 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
     }
 }
 
-void type_domain_t::print_registers() const {
-    std::cout << "  register types: {\n";
-    for (size_t i = 0; i < NUM_REGISTERS; i++) {
-        register_t reg = (register_t)i;
-        auto maybe_ptr_or_mapfd_type = m_region.find_ptr_or_mapfd_type(reg);
-        auto maybe_offset_info = m_offset.find_offset_info(reg);
-        if (maybe_ptr_or_mapfd_type) {
-            std::cout << "    ";
-            print_register(std::cout, Reg{(uint8_t)reg}, maybe_ptr_or_mapfd_type, maybe_offset_info);
-            std::cout << "\n";
-        }
-    }
-    std::cout << "  }\n";
-}
-
 void type_domain_t::print_ctx() const {
     std::vector<uint64_t> ctx_keys = m_region.get_ctx_keys();
-    std::cout << "  ctx: {\n";
+    std::cout << "\tctx: {\n";
     for (auto const& k : ctx_keys) {
-        auto maybe_ptr = m_region.find_in_ctx(k);
-        auto maybe_dist = m_offset.find_in_ctx(k);
-        if (maybe_ptr) {
-            std::cout << "    " << k << ": ";
-            print_ptr_type(std::cout, *maybe_ptr, maybe_dist);
+        auto ptr = m_region.find_in_ctx(k);
+        auto dist = m_offset.find_in_ctx(k);
+        if (ptr) {
+            std::cout << "\t\t" << k << ": ";
+            print_ptr_type(std::cout, *ptr, dist);
             std::cout << ",\n";
         }
     }
-    std::cout << "  }\n";
+    std::cout << "\t}\n";
 }
 
 void type_domain_t::print_stack() const {
     std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
-    std::cout << "  stack: {\n";
+    std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
+    std::cout << "\tstack: {\n";
     for (auto const& k : stack_keys_region) {
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
-        auto maybe_dist_cells = m_offset.find_in_stack(k);
+        auto dist = m_offset.find_in_stack(k);
         if (maybe_ptr_or_mapfd_cells) {
-            auto ptr_or_mapfd_cells = *maybe_ptr_or_mapfd_cells;
+            auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
-            std::optional<dist_t> maybe_dist = maybe_dist_cells ?
-                std::optional<dist_t>{maybe_dist_cells->first} : std::nullopt;
-            std::cout << "    [" << k << "-" << k+width-1 << "] : ";
-            print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd, maybe_dist);
+            std::cout << "\t\t[" << k << "-" << k+width-1 << "] : ";
+            if (dist) 
+                print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd, dist->first);
+            else 
+                print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd, std::nullopt);
             std::cout << ",\n";
         }
     }
-    std::cout << "  }\n";
+    for (auto const& k : stack_keys_interval) {
+        auto maybe_interval_cells = m_interval.find_in_stack(k);
+        if (maybe_interval_cells) {
+            auto interval_cells = maybe_interval_cells.value();
+            std::cout << "\t\t" << "[" << k << "-" << k+interval_cells.second-1 << "] : ";
+            print_number(std::cout, interval_cells.first.to_interval());
+            std::cout << ",\n";
+        }
+    }
+    std::cout << "\t}\n";
 }
 
 void type_domain_t::adjust_bb_for_types(location_t loc) {
     m_region.adjust_bb_for_types(loc);
     m_offset.adjust_bb_for_types(loc);
+    m_interval.adjust_bb_for_types(loc);
 }
 
 void type_domain_t::operator()(const basic_block_t& bb, int print) {
@@ -441,6 +483,7 @@ void type_domain_t::operator()(const basic_block_t& bb, int print) {
     m_errors.clear();
     m_region.reset_errors();
     m_offset.reset_errors();
+    m_interval.reset_errors();
 
     auto label = bb.label();
     uint32_t curr_pos = 0;
@@ -455,6 +498,7 @@ void type_domain_t::operator()(const basic_block_t& bb, int print) {
 
     operator+=(m_region.get_errors());
     operator+=(m_offset.get_errors());
+    operator+=(m_interval.get_errors());
 }
 
 std::optional<crab::ptr_or_mapfd_t>
