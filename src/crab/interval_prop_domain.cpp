@@ -418,143 +418,235 @@ void interval_prop_domain_t::operator()(const Packet &u, location_t loc, int pri
     m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
 }
 
-void interval_prop_domain_t::operator()(const Assume &s, location_t loc, int print) {
-    // TODO: generalize for intervals
-    using Op = Condition::Op;
-    Condition cond = s.cond;
-    int64_t imm = 0;
-    bool is_imm = false;
-    auto reg_with_loc = reg_with_loc_t(cond.left.v, loc);
-    auto left_reg_optional = m_registers_interval_values.find(cond.left.v);
-    if (!left_reg_optional) {
-        return;
+void interval_prop_domain_t::assume_lt(bool strict, interval_t&& left_interval,
+        interval_t&& right_interval, register_t left, Value right, location_t loc) {
+    auto reg_with_loc_left = reg_with_loc_t(left, loc);
+    auto rlb = right_interval.lb();
+    auto rub = right_interval.ub();
+    auto llb = left_interval.lb();
+    auto lub = left_interval.ub();
+
+    auto ub = strict ? (right_interval.lb() - number_t{1}) : right_interval.lb();
+    if (lub >= rlb && llb < rlb) {
+        auto interval_to_insert = interval_t(llb, strict ? rlb - number_t{1} : rlb);
+        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
     }
-    auto left_value = left_reg_optional.value();
-    bound_t right_value = bound_t(-1);
-    if (std::holds_alternative<Reg>(cond.right)) {
-        auto reg = std::get<Reg>(cond.right).v;
-        auto right_reg_optional = m_registers_interval_values.find(reg);
-        if (!right_reg_optional) {
-            //std::cout << "type error: assumption for an unknown register\n";
-            m_errors.push_back("assumption for an unknown register");
-            return;
+    else if (right_interval <= left_interval && strict ? llb < rlb : llb <= rlb) {
+        auto interval_to_insert = interval_t(llb, strict ? rlb - number_t{1} : rlb);
+        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
+    }
+    else if (left_interval <= right_interval && strict ? lub < rub : lub <= rub &&
+            std::holds_alternative<Reg>(right)) {
+        auto right_reg = std::get<Reg>(right).v;
+        auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
+        auto interval_to_insert = interval_t(strict ? lub + number_t{1} : lub, rub);
+        m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
+    }
+    else if (lub > rub && strict ? llb < rub : llb <= rub) {
+        auto interval_to_insert_left = interval_t(llb, strict ? rub - number_t{1} : rub);
+        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
+        // this is only one way to resolve this scenario, i.e. set right to singleton value (rub)
+        // and set left to the rest of the interval < (or <=) of right
+        // a more sound analysis is needed
+        if (std::holds_alternative<Reg>(right)) {
+            auto right_reg = std::get<Reg>(right).v;
+            auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
+            m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_t(rub));
         }
-        auto right_reg = right_reg_optional->to_interval();
-        auto right_reg_singleton = right_reg.singleton();
-        if (!right_reg_singleton) {
-            //std::cout << "type error: assumption for a non-singleton register\n";
-            m_errors.push_back("assumption for a non-singleton register");
-            return;
-        }
-        right_value = right_reg_singleton.value();
     }
     else {
-        imm = std::get<Imm>(cond.right).v;
-        is_imm = true;
-        right_value = bound_t(static_cast<int>(imm));
+        // TODO: verify if any legitimate case can fall into here
+        m_registers_interval_values.set_to_bottom();
     }
-    bool is_right_within_left_interval = left_value.lb() <= right_value
-        && right_value <= left_value.ub();
-    switch (cond.op) {
-        case Op::EQ: {
-            if (is_right_within_left_interval)
-                m_registers_interval_values.insert(cond.left.v, reg_with_loc, interval_t(right_value));
+}
+
+void interval_prop_domain_t::assume_gt(bool strict, interval_t&& left_interval,
+        interval_t&& right_interval, register_t left, Value right, location_t loc) {
+    auto reg_with_loc_left = reg_with_loc_t(left, loc);
+    auto rlb = right_interval.lb();
+    auto rub = right_interval.ub();
+    auto llb = left_interval.lb();
+    auto lub = left_interval.ub();
+
+    if (llb <= rub && lub > rub) {
+        auto interval_to_insert = interval_t(strict ? rub + number_t{1} : rub, lub);
+        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
+    }
+    else if (right_interval <= left_interval && strict ? lub > rub : lub >= rub) {
+        auto interval_to_insert = interval_t(strict ? rub + number_t{1} : rub, lub);
+        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
+    }
+    else if (left_interval <= right_interval && strict ? llb > rlb : llb >= rlb &&
+            std::holds_alternative<Reg>(right)) {
+        auto right_reg = std::get<Reg>(right).v;
+        auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
+        auto interval_to_insert = interval_t(rlb, strict ? llb - number_t{1} : llb);
+        m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
+    }
+    else if (llb < rlb && strict ? lub > rlb : lub >= rlb) {
+        auto interval_to_insert_left = interval_t(strict ? rlb + number_t{1} : rlb, lub);
+        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
+        // this is only one way to resolve this scenario, i.e. set right to singleton value (rlb)
+        // and set left to the rest of the interval > (or >=) of right
+        // a more sound analysis is needed
+        if (std::holds_alternative<Reg>(right)) {
+            auto right_reg = std::get<Reg>(right).v;
+            auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
+            m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_t(rlb));
+        }
+    }
+    else {
+        // TODO: verify if any legitimate case can fall into here
+        m_registers_interval_values.set_to_bottom();
+    }
+}
+
+void interval_prop_domain_t::assume_gt_and_lt(bool is64, bool strict, bool is_lt,
+        interval_t&& left_interval, interval_t&& right_interval, register_t left,
+        Value right, location_t loc) {
+
+    auto llb = left_interval.lb();
+    auto lub = left_interval.ub();
+    auto rlb = right_interval.lb();
+    auto rub = right_interval.ub();
+    if (!is_lt && (strict ? (lub <= rlb) : (lub < rlb))) {
+        // Left unsigned interval is lower than right unsigned interval.
+        m_registers_interval_values.set_to_bottom();
+    } else if (is_lt && (strict ? (llb >= rub) : (llb > rub))) {
+        // Left unsigned interval is higher than right unsigned interval.
+        m_registers_interval_values.set_to_bottom();
+    }
+    if (is_lt && (strict ? (lub < rlb) : (lub <= rlb))) {
+        // Left unsigned interval is lower than right unsigned interval.
+        // TODO: verify if setting to top is the correct equivalent of returning linear cst true
+        m_registers_interval_values.set_to_top();
+    } else if (!is_lt && (strict ? (llb > rub) : (llb >= rub))) {
+        // Left unsigned interval is higher than right unsigned interval.
+        m_registers_interval_values.set_to_top();
+    }
+
+    if (is_lt)
+        assume_lt(strict, std::move(left_interval), std::move(right_interval), left, right, loc);
+    else
+        assume_gt(strict, std::move(left_interval), std::move(right_interval), left, right, loc);
+}
+
+void interval_prop_domain_t::assume_unsigned_cst_interval(Condition::Op op, bool is64,
+        interval_t&& left_interval, interval_t&& right_interval, register_t left, Value right,
+        location_t loc) {
+
+    for (interval_t* interval : {&left_interval, &right_interval}) {
+        if (!(*interval <= interval_t::unsigned_int(true))) {
+            *interval = interval->truncate_to_uint(true);
+        }
+    }
+
+    // Handle uvalue != right.
+    if (op == Condition::Op::NE) {
+        if (auto rn = right_interval.singleton()) {
+            if (rn == left_interval.truncate_to_uint(is64).lb().number()) {
+                // "NE lower bound" is equivalent to "GT lower bound".
+                op = Condition::Op::GT;
+                right_interval = interval_t{left_interval.lb()};
+            } else if (rn == left_interval.ub().number()) {
+                // "NE upper bound" is equivalent to "LT upper bound".
+                op = Condition::Op::LT;
+                right_interval = interval_t{left_interval.ub()};
+            } else {
+                return;
+            }
+        } else {
             return;
         }
-        case Op::NE: {
-            if (right_value <= left_value.lb() || right_value >= left_value.ub()) {
-                if (right_value == left_value.lb())
-                    m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                            interval_t(left_value.lb() + number_t{1}, left_value.ub()));
-                else if (right_value == left_value.ub())
-                    m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                            interval_t(left_value.lb(), left_value.ub() - number_t{1}));
-                return;
-            }
-            break;
-        }
-        case Op::SGE:
-        case Op::GE:
-        {
-            if (is_right_within_left_interval || right_value < left_value.lb()) {
-                if (is_right_within_left_interval) {
-                    if (cond.op == Op::GE && is_imm) {
-                        auto value = bound_t(static_cast<unsigned int>(imm));
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(value, left_value.ub()));
-                    }
-                    else {
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(right_value, left_value.ub()));
-                    }
-                }
-                return;
-            }
-            break;
-        }
-        case Op::SLE:
-        case Op::LE:
-        {
-            if (is_right_within_left_interval || right_value > left_value.ub()) {
-                if (is_right_within_left_interval) {
-                    if (cond.op == Op::LE && is_imm && left_value.lb() < number_t{0}) {
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(number_t{0}, right_value));
-                    }
-                    else {
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(left_value.lb(), right_value));
-                    }
-                }
-                return;
-            }
-            break;
-        }
-        case Op::SGT:
-        case Op::GT: {
-            auto right_value_plus_1 = right_value + bound_t(1);
-            bool is_right_plus_1_within_left_interval = left_value.lb() <= right_value_plus_1
-                && right_value_plus_1 <= left_value.ub();
-            if (is_right_plus_1_within_left_interval || right_value_plus_1 < left_value.lb()) {
-                if (is_right_plus_1_within_left_interval) {
-                    if (cond.op == Op::GT && is_imm) {
-                        auto value = bound_t(static_cast<unsigned int>(imm));
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(value + number_t{1}, left_value.ub()));
-                    }
-                    else {
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(right_value_plus_1, left_value.ub()));
-                    }
-                }
-                return;
-            }
-            break;
-        }
-        case Op::SLT:
-        case Op::LT: {
-            auto right_value_minus_1 = right_value - number_t{1};
-            bool is_right_minus_1_within_left_interval = left_value.lb() <= right_value_minus_1
-                && right_value_minus_1 <= left_value.ub();
-            if (is_right_minus_1_within_left_interval || right_value_minus_1 > left_value.ub()) {
-                if (is_right_minus_1_within_left_interval) {
-                    if (cond.op == Op::LT && is_imm) {
-                        auto value = bound_t(static_cast<unsigned int>(imm));
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(left_value.lb(), value - number_t{1}));
-                    }
-                    else {
-                        m_registers_interval_values.insert(cond.left.v, reg_with_loc,
-                                interval_t(left_value.lb(), right_value_minus_1));
-                    }
-                }
-                return;
-            }
-            break;
-        }
-        default: return;
-        m_registers_interval_values.insert(cond.left.v, reg_with_loc, interval_t::bottom());
     }
+
+    const bool is_lt = op == Condition::Op::LT || op == Condition::Op::LE;
+    bool strict = op == Condition::Op::LT || op == Condition::Op::GT;
+
+    assume_gt_and_lt(is64, strict, is_lt, std::move(left_interval), std::move(right_interval),
+            left, right, loc);
+}
+
+void interval_prop_domain_t::assume_signed_cst_interval(Condition::Op op, bool is64,
+        interval_t&& left_interval, interval_t&& right_interval, register_t left, Value right,
+        location_t loc) {
+
+    for (interval_t* interval : {&left_interval, &right_interval}) {
+        if (!(*interval <= interval_t::signed_int(is64))) {
+            *interval = interval->truncate_to_sint(is64);
+        }
+    }
+
+    if (op == Condition::Op::EQ) {
+        auto eq_interval = right_interval & left_interval;
+        m_registers_interval_values.insert(left, reg_with_loc_t(left, loc), eq_interval);
+        if (std::holds_alternative<Reg>(right)) {
+            auto right_reg = std::get<Reg>(right).v;
+            m_registers_interval_values.insert(right_reg,
+                    reg_with_loc_t(right_reg, loc), eq_interval);
+        }
+        return;
+    }
+
+    const bool is_lt = op == Condition::Op::SLT || op == Condition::Op::SLE;
+    bool strict = op == Condition::Op::SLT || op == Condition::Op::SGT;
+
+    assume_gt_and_lt(is64, strict, is_lt, std::move(left_interval), std::move(right_interval),
+            left, right, loc);
+}
+
+void interval_prop_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
+        Value right, location_t loc) {
+    using Op = Condition::Op;
+    auto left_mock_interval = m_registers_interval_values.find(left);
+    if (!left_mock_interval) return;
+    auto left_interval = left_mock_interval->to_interval();
+    interval_t right_interval = interval_t::bottom();
+    int64_t imm;
+    bool is_right_reg = std::holds_alternative<Reg>(right);
+    if (is_right_reg) {
+        auto right_mock_interval = m_registers_interval_values.find(std::get<Reg>(right).v);
+        if (!right_mock_interval) return;
+        right_interval = right_mock_interval->to_interval();
+    }
+    else {
+        imm = static_cast<int64_t>(std::get<Imm>(right).v);
+    }
+    if (left_interval.is_bottom() || (is_right_reg && right_interval.is_bottom())) {
+        m_registers_interval_values.set_to_bottom();
+        return;
+    }
+    switch (op) {
+        case Op::EQ:
+        case Op::SGE:
+        case Op::SLE:
+        case Op::SGT:
+        case Op::SLT: {
+            assume_signed_cst_interval(op, is64, std::move(left_interval),
+                    is_right_reg ? std::move(right_interval) : interval_t(number_t{imm}),
+                    left, right, loc);
+            break;
+        }
+        case Op::SET:
+        case Op::NSET: {
+            // TODO: implement SET and NSET
+            break;
+        }
+        case Op::NE:
+        case Op::GE:
+        case Op::LE:
+        case Op::GT:
+        case Op::LT: {
+            assume_unsigned_cst_interval(op, is64, std::move(left_interval),
+                    is_right_reg ? std::move(right_interval) : interval_t(number_t{(uint64_t)imm}),
+                    left, right, loc);
+            break;
+        }
+    }
+}
+
+void interval_prop_domain_t::operator()(const Assume& s, location_t loc, int print) {
+    // nothing to do here
 }
 
 void interval_prop_domain_t::do_bin(const Bin& bin,
