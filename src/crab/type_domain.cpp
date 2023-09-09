@@ -173,20 +173,20 @@ void type_domain_t::operator()(const Packet& u, location_t loc, int print) {
 
 void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
     Condition cond = s.cond;
-    auto right = cond.right;
     const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
-    if (std::holds_alternative<Reg>(right)) {
-        const auto& right_reg = std::get<Reg>(right);
+    if (std::holds_alternative<Reg>(cond.right)) {
+        const auto& right_reg = std::get<Reg>(cond.right);
         const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
         if (maybe_left_type && maybe_right_type) {
+            // both pointers
             if (is_packet_ptr(maybe_left_type) && is_packet_ptr(maybe_right_type)) {
                 m_offset(s, loc, print);
             }
-            // both pointers
         }
         else if (!maybe_left_type && !maybe_right_type) {
             // both numbers
-            m_interval(s, loc);
+            auto left_interval = m_interval.find_interval_value(cond.left.v);
+            m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right, loc);
         }
         else {
             // We should only reach here if `--assume-assert` is off
@@ -194,6 +194,9 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
             // be sound in any case, it happens to flush out bugs:
             m_region.set_registers_to_top();
         }
+    }
+    else {
+        m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right, loc);
     }
 }
 
