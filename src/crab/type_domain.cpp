@@ -514,6 +514,11 @@ type_domain_t::find_offset_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_offset.find_offset_at_loc(loc);
 }
 
+std::optional<crab::mock_interval_t>
+type_domain_t::find_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+    return m_interval.find_interval_at_loc(loc);
+}
+
 std::ostream& operator<<(std::ostream& o, const type_domain_t& typ) {
     typ.write(o);
     return o;
@@ -544,14 +549,16 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
         if (std::holds_alternative<Call>(statement)) {
             auto r0_reg = crab::reg_with_loc_t(register_t{R0_RETURN_VALUE}, loc);
             auto region = typ.find_ptr_or_mapfd_at_loc(r0_reg);
-            print_annotated(o, std::get<Call>(statement), region);
+            auto interval = typ.find_interval_at_loc(r0_reg);
+            print_annotated(o, std::get<Call>(statement), region, interval);
         }
         else if (std::holds_alternative<Bin>(statement)) {
             auto b = std::get<Bin>(statement);
             auto reg_with_loc = crab::reg_with_loc_t(b.dst.v, loc);
             auto region = typ.find_ptr_or_mapfd_at_loc(reg_with_loc);
             auto offset = typ.find_offset_at_loc(reg_with_loc);
-            print_annotated(o, b, region, offset);
+            auto interval = typ.find_interval_at_loc(reg_with_loc);
+            print_annotated(o, b, region, offset, interval);
         }
         else if (std::holds_alternative<Mem>(statement)) {
             auto u = std::get<Mem>(statement);
@@ -560,7 +567,8 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
                 auto target_reg_loc = crab::reg_with_loc_t(target_reg.v, loc);
                 auto region = typ.find_ptr_or_mapfd_at_loc(target_reg_loc);
                 auto offset = typ.find_offset_at_loc(target_reg_loc);
-                print_annotated(o, u, region, offset);
+                auto interval = typ.find_interval_at_loc(target_reg_loc);
+                print_annotated(o, u, region, offset, interval);
             }
             else o << "  " << u << "\n";
         }
