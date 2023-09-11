@@ -15,7 +15,12 @@ void print_ptr_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr, std::optio
 void print_number(std::ostream& o, crab::interval_t n) {
     o << "number";
     if (!n.is_top()) {
-        o << "<" << n << ">";
+        if (auto n_singleton = n.singleton()) {
+            o << "<" << *n_singleton << ">";
+        }
+        else {
+            o << "<" << n << ">";
+        }
     }
 }
 
@@ -28,41 +33,42 @@ void print_ptr_or_mapfd_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr_or
     }
 }
 
-void print_register(std::ostream& o, const Reg& r, const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t> d) {
+void print_register(std::ostream& o, const Reg& r, const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t> d, std::optional<crab::mock_interval_t> n) {
     o << r << " : ";
     if (p) {
         print_ptr_or_mapfd_type(o, *p, d);
     }
-    else {
-        print_number(o, crab::interval_t::top());
+    else if (n) {
+        print_number(o, n->to_interval());
     }
 }
 
 inline std::string size_(int w) { return std::string("u") + std::to_string(w * 8); }
 
-void print_annotated(std::ostream& o, const Call& call, std::optional<crab::ptr_or_mapfd_t>& p) {
+void print_annotated(std::ostream& o, const Call& call, std::optional<crab::ptr_or_mapfd_t>& p,
+        std::optional<crab::mock_interval_t>& n) {
     o << "  ";
-    print_register(o, Reg{(uint8_t)R0_RETURN_VALUE}, p, std::nullopt);
+    print_register(o, Reg{(uint8_t)R0_RETURN_VALUE}, p, std::nullopt, n);
     o << " = " << call.name << ":" << call.func << "(...)\n";
 }
 
 void print_annotated(std::ostream& o, const Bin& b, std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::dist_t>& d) {
+        std::optional<crab::dist_t>& d, std::optional<crab::mock_interval_t>& n) {
     o << "  ";
-    print_register(o, b.dst, p, d);
+    print_register(o, b.dst, p, d, n);
     o << " " << b.op << "= " << b.v << "\n";
 }
 
 void print_annotated(std::ostream& o, const LoadMapFd& u, std::optional<crab::ptr_or_mapfd_t>& p) {
     o << "  ";
-    print_register(o, u.dst, p, std::nullopt);
+    print_register(o, u.dst, p, std::nullopt, std::nullopt);
     o << " = map_fd " << u.mapfd << "\n";
 }
 
 void print_annotated(std::ostream& o, const Mem& b, std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::dist_t>& d) {
+        std::optional<crab::dist_t>& d, std::optional<crab::mock_interval_t>& n) {
     o << "  ";
-    print_register(o, std::get<Reg>(b.value), p, d);
+    print_register(o, std::get<Reg>(b.value), p, d, n);
     o << " = ";
     std::string sign = b.access.offset < 0 ? " - " : " + ";
     int offset = std::abs(b.access.offset);
