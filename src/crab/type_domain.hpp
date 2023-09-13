@@ -91,9 +91,9 @@ class type_domain_t final {
   private:
 
     void do_load(const Mem&, const Reg&, bool, std::optional<ptr_or_mapfd_t>,
-            location_t, int print = 0);
+            location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>, std::optional<ptr_or_mapfd_t>&,
-            location_t, int print = 0);
+            location_t);
     void report_type_error(std::string, location_t);
     void print_registers() const;
     void adjust_bb_for_types(location_t);

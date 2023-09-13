@@ -86,18 +86,8 @@ void registers_cp_state_t::adjust_bb_for_registers(location_t loc) {
 }
 
 void registers_cp_state_t::operator-=(register_t var) {
-    if (is_bottom()) {
-        return;
-    }
+    if (is_bottom()) return;
     m_cur_def[var] = nullptr;
-}
-
-void registers_cp_state_t::print_all_register_types() const {
-    std::cout << "\tinterval types: {\n";
-    for (auto const& kv : *m_interval_env) {
-        std::cout << "\t\t" << kv.first << " : " << kv.second.to_interval() << "\n";
-    }
-    std::cout << "\t}\n";
 }
 
 bool stack_cp_state_t::is_bottom() const {
@@ -418,32 +408,33 @@ void interval_prop_domain_t::operator()(const Packet &u, location_t loc, int pri
     m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
 }
 
-void interval_prop_domain_t::assume_lt(bool strict, interval_t&& left_interval,
-        interval_t&& right_interval, register_t left, Value right, location_t loc) {
+void interval_prop_domain_t::assume_lt(bool strict,
+        interval_t&& left_interval, interval_t&& right_interval,
+        interval_t&& left_interval_orig, interval_t&& right_interval_orig,
+        register_t left, Value right, location_t loc) {
     auto reg_with_loc_left = reg_with_loc_t(left, loc);
     auto rlb = right_interval.lb();
     auto rub = right_interval.ub();
     auto llb = left_interval.lb();
     auto lub = left_interval.ub();
+    auto rlb_orig = right_interval_orig.lb();
+    auto rub_orig = right_interval_orig.ub();
+    auto llb_orig = left_interval_orig.lb();
+    auto lub_orig = left_interval_orig.ub();
 
-    auto ub = strict ? (right_interval.lb() - number_t{1}) : right_interval.lb();
-    if (lub >= rlb && llb < rlb) {
-        auto interval_to_insert = interval_t(llb, strict ? rlb - number_t{1} : rlb);
-        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
-    }
-    else if (right_interval <= left_interval && strict ? llb < rlb : llb <= rlb) {
-        auto interval_to_insert = interval_t(llb, strict ? rlb - number_t{1} : rlb);
+    if (strict ? llb < rlb : llb <= rlb && lub >= rlb) {
+        auto interval_to_insert = interval_t(llb_orig, strict ? rlb - number_t{1} : rlb);
         m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
     }
     else if (left_interval <= right_interval && strict ? lub < rub : lub <= rub &&
             std::holds_alternative<Reg>(right)) {
         auto right_reg = std::get<Reg>(right).v;
         auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
-        auto interval_to_insert = interval_t(strict ? lub + number_t{1} : lub, rub);
+        auto interval_to_insert = interval_t(strict ? lub + number_t{1} : lub, rub_orig);
         m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
     }
-    else if (lub > rub && strict ? llb < rub : llb <= rub) {
-        auto interval_to_insert_left = interval_t(llb, strict ? rub - number_t{1} : rub);
+    else if (lub >= rub && strict ? llb < rub : llb <= rub) {
+        auto interval_to_insert_left = interval_t(llb_orig, strict ? rub - number_t{1} : rub);
         m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rub)
         // and set left to the rest of the interval < (or <=) of right
@@ -460,31 +451,33 @@ void interval_prop_domain_t::assume_lt(bool strict, interval_t&& left_interval,
     }
 }
 
-void interval_prop_domain_t::assume_gt(bool strict, interval_t&& left_interval,
-        interval_t&& right_interval, register_t left, Value right, location_t loc) {
+void interval_prop_domain_t::assume_gt(bool strict,
+        interval_t&& left_interval, interval_t&& right_interval,
+        interval_t&& left_interval_orig, interval_t&& right_interval_orig,
+        register_t left, Value right, location_t loc) {
     auto reg_with_loc_left = reg_with_loc_t(left, loc);
     auto rlb = right_interval.lb();
     auto rub = right_interval.ub();
     auto llb = left_interval.lb();
     auto lub = left_interval.ub();
+    auto rlb_orig = right_interval_orig.lb();
+    auto rub_orig = right_interval_orig.ub();
+    auto llb_orig = left_interval_orig.lb();
+    auto lub_orig = left_interval_orig.ub();
 
-    if (llb <= rub && lub > rub) {
-        auto interval_to_insert = interval_t(strict ? rub + number_t{1} : rub, lub);
-        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
-    }
-    else if (right_interval <= left_interval && strict ? lub > rub : lub >= rub) {
-        auto interval_to_insert = interval_t(strict ? rub + number_t{1} : rub, lub);
+    if (strict ? lub > rub : lub >= rub && llb <= rub) {
+        auto interval_to_insert = interval_t(strict ? rub + number_t{1} : rub, lub_orig);
         m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
     }
     else if (left_interval <= right_interval && strict ? llb > rlb : llb >= rlb &&
             std::holds_alternative<Reg>(right)) {
         auto right_reg = std::get<Reg>(right).v;
         auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
-        auto interval_to_insert = interval_t(rlb, strict ? llb - number_t{1} : llb);
+        auto interval_to_insert = interval_t(rlb_orig, strict ? llb - number_t{1} : llb);
         m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
     }
-    else if (llb < rlb && strict ? lub > rlb : lub >= rlb) {
-        auto interval_to_insert_left = interval_t(strict ? rlb + number_t{1} : rlb, lub);
+    else if (llb <= rlb && strict ? lub > rlb : lub >= rlb) {
+        auto interval_to_insert_left = interval_t(strict ? rlb + number_t{1} : rlb, lub_orig);
         m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rlb)
         // and set left to the rest of the interval > (or >=) of right
@@ -502,8 +495,9 @@ void interval_prop_domain_t::assume_gt(bool strict, interval_t&& left_interval,
 }
 
 void interval_prop_domain_t::assume_gt_and_lt(bool is64, bool strict, bool is_lt,
-        interval_t&& left_interval, interval_t&& right_interval, register_t left,
-        Value right, location_t loc) {
+        interval_t&& left_interval, interval_t&& right_interval,
+        interval_t&& left_interval_orig, interval_t&& right_interval_orig,
+        register_t left, Value right, location_t loc) {
 
     auto llb = left_interval.lb();
     auto lub = left_interval.ub();
@@ -512,32 +506,39 @@ void interval_prop_domain_t::assume_gt_and_lt(bool is64, bool strict, bool is_lt
     if (!is_lt && (strict ? (lub <= rlb) : (lub < rlb))) {
         // Left unsigned interval is lower than right unsigned interval.
         m_registers_interval_values.set_to_bottom();
+        return;
     } else if (is_lt && (strict ? (llb >= rub) : (llb > rub))) {
         // Left unsigned interval is higher than right unsigned interval.
         m_registers_interval_values.set_to_bottom();
+        return;
     }
     if (is_lt && (strict ? (lub < rlb) : (lub <= rlb))) {
         // Left unsigned interval is lower than right unsigned interval.
         // TODO: verify if setting to top is the correct equivalent of returning linear cst true
         m_registers_interval_values.set_to_top();
+        return;
     } else if (!is_lt && (strict ? (llb > rub) : (llb >= rub))) {
         // Left unsigned interval is higher than right unsigned interval.
         m_registers_interval_values.set_to_top();
+        return;
     }
 
     if (is_lt)
-        assume_lt(strict, std::move(left_interval), std::move(right_interval), left, right, loc);
+        assume_lt(strict, std::move(left_interval), std::move(right_interval),
+                std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc);
     else
-        assume_gt(strict, std::move(left_interval), std::move(right_interval), left, right, loc);
+        assume_gt(strict, std::move(left_interval), std::move(right_interval),
+                std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc);
 }
 
 void interval_prop_domain_t::assume_unsigned_cst_interval(Condition::Op op, bool is64,
-        interval_t&& left_interval, interval_t&& right_interval, register_t left, Value right,
-        location_t loc) {
+        interval_t&& left_interval, interval_t&& right_interval,
+        interval_t&& left_interval_orig, interval_t&& right_interval_orig,
+        register_t left, Value right, location_t loc) {
 
     for (interval_t* interval : {&left_interval, &right_interval}) {
-        if (!(*interval <= interval_t::unsigned_int(true))) {
-            *interval = interval->truncate_to_uint(true);
+        if (!(*interval <= interval_t::unsigned_int(is64))) {
+            *interval = interval->truncate_to_uint(is64);
         }
     }
 
@@ -564,12 +565,13 @@ void interval_prop_domain_t::assume_unsigned_cst_interval(Condition::Op op, bool
     bool strict = op == Condition::Op::LT || op == Condition::Op::GT;
 
     assume_gt_and_lt(is64, strict, is_lt, std::move(left_interval), std::move(right_interval),
-            left, right, loc);
+            std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc);
 }
 
 void interval_prop_domain_t::assume_signed_cst_interval(Condition::Op op, bool is64,
-        interval_t&& left_interval, interval_t&& right_interval, register_t left, Value right,
-        location_t loc) {
+        interval_t&& left_interval, interval_t&& right_interval,
+        interval_t&& left_interval_orig, interval_t&& right_interval_orig,
+        register_t left, Value right, location_t loc) {
 
     for (interval_t* interval : {&left_interval, &right_interval}) {
         if (!(*interval <= interval_t::signed_int(is64))) {
@@ -592,6 +594,7 @@ void interval_prop_domain_t::assume_signed_cst_interval(Condition::Op op, bool i
     bool strict = op == Condition::Op::SLT || op == Condition::Op::SGT;
 
     assume_gt_and_lt(is64, strict, is_lt, std::move(left_interval), std::move(right_interval),
+            std::move(left_interval_orig), std::move(right_interval_orig),
             left, right, loc);
 }
 
@@ -611,11 +614,14 @@ void interval_prop_domain_t::assume_cst(Condition::Op op, bool is64, register_t 
     }
     else {
         imm = static_cast<int64_t>(std::get<Imm>(right).v);
+        right_interval = is64 ? interval_t(number_t{imm}) : interval_t(number_t{(uint64_t)imm});
     }
     if (left_interval.is_bottom() || (is_right_reg && right_interval.is_bottom())) {
-        m_registers_interval_values.set_to_bottom();
         return;
     }
+    interval_t left_interval_orig = left_interval;
+    interval_t right_interval_orig = right_interval;
+
     switch (op) {
         case Op::EQ:
         case Op::SGE:
@@ -623,8 +629,8 @@ void interval_prop_domain_t::assume_cst(Condition::Op op, bool is64, register_t 
         case Op::SGT:
         case Op::SLT: {
             assume_signed_cst_interval(op, is64, std::move(left_interval),
-                    is_right_reg ? std::move(right_interval) : interval_t(number_t{imm}),
-                    left, right, loc);
+                    std::move(right_interval), std::move(left_interval_orig),
+                    std::move(right_interval_orig), left, right, loc);
             break;
         }
         case Op::SET:
@@ -638,8 +644,8 @@ void interval_prop_domain_t::assume_cst(Condition::Op op, bool is64, register_t 
         case Op::GT:
         case Op::LT: {
             assume_unsigned_cst_interval(op, is64, std::move(left_interval),
-                    is_right_reg ? std::move(right_interval) : interval_t(number_t{(uint64_t)imm}),
-                    left, right, loc);
+                    std::move(right_interval), std::move(left_interval_orig),
+                    std::move(right_interval_orig), left, right, loc);
             break;
         }
     }
@@ -660,13 +666,14 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
         // we skip handling in this domain is when dst is pointer and src is numerical value
     if (bin.op != Op::MOV && dst_ptr_or_mapfd_opt && src_interval_opt) return;
     // if op is MOV,
-        // we skip handling in this domain is when both dst and src are pointers
-        // when dst is not known and src is pointer
-    if (bin.op == Op::MOV &&
-            ((dst_ptr_or_mapfd_opt && src_ptr_or_mapfd_opt)
-             || (!dst_interval_opt && src_ptr_or_mapfd_opt)))
+        // we skip handling in this domain is when src is pointer,
+        // additionally, we forget the dst pointer
+    if (bin.op == Op::MOV && src_ptr_or_mapfd_opt) {
+        m_registers_interval_values -= bin.dst.v;
         return;
+    }
 
+    int finite_width = bin.is64 ? 64 : 32;
     uint64_t imm = std::holds_alternative<Imm>(bin.v) ? std::get<Imm>(bin.v).v : 0;
     interval_t src_interval = interval_t::bottom(), dst_interval = interval_t::bottom();
     if (src_interval_opt) src_interval = std::move(src_interval_opt.value());
@@ -677,9 +684,10 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
     {
         // ra = b
         case Op::MOV: {
-            if (src_interval_opt)
+            if (src_interval_opt) {
                 dst_interval = src_interval;
-            else if (dst_interval_opt) {
+            }
+            else {
                 m_registers_interval_values -= bin.dst.v;
                 return;
             }
@@ -730,24 +738,166 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
         }
         // ra &= b
         case Op::AND: {
+            if ((int32_t)imm > 0) {
+                dst_interval = interval_t(number_t{0}, number_t(static_cast<int>(imm)));
+                break;
+            }
+            if (!(dst_interval <= interval_t::unsigned_int(bin.is64))) {
+                // TODO: This is only based on observation, need to verify this
+                // This is done because we do not track uvalues and svalues separately
+                // however, current implementation of eBPF using zoneCrab does
+                // this operation mimics uvalue being not set (i.e., TOP)
+                dst_interval = interval_t::top();
+            }
+            if (!(src_interval <= interval_t::unsigned_int(bin.is64))) {
+                // likewise explanation as above
+                src_interval = interval_t::top();
+            }
+            if (imm != 0) {
+                src_interval = interval_t(number_t{(uint64_t)imm});
+            }
             dst_interval = dst_interval.And(src_interval);
-            if ((int32_t)imm > 0)
-                dst_interval = interval_t(number_t(0), number_t(static_cast<int>(imm)));
             break;
         }
         // ra <<= b
         case Op::LSH: {
-            dst_interval = dst_interval.Shl(src_interval);
+            if (imm == 0) {
+                if (std::optional<number_t> sn = src_interval.singleton()) {
+                    // TODO: verify if this is correct
+                    if (bin.is64) {
+                        uint64_t imm_val = sn->cast_to_uint64() & 63;
+                        if (!(imm_val <= INT32_MAX)) return;
+                        imm = (int32_t)imm_val;
+                    }
+                    else {
+                        uint32_t imm_val = sn->cast_to_uint32() & 31;
+                        if (!(imm_val <= INT32_MAX)) return;
+                        imm = (int32_t)imm_val;
+                    }
+                }
+            }
+            if (imm != 0) {
+                // The BPF ISA requires masking the imm.
+                imm &= finite_width - 1;
+                if (!(dst_interval <= interval_t::unsigned_int(bin.is64))) {
+                    // This is non-standard, but done to mimic uvalue being not set (i.e., TOP)
+                    dst_interval = interval_t::top();
+                }
+                if (dst_interval.finite_size()) {
+                    number_t lb = dst_interval.lb().number().value();
+                    number_t ub = dst_interval.ub().number().value();
+                    uint64_t lb_n = lb.cast_to_uint64();
+                    uint64_t ub_n = ub.cast_to_uint64();
+                    uint64_t uint_max = (finite_width == 64) ? UINT64_MAX : UINT32_MAX;
+                    if ((lb_n >> (finite_width - imm)) != (ub_n >> (finite_width - imm))) {
+                        // The bits that will be shifted out to the left are different,
+                        // which means all combinations of remaining bits are possible.
+                        lb_n = 0;
+                        ub_n = (uint_max << imm) & uint_max;
+                    } else {
+                        // The bits that will be shifted out to the left are identical
+                        // for all values in the interval, so we can safely shift left
+                        // to get a new interval.
+                        lb_n = (lb_n << imm) & uint_max;
+                        ub_n = (ub_n << imm) & uint_max;
+                    }
+                    dst_interval = interval_t(number_t{lb_n}, number_t{ub_n});
+                }
+            }
+            else {
+                dst_interval = interval_t::top();
+            }
             break;
         }
         // ra >>= b
         case Op::RSH: {
-            dst_interval = dst_interval.LShr(src_interval);
+            if (imm == 0) {
+                if (std::optional<number_t> sn = src_interval.singleton()) {
+                    // TODO: verify if this is correct
+                    if (bin.is64) {
+                        uint64_t imm_val = sn->cast_to_uint64() & 63;
+                        if (!(imm_val <= INT32_MAX)) return;
+                        imm = (int32_t)imm_val;
+                    }
+                    else {
+                        uint32_t imm_val = sn->cast_to_uint32() & 31;
+                        if (!(imm_val <= INT32_MAX)) return;
+                        imm = (int32_t)imm_val;
+                    }
+                }
+            }
+            if (imm != 0) {
+                imm &= finite_width - 1;
+                number_t lb_n{0};
+                number_t ub_n{UINT64_MAX >> imm};
+                if (!(dst_interval <= interval_t::unsigned_int(bin.is64))) {
+                    // This is done because we do not track uvalues and svalues separately
+                    // however, current implementation of eBPF using zoneCrab does
+                    // this operation mimics uvalue being not set (i.e., TOP)
+                    dst_interval = interval_t::top();
+                }
+                if (dst_interval.finite_size()) {
+                    number_t lb = dst_interval.lb().number().value();
+                    number_t ub = dst_interval.ub().number().value();
+                    if (finite_width == 64) {
+                        lb_n = lb.cast_to_uint64() >> imm;
+                        ub_n = ub.cast_to_uint64() >> imm;
+                    } else {
+                        number_t lb_w = lb.cast_to_signed_finite_width(finite_width);
+                        number_t ub_w = ub.cast_to_signed_finite_width(finite_width);
+                        lb_n = lb_w.cast_to_uint32() >> imm;
+                        ub_n = ub_w.cast_to_uint32() >> imm;
+
+                        // The interval must be valid since a signed range crossing 0
+                        // was earlier converted to a full unsigned range.
+                        assert(lb_n <= ub_n);
+                    }
+                }
+                if ((int64_t)ub_n >= (int64_t)lb_n) {
+                    dst_interval = interval_t(number_t{lb_n}, number_t{ub_n});
+                } else {
+                    dst_interval = interval_t::top();
+                }
+            }
+            else {
+                dst_interval = interval_t::top();
+            }
             break;
         }
         // ra >>>= b
         case Op::ARSH: {
-            dst_interval = dst_interval.AShr(src_interval);
+            for (interval_t* interval : {&dst_interval, &src_interval}) {
+                if (!(*interval <= interval_t::signed_int(finite_width == 64))) {
+                    *interval = interval->truncate_to_sint(finite_width == 64);
+                }
+            }
+
+            if (auto sn = src_interval.singleton()) {
+                // The BPF ISA requires masking the imm.
+                int64_t imm = sn->cast_to_sint64() & (finite_width - 1);
+
+                int64_t lb_n = INT64_MIN >> imm;
+                int64_t ub_n = INT64_MAX >> imm;
+                if (dst_interval.finite_size()) {
+                    number_t lb = dst_interval.lb().number().value();
+                    number_t ub = dst_interval.ub().number().value();
+                    if (finite_width == 64) {
+                        lb_n = lb.cast_to_sint64() >> imm;
+                        ub_n = ub.cast_to_sint64() >> imm;
+                    } else {
+                        number_t lb_w = lb.cast_to_signed_finite_width(finite_width) >> (int)imm;
+                        number_t ub_w = ub.cast_to_signed_finite_width(finite_width) >> (int)imm;
+                        if (lb_w.cast_to_uint32() <= ub_w.cast_to_uint32()) {
+                            lb_n = lb_w.cast_to_uint32();
+                            ub_n = ub_w.cast_to_uint32();
+                        }
+                    }
+                }
+                dst_interval = interval_t(number_t{lb_n}, number_t{ub_n});
+            }
+            else {
+                dst_interval = interval_t::top();
+            }
             break;
         }
         // ra ^= b
@@ -756,7 +906,7 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
             break;
         }
         default: {
-            dst_interval = interval_t::top();
+            dst_interval = interval_t::bottom();
             break;
         }
     }
@@ -765,99 +915,104 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
 
 
 void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
-        std::optional<ptr_or_mapfd_t> basereg_type, std::optional<ptr_or_mapfd_t> targetreg_type,
-        location_t loc) {
+        std::optional<ptr_or_mapfd_t> basereg_type, bool load_in_region, location_t loc) {
+
     if (!basereg_type) {
         m_registers_interval_values -= target_reg.v;
         return;
     }
-
-    auto basereg_ptr_or_mapfd_type = basereg_type.value();
-    int offset = b.access.offset;
-    int width = b.access.width;
 
     auto reg_with_loc = reg_with_loc_t(target_reg.v, loc);
-    if (std::holds_alternative<ptr_with_off_t>(basereg_ptr_or_mapfd_type)) {
-        auto p_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
-        if (p_with_off.get_region() == crab::region_t::T_STACK) {
-            auto ptr_offset = p_with_off.get_offset();
-            auto load_at_interval = ptr_offset.to_interval() + interval_t{number_t(static_cast<int>(offset))};
-            auto load_at_singleton = load_at_interval.singleton();
-            if (load_at_singleton) {
-                auto load_at = load_at_singleton.value();
-                auto loaded = m_stack_slots_interval_values.find((uint64_t)load_at);
-                if (loaded) {
-                    auto loaded_cells = loaded.value();
-                    m_registers_interval_values.insert(target_reg.v, reg_with_loc,
-                            loaded_cells.first.to_interval());
-                    return;
-                }
-            }
-            auto load_at_lb_opt = load_at_interval.lb().number();
-            auto load_at_ub_opt = load_at_interval.ub().number();
-            if (!load_at_lb_opt || !load_at_ub_opt) {
-                m_registers_interval_values -= target_reg.v;
-                //std::cout << "type error: missing offset information\n";
-                m_errors.push_back("missing offset information");
+    // we check if we already loaded a pointer from ctx or stack in region domain,
+        // we then do not store a number
+    if (load_in_region) {
+        m_registers_interval_values -= target_reg.v;
+        return;
+    }
+    int width = b.access.width;
+    int offset = b.access.offset;
+    auto basereg_ptr_or_mapfd_type = basereg_type.value();
+
+    if (is_ctx_ptr(basereg_type)) {
+        m_registers_interval_values.insert(target_reg.v, reg_with_loc, interval_t::top());
+        return;
+    }
+    if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
+        interval_t to_insert = interval_t::top();
+        if (width == 1) to_insert = interval_t(number_t{0}, number_t{UINT8_MAX});
+        else if (width == 2) to_insert = interval_t(number_t{0}, number_t{UINT16_MAX});
+        m_registers_interval_values.insert(target_reg.v, reg_with_loc, to_insert);
+        return;
+    }
+
+    if (is_stack_ptr(basereg_type)) {
+        auto ptr_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
+        auto p_offset = ptr_with_off.get_offset();
+        auto load_at = p_offset.to_interval() + interval_t(number_t{offset});
+        uint64_t start_offset = 0;
+        if (auto load_at_singleton = load_at.singleton()) {
+            start_offset = (uint64_t)(*load_at_singleton);
+            if (auto loaded = m_stack_slots_interval_values.find(start_offset)) {
+                m_registers_interval_values.insert(target_reg.v, reg_with_loc,
+                        (*loaded).first.to_interval());
                 return;
             }
-            auto load_at_lb = load_at_lb_opt.value();
-            auto load_at_ub = load_at_ub_opt.value();
-            auto start = (uint64_t)load_at_lb;
-            auto width_to_check = (int)(load_at_ub+number_t(width)-load_at_lb);
-
-            if (m_stack_slots_interval_values.all_numeric(start, width_to_check)) {
-                m_registers_interval_values.insert(target_reg.v, reg_with_loc,
-                        interval_t::top());
+        }
+        else {
+            auto load_at_lb = load_at.lb();
+            auto load_at_ub = load_at.ub();
+            if (auto finite_size = load_at.finite_size()) {
+                if (auto load_at_lb = load_at.lb().number()) {
+                    start_offset = (uint64_t)(*load_at_lb);
+                    width = (int)(*finite_size + number_t{width});
+                }
             }
-            else {
-                m_registers_interval_values -= target_reg.v;
-            }
+        }
+        if (m_stack_slots_interval_values.all_numeric(start_offset, width)) {
+            m_registers_interval_values.insert(target_reg.v, reg_with_loc,
+                    interval_t::top());
             return;
         }
     }
-    // we check targetreg_type because in case we already loaded a pointer from ctx,
-        // we then do not store a number
-    if (!targetreg_type) {  // we are loading from ctx, packet or shared
-        m_registers_interval_values.insert(target_reg.v, reg_with_loc, interval_t::top());
-    }
-    else {
-        m_registers_interval_values -= target_reg.v;
-    }
+    m_registers_interval_values -= target_reg.v;
 }
 
-void interval_prop_domain_t::do_mem_store(const Mem& b, const Reg& target_reg,
-        std::optional<ptr_or_mapfd_t> basereg_type) {
+void interval_prop_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> basereg_type) {
     int offset = b.access.offset;
     int width = b.access.width;
 
-    if (!basereg_type) {
+    if (!is_stack_ptr(basereg_type)) {
+        // we only store for stack pointers
         return;
     }
-    auto basereg_ptr_or_mapfd_type = basereg_type.value();
-    auto targetreg_type = m_registers_interval_values.find(target_reg.v);
-    if (std::holds_alternative<ptr_with_off_t>(basereg_ptr_or_mapfd_type)) {
-        auto basereg_ptr_with_off_type = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
-        auto offset_singleton = basereg_ptr_with_off_type.get_offset().to_interval().singleton();
-        if (!offset_singleton) {
-            //std::cout << "type error: doing a store with unknown offset\n";
-            m_errors.push_back("doing a store with unknown offset");
-            return;
-        }
-        auto store_at = (uint64_t)offset_singleton.value() + (uint64_t)offset;
-        if (basereg_ptr_with_off_type.get_region() == crab::region_t::T_STACK) {
-            auto overlapping_cells
-                = m_stack_slots_interval_values.find_overlapping_cells(store_at, width);
-            m_stack_slots_interval_values.remove_overlap(overlapping_cells, store_at, width);
 
-            // if targetreg_type is empty, we are storing a pointer
-            if (!targetreg_type) return;
+    auto basereg_ptr_with_off_type = std::get<ptr_with_off_t>(*basereg_type);
+    auto offset_singleton = basereg_ptr_with_off_type.get_offset().to_interval().singleton();
+    if (!offset_singleton) {
+        //std::cout << "type error: doing a store with unknown offset\n";
+        m_errors.push_back("doing a store with unknown offset");
+        return;
+    }
+    auto store_at = (uint64_t)(*offset_singleton + offset);
+    auto overlapping_cells = m_stack_slots_interval_values.find_overlapping_cells(store_at, width);
+    m_stack_slots_interval_values.remove_overlap(overlapping_cells, store_at, width);
 
-            auto type_to_store = targetreg_type.value();
-            m_stack_slots_interval_values.store(store_at, type_to_store, width);
+    std::optional<interval_t> targetreg_type;
+    if (std::holds_alternative<Reg>(b.value)) {
+        auto target_reg = std::get<Reg>(b.value);
+        if (auto targetreg_mock_interval = m_registers_interval_values.find(target_reg.v)) {
+            targetreg_type = targetreg_mock_interval->to_interval();
         }
     }
-    else {}
+    else {
+        auto imm = static_cast<int64_t>(std::get<Imm>(b.value).v);
+        targetreg_type = interval_t(number_t{imm});
+    }
+
+    // if targetreg_type is empty, we are storing a pointer
+    // else, we store a number
+    if (targetreg_type)
+        m_stack_slots_interval_values.store(store_at, *targetreg_type, width);
 }
 
 void interval_prop_domain_t::set_require_check(check_require_func_t f) {}
@@ -876,6 +1031,16 @@ std::vector<uint64_t> interval_prop_domain_t::get_stack_keys() const {
 
 bool interval_prop_domain_t::all_numeric_in_stack(uint64_t start_loc, int width) const {
     return m_stack_slots_interval_values.all_numeric(start_loc, width);
+}
+
+std::vector<uint64_t> interval_prop_domain_t::find_overlapping_cells_in_stack(uint64_t start_loc,
+        int width) const {
+    return m_stack_slots_interval_values.find_overlapping_cells(start_loc, width);
+}
+
+void interval_prop_domain_t::remove_overlap_in_stack(const std::vector<uint64_t>& overlap,
+        uint64_t start_loc, int width) {
+    m_stack_slots_interval_values.remove_overlap(overlap, start_loc, width);
 }
 
 } // namespace crab

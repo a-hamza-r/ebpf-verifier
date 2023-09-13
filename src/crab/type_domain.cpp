@@ -121,23 +121,27 @@ void type_domain_t::operator()(const Call& u, location_t loc, int print) {
             auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(param.mem.v);
             auto maybe_width_interval = m_interval.find_interval_value(param.size.v);
             if (!maybe_ptr_or_mapfd || !maybe_width_interval) continue;
-            auto ptr_or_mapfd = maybe_ptr_or_mapfd.value();
-            auto width_interval = maybe_width_interval->to_interval();
-            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd)) {
-                auto ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd);
-                if (ptr_with_off.get_region() == region_t::T_STACK) {
-                    auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
-                    if (!offset_singleton) {
-                        //std::cout << "type error: storing at an unknown offset in stack\n";
-                        m_errors.push_back("storing at an unknown offset in stack");
-                        continue;
-                    }
-                    // TODO: forget the stack at [offset, offset+width]
-                    auto offset = (uint64_t)offset_singleton.value();
-                    if (auto single_width = width_interval.singleton(); single_width) {
-                        int width = (int)single_width.value();
-                        stack_values[offset] = std::make_pair(interval_t::top(), width);
-                    }
+            if (is_stack_ptr(maybe_ptr_or_mapfd)) {
+                auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
+                auto width_interval = maybe_width_interval->to_interval();
+
+                auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
+                if (!offset_singleton) {
+                    //std::cout << "type error: storing at an unknown offset in stack\n";
+                    m_errors.push_back("storing at an unknown offset in stack");
+                    continue;
+                }
+                auto offset = (uint64_t)offset_singleton.value();
+                if (auto single_width = width_interval.singleton()) {
+                    int width = (int)single_width.value();
+
+                    // Removing overlapping cells
+                    // TODO: do it for all domains
+                    auto overlapping_cells
+                        = m_interval.find_overlapping_cells_in_stack(offset, width);
+                    m_interval.remove_overlap_in_stack(overlapping_cells, offset, width);
+
+                    stack_values[offset] = std::make_pair(interval_t::top(), width);
                 }
             }
         }
@@ -334,10 +338,6 @@ type_domain_t type_domain_t::setup_entry() {
 
 void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     if (is_bottom()) return;
-    auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
-    auto dst_interval = m_interval.find_interval_value(bin.dst.v);
-    assert(!dst_ptr_or_mapfd || !dst_interval);
-
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
     std::optional<interval_t> src_interval;
 
@@ -359,7 +359,13 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
         }
         src_interval = interval_t{number_t{imm}};
     }
-    //assert(!src_ptr_or_mapfd || !src_interval);
+    assert(!src_ptr_or_mapfd || !src_interval);
+
+    auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
+    auto dst_mock_interval = m_interval.find_interval_value(bin.dst.v);
+    auto dst_interval = dst_mock_interval ? dst_mock_interval->to_interval() :
+        std::optional<interval_t>();
+    assert(!dst_ptr_or_mapfd.has_value() || !dst_interval.has_value());
 
     using Op = Bin::Op;
     // for all operations except mov, add, sub, the src and dst should be numbers
@@ -376,30 +382,34 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
     interval_t subtracted_reg =
         m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
     interval_t subtracted_off =
-        m_offset.do_bin(bin, src_interval, interval_t::top(), src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+        m_offset.do_bin(bin, src_interval, dst_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
     auto subtracted = subtracted_reg.is_bottom() ? subtracted_off : subtracted_reg;
-    m_interval.do_bin(bin, src_interval, interval_t::top(), src_ptr_or_mapfd, dst_ptr_or_mapfd,
+    m_interval.do_bin(bin, src_interval, dst_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd,
             subtracted, loc);
 }
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
-        std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc, int print) {
+        std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc) {
     m_region.do_load(b, target_reg, unknown_ptr, loc);
     m_offset.do_load(b, target_reg, basereg_opt, loc);
-    m_interval.do_load(b, target_reg, basereg_opt, std::nullopt, loc);
+    // TODO: replace with a bool value returned from region do_load
+    auto load_in_region = m_region.find_ptr_or_mapfd_type(target_reg.v).has_value();
+    m_interval.do_load(b, target_reg, basereg_opt, load_in_region, loc);
 }
 
 void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> target_opt,
-        std::optional<ptr_or_mapfd_t>& basereg_opt, location_t loc, int print) {
+        std::optional<ptr_or_mapfd_t>& basereg_opt, location_t loc) {
     m_region.do_mem_store(b, loc);
-    m_interval.do_mem_store(b, get<Reg>(b.value), basereg_opt);
+    m_interval.do_mem_store(b, basereg_opt);
+    // TODO: replace target_opt with a bool value representing whether we have a packet pointer,
+    // because that is the case target_opt is needed for
     m_offset.do_mem_store(b, target_opt, basereg_opt);
 }
 
 void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
     auto basereg = b.access.basereg;
-    auto ptr_or_mapfd_opt = m_region.find_ptr_or_mapfd_type(basereg.v);
-    bool unknown_ptr = !ptr_or_mapfd_opt.has_value();
+    auto base_ptr_or_mapfd_opt = m_region.find_ptr_or_mapfd_type(basereg.v);
+    bool unknown_ptr = !base_ptr_or_mapfd_opt.has_value();
     if (unknown_ptr) {
         std::string s = std::to_string(static_cast<unsigned int>(basereg.v));
         m_errors.push_back(
@@ -408,11 +418,11 @@ void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
     if (std::holds_alternative<Reg>(b.value)) {
         auto targetreg = std::get<Reg>(b.value);
         auto targetreg_type = m_region.find_ptr_or_mapfd_type(targetreg.v);
-        if (b.is_load) do_load(b, targetreg, unknown_ptr, ptr_or_mapfd_opt, loc, print);
-        else if (!unknown_ptr) do_mem_store(b, targetreg_type, ptr_or_mapfd_opt, loc, print);
+        if (b.is_load) do_load(b, targetreg, unknown_ptr, base_ptr_or_mapfd_opt, loc);
+        else if (!unknown_ptr) do_mem_store(b, targetreg_type, base_ptr_or_mapfd_opt, loc);
     }
     else if (!unknown_ptr && !b.is_load) {
-        do_mem_store(b, std::nullopt, ptr_or_mapfd_opt, loc, print);
+        do_mem_store(b, std::nullopt, base_ptr_or_mapfd_opt, loc);
     }
 }
 
@@ -474,6 +484,7 @@ void type_domain_t::operator()(const basic_block_t& bb, bool check_termination, 
         print_annotated(std::cout, *this, bb, print);
         return;
     }
+
     // A temporary fix to avoid printing errors for multiple basic blocks
     m_errors.clear();
     m_region.reset_errors();

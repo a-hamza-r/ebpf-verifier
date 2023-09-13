@@ -43,7 +43,6 @@ class registers_cp_state_t {
                 bool is_bottom = false)
             : m_interval_env(interval_env), m_is_bottom(is_bottom) {}
         void adjust_bb_for_registers(location_t);
-        void print_all_register_types() const;
 };
 
 using interval_cells_t = std::pair<mock_interval_t, int>;    // intervals with width
@@ -144,28 +143,31 @@ class interval_prop_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f);
 
-    void do_load(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>,
-            std::optional<ptr_or_mapfd_t>, location_t);
-    void do_mem_store(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>);
+    void do_load(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>, bool, location_t);
+    void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>);
     void do_call(const Call&, const interval_values_stack_t&, location_t);
     void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,
             const std::optional<ptr_or_mapfd_t>&, const std::optional<ptr_or_mapfd_t>&,
             const interval_t&, location_t);
-    void assume_unsigned_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&, register_t,
-            Value, location_t);
-    void assume_signed_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&, register_t,
-            Value, location_t);
+    void assume_unsigned_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&,
+            interval_t&&, interval_t&&, register_t, Value, location_t);
+    void assume_signed_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&,
+            interval_t&&, interval_t&&, register_t, Value, location_t);
     void assume_cst(Condition::Op, bool, register_t, Value, location_t);
-    void assume_lt(bool, interval_t&&, interval_t&&, register_t, Value, location_t);
-    void assume_gt(bool, interval_t&&, interval_t&&, register_t, Value, location_t);
-    void assume_gt_and_lt(bool, bool, bool, interval_t&&, interval_t&&, register_t,
-            Value, location_t);
+    void assume_lt(bool, interval_t&&, interval_t&&, interval_t&&, interval_t&&,
+            register_t, Value, location_t);
+    void assume_gt(bool, interval_t&&, interval_t&&, interval_t&&, interval_t&&,
+            register_t, Value, location_t);
+    void assume_gt_and_lt(bool, bool, bool, interval_t&&, interval_t&&,
+            interval_t&&, interval_t&&, register_t, Value, location_t);
     std::optional<mock_interval_t> find_interval_value(register_t) const;
     std::optional<mock_interval_t> find_interval_at_loc(const reg_with_loc_t reg) const;
     std::optional<interval_cells_t> find_in_stack(uint64_t) const;
     void adjust_bb_for_types(location_t);
     std::vector<uint64_t> get_stack_keys() const;
     bool all_numeric_in_stack(uint64_t, int) const;
+    std::vector<uint64_t> find_overlapping_cells_in_stack(uint64_t, int) const;
+    void remove_overlap_in_stack(const std::vector<uint64_t>&, uint64_t, int);
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void reset_errors() { m_errors.clear(); }
 }; // end interval_prop_domain_t
