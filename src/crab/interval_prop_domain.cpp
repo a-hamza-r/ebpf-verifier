@@ -326,7 +326,7 @@ interval_prop_domain_t interval_prop_domain_t::operator&(const interval_prop_dom
     return abs;
 }
 
-interval_prop_domain_t interval_prop_domain_t::widen(const interval_prop_domain_t& abs) const {
+interval_prop_domain_t interval_prop_domain_t::widen(const interval_prop_domain_t& abs, bool to_constants) {
     /* WARNING: The operation is not implemented yet.*/
     return abs;
 }
@@ -338,13 +338,13 @@ interval_prop_domain_t interval_prop_domain_t::narrow(const interval_prop_domain
 
 void interval_prop_domain_t::write(std::ostream& os) const {}
 
-std::string interval_prop_domain_t::domain_name() const {
-    return "interval_prop_domain";
-}
-
-crab::bound_t interval_prop_domain_t::get_instruction_count_upper_bound() {
+crab::bound_t interval_prop_domain_t::get_loop_count_upper_bound() {
     /* WARNING: The operation is not implemented yet.*/
     return crab::bound_t{crab::number_t{0}};
+}
+
+void interval_prop_domain_t::initialize_loop_counter(const label_t& label) {
+    /* WARNING: The operation is not implemented yet.*/
 }
 
 string_invariant interval_prop_domain_t::to_set() {
@@ -1107,10 +1107,6 @@ void interval_prop_domain_t::operator()(const Mem&, location_t loc, int print) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const LockAdd&, location_t loc, int print) {
-    // nothing to do here
-}
-
 void interval_prop_domain_t::operator()(const Assert&, location_t loc, int print) {
     // nothing to do here
 }
@@ -1139,7 +1135,7 @@ void interval_prop_domain_t::operator()(const ZeroCtxOffset&, location_t loc, in
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const basic_block_t& bb, bool check_termination, int print) {
+void interval_prop_domain_t::operator()(const basic_block_t& bb, int print) {
     // nothing to do here
 }
 void interval_prop_domain_t::set_require_check(check_require_func_t f) {}

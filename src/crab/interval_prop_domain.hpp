@@ -108,7 +108,7 @@ class interval_prop_domain_t final {
     // meet
     interval_prop_domain_t operator&(const interval_prop_domain_t& other) const;
     // widening
-    interval_prop_domain_t widen(const interval_prop_domain_t& other) const;
+    interval_prop_domain_t widen(const interval_prop_domain_t& other, bool);
     // narrowing
     interval_prop_domain_t narrow(const interval_prop_domain_t& other) const;
     //forget
@@ -120,12 +120,13 @@ class interval_prop_domain_t final {
     void operator()(const Bin&, location_t loc = boost::none, int print = 0);
     void operator()(const Un&, location_t loc = boost::none, int print = 0);
     void operator()(const LoadMapFd&, location_t loc = boost::none, int print = 0);
+    void operator()(const Atomic&, location_t loc = boost::none, int print = 0) {}
     void operator()(const Call&, location_t loc = boost::none, int print = 0);
+    void operator()(const Callx&, location_t loc = boost::none, int print = 0) {}
     void operator()(const Exit&, location_t loc = boost::none, int print = 0);
     void operator()(const Jmp&, location_t loc = boost::none, int print = 0);
     void operator()(const Mem&, location_t loc = boost::none, int print = 0);
     void operator()(const Packet&, location_t loc = boost::none, int print = 0);
-    void operator()(const LockAdd&, location_t loc = boost::none, int print = 0);
     void operator()(const Assume&, location_t loc = boost::none, int print = 0);
     void operator()(const Assert&, location_t loc = boost::none, int print = 0);
     void operator()(const ValidAccess&, location_t loc = boost::none, int print = 0);
@@ -136,10 +137,12 @@ class interval_prop_domain_t final {
     void operator()(const ValidSize&, location_t loc = boost::none, int print = 0);
     void operator()(const ValidMapKeyValue&, location_t loc = boost::none, int print = 0);
     void operator()(const ZeroCtxOffset&, location_t loc = boost::none, int print = 0);
-    void operator()(const basic_block_t& bb, bool check_termination, int print = 0);
+    void operator()(const FuncConstraint&, location_t loc = boost::none, int print = 0) {}
+    void operator()(const IncrementLoopCounter&, location_t loc = boost::none, int print = 0) {}
+    void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& os) const;
-    std::string domain_name() const;
-    crab::bound_t get_instruction_count_upper_bound();
+    crab::bound_t get_loop_count_upper_bound();
+    void initialize_loop_counter(const label_t&);
     string_invariant to_set();
     void set_require_check(check_require_func_t f);
 
