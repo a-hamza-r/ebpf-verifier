@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "crab/interval_prop_domain.hpp"
+#include "boost/endian/conversion.hpp"
 
 namespace crab {
 
@@ -359,8 +360,57 @@ interval_prop_domain_t interval_prop_domain_t::setup_entry() {
 }
 
 void interval_prop_domain_t::operator()(const Un& u, location_t loc, int print) {
-    auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
-    m_registers_interval_values.insert(u.dst.v, reg_with_loc, interval_t::top());
+    auto swap_endianness = [&](interval_t&& v, auto input, const auto& be_or_le) {
+        if (std::optional<number_t> n = v.singleton()) {
+            if (n->fits_cast_to_int64()) {
+                input = (decltype(input))n.value().cast_to_sint64();
+                decltype(input) output = be_or_le(input);
+                auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
+                m_registers_interval_values.insert(u.dst.v, reg_with_loc,
+                        interval_t(number_t(output)));
+                return;
+            }
+        }
+        m_registers_interval_values -= u.dst.v;
+    };
+
+    auto mock_interval = m_registers_interval_values.find(u.dst.v);
+    if (!mock_interval) return;
+    interval_t interval = mock_interval->to_interval();
+
+    // Swap bytes.  For 64-bit types we need the weights to fit in a
+    // signed int64, but for smaller types we don't want sign extension,
+    // so we use unsigned which still fits in a signed int64.
+    switch (u.op) {
+    case Un::Op::BE16:
+        swap_endianness(std::move(interval), uint16_t(0),
+                boost::endian::native_to_big<uint16_t>);
+        break;
+    case Un::Op::BE32:
+        swap_endianness(std::move(interval), uint32_t(0),
+                boost::endian::native_to_big<uint32_t>);
+        break;
+    case Un::Op::BE64:
+        swap_endianness(std::move(interval), int64_t(0),
+                boost::endian::native_to_big<int64_t>);
+        break;
+    case Un::Op::LE16:
+        swap_endianness(std::move(interval), uint16_t(0),
+                boost::endian::native_to_little<uint16_t>);
+        break;
+    case Un::Op::LE32:
+        swap_endianness(std::move(interval), uint32_t(0),
+                boost::endian::native_to_little<uint32_t>);
+        break;
+    case Un::Op::LE64:
+        swap_endianness(std::move(interval), int64_t(0),
+                boost::endian::native_to_little<int64_t>);
+        break;
+    case Un::Op::NEG:
+        auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
+        m_registers_interval_values.insert(u.dst.v, reg_with_loc, -interval);
+        break;
+    }
 }
 
 void interval_prop_domain_t::operator()(const LoadMapFd &u, location_t loc, int print) {
@@ -383,7 +433,6 @@ void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc, int 
 void interval_prop_domain_t::do_call(const Call& u, const interval_values_stack_t& store_in_stack,
         location_t loc) {
 
-    auto r0 = register_t{R0_RETURN_VALUE};
     for (const auto& kv : store_in_stack) {
         auto key = kv.first;
         auto width = kv.second.second;
@@ -393,6 +442,7 @@ void interval_prop_domain_t::do_call(const Call& u, const interval_values_stack_
         m_stack_slots_interval_values.store(kv.first, kv.second.first.to_interval(),
                 kv.second.second);
     }
+    auto r0 = register_t{R0_RETURN_VALUE};
     if (u.is_map_lookup) {
         m_registers_interval_values -= r0;
     }
@@ -402,10 +452,11 @@ void interval_prop_domain_t::do_call(const Call& u, const interval_values_stack_
     }
 }
 
-void interval_prop_domain_t::operator()(const Packet &u, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Packet& u, location_t loc, int print) {
     auto r0 = register_t{R0_RETURN_VALUE};
     auto r0_with_loc = reg_with_loc_t(r0, loc);
     m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
+    // TODO: scratch caller saved registers
 }
 
 void interval_prop_domain_t::assume_lt(bool strict,
@@ -1015,6 +1066,82 @@ void interval_prop_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_map
         m_stack_slots_interval_values.store(store_at, *targetreg_type, width);
 }
 
+void interval_prop_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
+    bool is_comparison_check = s.width == (Value)Imm{0};
+    if (auto maybe_interval = m_registers_interval_values.find(s.reg.v)) {
+        if (!is_comparison_check) {
+            if (s.or_null) {
+                if (auto singleton = maybe_interval->to_interval().singleton()) {
+                    if (*singleton == number_t{0}) return;
+                }
+                m_errors.push_back("Non-null number");
+            }
+            else {
+                m_errors.push_back("Only pointers can be dereferenced");
+            }
+        }
+    }
+}
+
+void interval_prop_domain_t::operator()(const Undefined& u, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Bin& b, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Call&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Exit&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Jmp&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Mem&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const LockAdd&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Assert&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Comparable&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const Addable&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const ValidStore&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const TypeConstraint&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const ValidMapKeyValue&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const ZeroCtxOffset&, location_t loc, int print) {
+    // nothing to do here
+}
+
+void interval_prop_domain_t::operator()(const basic_block_t& bb, bool check_termination, int print) {
+    // nothing to do here
+}
 void interval_prop_domain_t::set_require_check(check_require_func_t f) {}
 
 std::optional<interval_cells_t> interval_prop_domain_t::find_in_stack(uint64_t key) const {

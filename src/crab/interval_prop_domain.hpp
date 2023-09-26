@@ -116,27 +116,27 @@ class interval_prop_domain_t final {
     void operator-=(register_t reg) { m_registers_interval_values -= reg; }
 
     //// abstract transformers
-    void operator()(const Undefined&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Bin&, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Undefined&, location_t loc = boost::none, int print = 0);
+    void operator()(const Bin&, location_t loc = boost::none, int print = 0);
     void operator()(const Un&, location_t loc = boost::none, int print = 0);
     void operator()(const LoadMapFd&, location_t loc = boost::none, int print = 0);
-    void operator()(const Call&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Exit&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Jmp&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Mem&, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Call&, location_t loc = boost::none, int print = 0);
+    void operator()(const Exit&, location_t loc = boost::none, int print = 0);
+    void operator()(const Jmp&, location_t loc = boost::none, int print = 0);
+    void operator()(const Mem&, location_t loc = boost::none, int print = 0);
     void operator()(const Packet&, location_t loc = boost::none, int print = 0);
-    void operator()(const LockAdd&, location_t loc = boost::none, int print = 0) {}
+    void operator()(const LockAdd&, location_t loc = boost::none, int print = 0);
     void operator()(const Assume&, location_t loc = boost::none, int print = 0);
-    void operator()(const Assert&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const ValidAccess&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Comparable&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Addable&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const ValidStore&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const TypeConstraint&, location_t loc = boost::none, int print = 0) {}
+    void operator()(const Assert&, location_t loc = boost::none, int print = 0);
+    void operator()(const ValidAccess&, location_t loc = boost::none, int print = 0);
+    void operator()(const Comparable&, location_t loc = boost::none, int print = 0);
+    void operator()(const Addable&, location_t loc = boost::none, int print = 0);
+    void operator()(const ValidStore&, location_t loc = boost::none, int print = 0);
+    void operator()(const TypeConstraint&, location_t loc = boost::none, int print = 0);
     void operator()(const ValidSize&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidMapKeyValue&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const basic_block_t& bb, bool check_termination, int print = 0) {}
+    void operator()(const ValidMapKeyValue&, location_t loc = boost::none, int print = 0);
+    void operator()(const ZeroCtxOffset&, location_t loc = boost::none, int print = 0);
+    void operator()(const basic_block_t& bb, bool check_termination, int print = 0);
     void write(std::ostream& os) const;
     std::string domain_name() const;
     crab::bound_t get_instruction_count_upper_bound();

@@ -103,7 +103,7 @@ void type_domain_t::operator()(const Undefined& u, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const Un& u, location_t loc, int print) {
-    /* WARNING: The operation is not implemented yet.*/
+    m_interval(u, loc);
 }
 
 void type_domain_t::operator()(const LoadMapFd& u, location_t loc, int print) {
@@ -221,9 +221,15 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) 
             m_offset.check_valid_access(s, reg_type, interval_type, width_interval);
         }
     }
+    else {
+        m_interval(s, loc);
+    }
 }
 
 void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int print) {
+    auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
+    auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
+    assert(!reg_type || !mock_interval_type);
     m_region(s, loc);
 }
 
@@ -237,6 +243,8 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
     auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);
     auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
+    assert(!maybe_ptr_or_mapfd1 || !maybe_num_type1);
+    assert(!maybe_ptr_or_mapfd2 || !maybe_num_type2);
     if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
         if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
         if (!is_shared_ptr(maybe_ptr_or_mapfd1)
@@ -253,14 +261,31 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const Addable& u, location_t loc, int print) {
+    auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.ptr.v);
+    auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.num.v);
+    auto maybe_num_type1 = m_interval.find_interval_value(u.ptr.v);
+    auto maybe_num_type2 = m_interval.find_interval_value(u.num.v);
+    assert(!maybe_ptr_or_mapfd1 || !maybe_num_type1);
+    assert(!maybe_ptr_or_mapfd2 || !maybe_num_type2);
     m_region(u, loc);
+    // TODO: move the definition from the region domain to the type domain
 }
 
 void type_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
+    auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.mem.v);
+    auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.val.v);
+    auto maybe_num_type1 = m_interval.find_interval_value(u.mem.v);
+    auto maybe_num_type2 = m_interval.find_interval_value(u.val.v);
+    assert(!maybe_ptr_or_mapfd1 || !maybe_num_type1);
+    assert(!maybe_ptr_or_mapfd2 || !maybe_num_type2);
     m_region(u, loc);
+    // TODO: move the definition from the region domain to the type domain
 }
 
 void type_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
+    auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(u.reg.v);
+    auto maybe_num_type = m_interval.find_interval_value(u.reg.v);
+    assert(!maybe_ptr_or_mapfd || !maybe_num_type);
     m_interval(u, loc);
 }
 
@@ -290,7 +315,6 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
     if (maybe_ptr_or_mapfd_basereg && maybe_mapfd) {
         auto mapfd = maybe_mapfd.value();
         if (is_mapfd_type(maybe_mapfd)) {
-            // TODO: define width
             auto ptr_or_mapfd_basereg = maybe_ptr_or_mapfd_basereg.value();
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_basereg)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd_basereg);
