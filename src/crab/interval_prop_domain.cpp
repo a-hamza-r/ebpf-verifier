@@ -462,7 +462,7 @@ void interval_prop_domain_t::operator()(const Packet& u, location_t loc, int pri
 void interval_prop_domain_t::assume_lt(bool strict,
         interval_t&& left_interval, interval_t&& right_interval,
         interval_t&& left_interval_orig, interval_t&& right_interval_orig,
-        register_t left, Value right, location_t loc) {
+        register_t left, Value right, location_t loc, bool is_signed) {
     auto reg_with_loc_left = reg_with_loc_t(left, loc);
     auto rlb = right_interval.lb();
     auto rub = right_interval.ub();
@@ -474,7 +474,8 @@ void interval_prop_domain_t::assume_lt(bool strict,
     auto lub_orig = left_interval_orig.ub();
 
     if (strict ? llb < rlb : llb <= rlb && lub >= rlb) {
-        auto interval_to_insert = interval_t(llb_orig, strict ? rlb - number_t{1} : rlb);
+        auto lb = is_signed ? llb_orig : number_t{0};
+        auto interval_to_insert = interval_t(lb, strict ? rlb - number_t{1} : rlb);
         m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
     }
     else if (left_interval <= right_interval && strict ? lub < rub : lub <= rub &&
@@ -485,7 +486,8 @@ void interval_prop_domain_t::assume_lt(bool strict,
         m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
     }
     else if (lub >= rub && strict ? llb < rub : llb <= rub) {
-        auto interval_to_insert_left = interval_t(llb_orig, strict ? rub - number_t{1} : rub);
+        auto lb = is_signed ? llb_orig : number_t{0};
+        auto interval_to_insert_left = interval_t(lb, strict ? rub - number_t{1} : rub);
         m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rub)
         // and set left to the rest of the interval < (or <=) of right
@@ -548,7 +550,7 @@ void interval_prop_domain_t::assume_gt(bool strict,
 void interval_prop_domain_t::assume_gt_and_lt(bool is64, bool strict, bool is_lt,
         interval_t&& left_interval, interval_t&& right_interval,
         interval_t&& left_interval_orig, interval_t&& right_interval_orig,
-        register_t left, Value right, location_t loc) {
+        register_t left, Value right, location_t loc, bool is_signed) {
 
     auto llb = left_interval.lb();
     auto lub = left_interval.ub();
@@ -572,11 +574,20 @@ void interval_prop_domain_t::assume_gt_and_lt(bool is64, bool strict, bool is_lt
         // Left unsigned interval is higher than right unsigned interval.
         m_registers_interval_values.set_to_top();
         return;
+    } else if (left_interval_orig.is_top() && right_interval_orig.is_top()) {
+        m_registers_interval_values.insert(left, reg_with_loc_t(left, loc), interval_t::top());
+        if (std::holds_alternative<Reg>(right)) {
+            auto right_reg = std::get<Reg>(right).v;
+            m_registers_interval_values.insert(right_reg, reg_with_loc_t(right_reg, loc),
+                    interval_t::top());
+        }
+        return;
     }
 
     if (is_lt)
         assume_lt(strict, std::move(left_interval), std::move(right_interval),
-                std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc);
+                std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc,
+                is_signed);
     else
         assume_gt(strict, std::move(left_interval), std::move(right_interval),
                 std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc);
@@ -616,7 +627,8 @@ void interval_prop_domain_t::assume_unsigned_cst_interval(Condition::Op op, bool
     bool strict = op == Condition::Op::LT || op == Condition::Op::GT;
 
     assume_gt_and_lt(is64, strict, is_lt, std::move(left_interval), std::move(right_interval),
-            std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc);
+            std::move(left_interval_orig), std::move(right_interval_orig), left, right, loc,
+            false);
 }
 
 void interval_prop_domain_t::assume_signed_cst_interval(Condition::Op op, bool is64,

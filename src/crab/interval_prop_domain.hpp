@@ -155,11 +155,11 @@ class interval_prop_domain_t final {
             interval_t&&, interval_t&&, register_t, Value, location_t);
     void assume_cst(Condition::Op, bool, register_t, Value, location_t);
     void assume_lt(bool, interval_t&&, interval_t&&, interval_t&&, interval_t&&,
-            register_t, Value, location_t);
+            register_t, Value, location_t, bool);
     void assume_gt(bool, interval_t&&, interval_t&&, interval_t&&, interval_t&&,
             register_t, Value, location_t);
     void assume_gt_and_lt(bool, bool, bool, interval_t&&, interval_t&&,
-            interval_t&&, interval_t&&, register_t, Value, location_t);
+            interval_t&&, interval_t&&, register_t, Value, location_t, bool = true);
     std::optional<mock_interval_t> find_interval_value(register_t) const;
     std::optional<mock_interval_t> find_interval_at_loc(const reg_with_loc_t reg) const;
     std::optional<interval_cells_t> find_in_stack(uint64_t) const;
