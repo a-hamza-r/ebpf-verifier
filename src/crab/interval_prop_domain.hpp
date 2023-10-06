@@ -149,6 +149,8 @@ class interval_prop_domain_t final {
     void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,
             const std::optional<ptr_or_mapfd_t>&, const std::optional<ptr_or_mapfd_t>&,
             const interval_t&, location_t);
+    void check_valid_access(const ValidAccess&, interval_t&&, std::optional<interval_t>,
+            bool = false);
     void assume_unsigned_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&,
             interval_t&&, interval_t&&, register_t, Value, location_t);
     void assume_signed_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&,

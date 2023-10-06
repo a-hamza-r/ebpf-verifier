@@ -1078,12 +1078,39 @@ void interval_prop_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_map
         m_stack_slots_interval_values.store(store_at, *targetreg_type, width);
 }
 
-void interval_prop_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
-    bool is_comparison_check = s.width == (Value)Imm{0};
-    if (auto maybe_interval = m_registers_interval_values.find(s.reg.v)) {
+void interval_prop_domain_t::check_valid_access(const ValidAccess& s, interval_t&& interval,
+        std::optional<interval_t> width_interval, bool check_stack_all_numeric) {
+
+    if (check_stack_all_numeric) {
+        uint64_t start_offset = 0;
+        int width = 0;
+        auto start_interval = interval + interval_t{number_t{s.offset}};
+        if (auto finite_size = start_interval.finite_size()) {
+            if (auto start_interval_lb = start_interval.lb().number()) {
+                start_offset = (uint64_t)(*start_interval_lb);
+                if (auto width_interval_ub = width_interval->ub().number()) {
+                    width = (int)(*finite_size + *width_interval_ub);
+                    if (!m_stack_slots_interval_values.all_numeric(start_offset, width)) {
+                        m_errors.push_back("Stack access not numeric");
+                    }
+                }
+                else {
+                    m_errors.push_back("Width information not available");
+                }
+            }
+            else {
+                m_errors.push_back("Offset information not available");
+            }
+        }
+        else {
+            m_errors.push_back("Register interval not finite for stack access");
+        }
+    }
+    else {
+        bool is_comparison_check = s.width == (Value)Imm{0};
         if (!is_comparison_check) {
             if (s.or_null) {
-                if (auto singleton = maybe_interval->to_interval().singleton()) {
+                if (auto singleton = interval.singleton()) {
                     if (*singleton == number_t{0}) return;
                 }
                 m_errors.push_back("Non-null number");
@@ -1093,6 +1120,10 @@ void interval_prop_domain_t::operator()(const ValidAccess& s, location_t loc, in
             }
         }
     }
+}
+
+void interval_prop_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
+    // nothing to do here
 }
 
 void interval_prop_domain_t::operator()(const Undefined& u, location_t loc, int print) {
