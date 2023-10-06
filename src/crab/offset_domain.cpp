@@ -840,17 +840,13 @@ bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
 }
 
 void offset_domain_t::check_valid_access(const ValidAccess& s,
-        std::optional<ptr_or_mapfd_t>& reg_type,
-        std::optional<interval_t>, std::optional<interval_t>) {
-    if (std::holds_alternative<Reg>(s.width)) return;
-    int w = std::get<Imm>(s.width).v;
+        std::optional<ptr_or_mapfd_t>& reg_type, int w) {
     if (w == 0 || !reg_type) return;
 
     bool is_comparison_check = s.width == (Value)Imm{0};
     if (check_packet_access(s.reg, w, s.offset, is_comparison_check)) return;
     m_errors.push_back("valid access check failed");
     //std::cout << "type_error: valid access assert fail\n";
-    //exit(1);
 }
 
 void offset_domain_t::operator()(const Assert &u, location_t loc, int print) {

@@ -283,8 +283,7 @@ class offset_domain_t final {
     bool upper_bound_satisfied(const dist_t&, int, int, bool) const;
     bool lower_bound_satisfied(const dist_t&, int) const;
     bool check_packet_access(const Reg&, int, int, bool) const;
-    void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&,
-            std::optional<interval_t>, std::optional<interval_t>);
+    void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&, int);
 
     std::optional<dist_t> find_in_ctx(int) const;
     std::optional<dist_cells_t> find_in_stack(int) const;

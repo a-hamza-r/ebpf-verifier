@@ -620,10 +620,8 @@ void region_domain_t::operator()(const Addable &u, location_t loc, int print) {
     m_errors.push_back("Addable assertion fail");
 }
 
-void region_domain_t::operator()(const ValidAccess &s, location_t loc, int print) {
+void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
     bool is_comparison_check = s.width == (Value)Imm{0};
-    if (std::holds_alternative<Reg>(s.width)) return;
-    int width = std::get<Imm>(s.width).v;
 
     auto maybe_ptr_or_mapfd_type = m_registers.find(s.reg.v);
     if (maybe_ptr_or_mapfd_type) {
@@ -664,6 +662,11 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc, int print
         //std::cout << "type error: valid access assert fail\n";
         m_errors.push_back("valid access assert fail");
     }
+
+}
+
+void region_domain_t::operator()(const ValidAccess &s, location_t loc, int print) {
+    // nothing to do here
 }
 
 void region_domain_t::operator()(const ValidStore& u, location_t loc, int print) {

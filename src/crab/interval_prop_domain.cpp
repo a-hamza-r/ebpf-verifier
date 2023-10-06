@@ -1079,23 +1079,16 @@ void interval_prop_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_map
 }
 
 void interval_prop_domain_t::check_valid_access(const ValidAccess& s, interval_t&& interval,
-        std::optional<interval_t> width_interval, bool check_stack_all_numeric) {
+        int width, bool check_stack_all_numeric) {
 
     if (check_stack_all_numeric) {
-        uint64_t start_offset = 0;
-        int width = 0;
         auto start_interval = interval + interval_t{number_t{s.offset}};
         if (auto finite_size = start_interval.finite_size()) {
             if (auto start_interval_lb = start_interval.lb().number()) {
-                start_offset = (uint64_t)(*start_interval_lb);
-                if (auto width_interval_ub = width_interval->ub().number()) {
-                    width = (int)(*finite_size + *width_interval_ub);
-                    if (!m_stack_slots_interval_values.all_numeric(start_offset, width)) {
-                        m_errors.push_back("Stack access not numeric");
-                    }
-                }
-                else {
-                    m_errors.push_back("Width information not available");
+                auto start_offset = (uint64_t)(*start_interval_lb);
+                int width_from_start = (int)(*finite_size) + width;
+                if (!m_stack_slots_interval_values.all_numeric(start_offset, width_from_start)) {
+                    m_errors.push_back("Stack access not numeric");
                 }
             }
             else {

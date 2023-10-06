@@ -173,6 +173,7 @@ class region_domain_t final {
     interval_t do_bin(const Bin&, const std::optional<interval_t>&,
             const std::optional<crab::ptr_or_mapfd_t>&,
             const std::optional<crab::ptr_or_mapfd_t>&, location_t);
+    void check_valid_access(const ValidAccess &, int);
     void update_ptr_or_mapfd(crab::ptr_or_mapfd_t&&, const interval_t&&,
             const crab::reg_with_loc_t&, uint8_t);
 

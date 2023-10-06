@@ -214,7 +214,6 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) 
     auto interval_type = 
         mock_interval_type ? mock_interval_type->to_interval() : std::optional<interval_t>{};
     if (reg_type) {
-        m_region(s, loc);
         std::optional<mock_interval_t> width_mock_interval;
         if (std::holds_alternative<Reg>(s.width)) {
             width_mock_interval = m_interval.find_interval_value(std::get<Reg>(s.width).v);
@@ -228,17 +227,24 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) 
             width_mock_interval = mock_interval_t{interval_t{number_t{imm.v}}};
         }
         auto width_interval = width_mock_interval->to_interval();
-        if (is_packet_ptr(reg_type)) {
-            m_offset.check_valid_access(s, reg_type, interval_type, std::optional<interval_t>{});
+        if (auto width_number = width_interval.ub().number()) {
+            int width = (int)*width_number;
+            m_region.check_valid_access(s, width);
+            if (is_packet_ptr(reg_type)) {
+                m_offset.check_valid_access(s, reg_type, width);
+            }
+            if (s.access_type == AccessType::read && is_stack_ptr(reg_type)) {
+                auto stack_ptr = std::get<ptr_with_off_t>(*reg_type);
+                auto offset_ptr = stack_ptr.get_offset().to_interval();
+                m_interval.check_valid_access(s, std::move(offset_ptr), width, true);
+            }
         }
-        if (s.access_type == AccessType::read && is_stack_ptr(reg_type)) {
-            auto stack_ptr = std::get<ptr_with_off_t>(*reg_type);
-            auto offset_ptr = stack_ptr.get_offset().to_interval();
-            m_interval.check_valid_access(s, std::move(offset_ptr), width_interval, true);
+        else {
+            m_errors.push_back("width is unknown for valid access");
         }
     }
     else {
-        m_interval.check_valid_access(s, std::move(*interval_type), std::nullopt);
+        m_interval.check_valid_access(s, std::move(*interval_type), -1);
     }
 }
 
