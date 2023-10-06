@@ -91,6 +91,12 @@ void registers_cp_state_t::operator-=(register_t var) {
     m_cur_def[var] = nullptr;
 }
 
+void registers_cp_state_t::scratch_caller_saved_registers() {
+    for (int i = R1_ARG; i <= R5_ARG; i++) {
+        operator-=(i);
+    }
+}
+
 bool stack_cp_state_t::is_bottom() const {
     return m_is_bottom;
 }
@@ -449,13 +455,14 @@ void interval_prop_domain_t::do_call(const Call& u, const stack_cells_t& store_i
         auto r0_with_loc = reg_with_loc_t(r0, loc);
         m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
     }
+    m_registers_interval_values.scratch_caller_saved_registers();
 }
 
 void interval_prop_domain_t::operator()(const Packet& u, location_t loc, int print) {
     auto r0 = register_t{R0_RETURN_VALUE};
     auto r0_with_loc = reg_with_loc_t(r0, loc);
     m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
-    // TODO: scratch caller saved registers
+    m_registers_interval_values.scratch_caller_saved_registers();
 }
 
 void interval_prop_domain_t::assume_lt(bool strict,

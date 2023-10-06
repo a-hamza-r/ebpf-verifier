@@ -84,6 +84,7 @@ class register_types_t {
     std::optional<ptr_or_mapfd_t> find(register_t key) const;
     [[nodiscard]] live_registers_t &get_vars() { return m_cur_def; }
     void forget_packet_ptrs();
+    void scratch_caller_saved_registers();
     void adjust_bb_for_registers(location_t loc);
 };
 

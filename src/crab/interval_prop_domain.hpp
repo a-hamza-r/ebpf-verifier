@@ -43,6 +43,7 @@ class registers_cp_state_t {
                 bool is_bottom = false)
             : m_interval_env(interval_env), m_is_bottom(is_bottom) {}
         void adjust_bb_for_registers(location_t);
+        void scratch_caller_saved_registers();
 };
 
 using interval_cells_t = std::pair<mock_interval_t, int>;    // intervals with width

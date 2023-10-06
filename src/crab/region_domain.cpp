@@ -37,6 +37,12 @@ std::optional<ptr_no_off_t> ctx_t::find(uint64_t key) const {
     return it->second;
 }
 
+void register_types_t::scratch_caller_saved_registers() {
+    for (int i = R1_ARG; i <= R5_ARG; i++) {
+        operator-=(i);
+    }
+}
+
 void register_types_t::forget_packet_ptrs() {
     for (auto r = register_t{0}; r <= register_t{10}; ++r) {
         auto reg = find(r);
@@ -594,10 +600,10 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
         m_registers -= r0_reg;
     }
 out:
+    m_registers.scratch_caller_saved_registers();
     if (u.reallocate_packet) {
         m_registers.forget_packet_ptrs();
     }
-
 }
 
 void region_domain_t::operator()(const Call& u, location_t loc, int print) {
@@ -616,8 +622,9 @@ void region_domain_t::operator()(const Atomic &u, location_t loc, int print) {
     // WARNING: Not implemented yet.
 }
 
-void region_domain_t::operator()(const Packet &u, location_t loc, int print) {
+void region_domain_t::operator()(const Packet& u, location_t loc, int print) {
     m_registers -= register_t{R0_RETURN_VALUE};
+    m_registers.scratch_caller_saved_registers();
 }
 
 void region_domain_t::operator()(const Addable &u, location_t loc, int print) {

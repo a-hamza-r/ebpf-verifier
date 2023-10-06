@@ -128,7 +128,8 @@ class registers_state_t {
         std::optional<dist_t> find(register_t key) const;
         friend std::ostream& operator<<(std::ostream& o, const registers_state_t& p);
         void adjust_bb_for_registers(location_t);
-        void print_all_register_types() const;
+        void scratch_caller_saved_registers();
+        void forget_packet_pointers();
 };
 
 using dist_cells_t = std::pair<dist_t, int>;

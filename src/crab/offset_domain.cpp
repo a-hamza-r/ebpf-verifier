@@ -236,6 +236,18 @@ void registers_state_t::adjust_bb_for_registers(location_t loc) {
     }
 }
 
+void registers_state_t::scratch_caller_saved_registers() {
+    for (int i = R1_ARG; i <= R5_ARG; i++) {
+        operator-=(i);
+    }
+}
+
+void registers_state_t::forget_packet_pointers() {
+    for (int i = register_t{0}; i <= register_t{10}; i++) {
+        operator-=(i);
+    }
+}
+
 void stack_state_t::set_to_top() {
     m_slot_dists.clear();
     m_is_bottom = false;
@@ -749,6 +761,10 @@ void offset_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
         m_stack_state -= overlapping_cells;
     }
     m_reg_state -= register_t{R0_RETURN_VALUE};
+    m_reg_state.scratch_caller_saved_registers();
+    if (u.reallocate_packet) {
+        m_reg_state.forget_packet_pointers();
+    }
 }
 
 void offset_domain_t::operator()(const Call& u, location_t loc, int print) {
@@ -762,6 +778,7 @@ void offset_domain_t::operator()(const Jmp& u, location_t loc, int print) {
 
 void offset_domain_t::operator()(const Packet& u, location_t loc, int print) {
     m_reg_state -= register_t{R0_RETURN_VALUE};
+    m_reg_state.scratch_caller_saved_registers();
 }
 
 void offset_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
