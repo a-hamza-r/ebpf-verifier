@@ -430,17 +430,16 @@ void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc, int 
     m_errors.push_back("Valid Size assertion fail");
 }
 
-void interval_prop_domain_t::do_call(const Call& u, const interval_values_stack_t& store_in_stack,
+void interval_prop_domain_t::do_call(const Call& u, const stack_cells_t& store_in_stack,
         location_t loc) {
 
     for (const auto& kv : store_in_stack) {
-        auto key = kv.first;
-        auto width = kv.second.second;
+        auto offset = kv.first;
+        auto width = kv.second;
         auto overlapping_cells
-            = m_stack_slots_interval_values.find_overlapping_cells(key, width);
-        m_stack_slots_interval_values.remove_overlap(overlapping_cells, key, width);
-        m_stack_slots_interval_values.store(kv.first, kv.second.first.to_interval(),
-                kv.second.second);
+            = m_stack_slots_interval_values.find_overlapping_cells(offset, width);
+        m_stack_slots_interval_values.remove_overlap(overlapping_cells, offset, width);
+        m_stack_slots_interval_values.store(offset, interval_t::top(), width);
     }
     auto r0 = register_t{R0_RETURN_VALUE};
     if (u.is_map_lookup) {

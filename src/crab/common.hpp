@@ -171,6 +171,8 @@ inline std::ostream& operator<<(std::ostream& o, const region_t& t) {
     return o;
 }
 
+using stack_cells_t = std::vector<std::pair<uint64_t, int>>;
+
 } // namespace crab
 
 

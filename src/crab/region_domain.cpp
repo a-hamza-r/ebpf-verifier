@@ -438,7 +438,7 @@ void region_domain_t::operator()(const basic_block_t& bb, int print) {
 }
 
 void region_domain_t::operator()(const Un& u, location_t loc, int print) {
-    // nothing to do here
+    m_registers -= u.dst.v;
 }
 
 void region_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
@@ -553,7 +553,14 @@ void region_domain_t::operator()(const LoadMapFd &u, location_t loc, int print) 
     do_load_mapfd((register_t)u.dst.v, u.mapfd, loc);
 }
 
-void region_domain_t::operator()(const Call& u, location_t loc, int print) {
+void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {
+    for (const auto& kv : cells) {
+        auto offset = kv.first;
+        auto width = kv.second;
+        auto overlapping_cells
+            = m_stack.find_overlapping_cells(offset, width);
+        m_stack -= overlapping_cells;
+    }
     std::optional<Reg> maybe_fd_reg{};
     for (ArgSingle param : u.singles) {
         if (param.kind == ArgSingle::Kind::MAP_FD) maybe_fd_reg = param.reg;
@@ -590,6 +597,11 @@ out:
     if (u.reallocate_packet) {
         m_registers.forget_packet_ptrs();
     }
+
+}
+
+void region_domain_t::operator()(const Call& u, location_t loc, int print) {
+    // nothing to do here
 }
 
 void region_domain_t::operator()(const Callx &u, location_t loc, int print) {

@@ -148,7 +148,7 @@ class interval_prop_domain_t final {
 
     void do_load(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>, bool, location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>);
-    void do_call(const Call&, const interval_values_stack_t&, location_t);
+    void do_call(const Call&, const stack_cells_t&, location_t);
     void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,
             const std::optional<ptr_or_mapfd_t>&, const std::optional<ptr_or_mapfd_t>&,
             const interval_t&, location_t);

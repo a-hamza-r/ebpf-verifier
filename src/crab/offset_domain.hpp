@@ -191,7 +191,6 @@ class ctx_offsets_t {
         int get_size() const;
 };
 
-
 class offset_domain_t final {
 
     bool m_is_bottom = false;
@@ -280,6 +279,7 @@ class offset_domain_t final {
             const std::optional<interval_t>&,
             std::optional<ptr_or_mapfd_t>&,
             std::optional<ptr_or_mapfd_t>&, location_t);
+    void do_call(const Call&, const stack_cells_t&, location_t);
     bool upper_bound_satisfied(const dist_t&, int, int, bool) const;
     bool lower_bound_satisfied(const dist_t&, int) const;
     bool check_packet_access(const Reg&, int, int, bool) const;

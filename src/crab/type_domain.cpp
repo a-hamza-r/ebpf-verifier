@@ -122,8 +122,7 @@ void type_domain_t::operator()(const IncrementLoopCounter &u, location_t loc, in
 
 void type_domain_t::operator()(const Call& u, location_t loc, int print) {
 
-    using interval_values_stack_t = std::map<uint64_t, interval_cells_t>;
-    interval_values_stack_t stack_values;
+    stack_cells_t stack_values;
     for (ArgPair param : u.pairs) {
         if (param.kind == ArgPair::Kind::PTR_TO_WRITABLE_MEM) {
             auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(param.mem.v);
@@ -142,20 +141,13 @@ void type_domain_t::operator()(const Call& u, location_t loc, int print) {
                 auto offset = (uint64_t)offset_singleton.value();
                 if (auto single_width = width_interval.singleton()) {
                     int width = (int)single_width.value();
-
-                    // Removing overlapping cells
-                    // TODO: do it for all domains
-                    auto overlapping_cells
-                        = m_interval.find_overlapping_cells_in_stack(offset, width);
-                    m_interval.remove_overlap_in_stack(overlapping_cells, offset, width);
-
-                    stack_values[offset] = std::make_pair(interval_t::top(), width);
+                    stack_values.push_back(std::make_pair(offset, width));
                 }
             }
         }
     }
-    m_region(u, loc);
-    m_offset(u, loc);
+    m_region.do_call(u, stack_values, loc);
+    m_offset.do_call(u, stack_values, loc);
     m_interval.do_call(u, stack_values, loc);
 }
 

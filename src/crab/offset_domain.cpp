@@ -733,17 +733,27 @@ void offset_domain_t::operator()(const Undefined& u, location_t loc, int print) 
 }
 
 void offset_domain_t::operator()(const Un& u, location_t loc, int print) {
-    // nothing to do here
+    m_reg_state -= u.dst.v;
 }
 
 void offset_domain_t::operator()(const LoadMapFd& u, location_t loc, int print) {
     m_reg_state -= u.dst.v;
 }
 
-void offset_domain_t::operator()(const Call& u, location_t loc, int print) {
+void offset_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {
+    for (const auto& kv : cells) {
+        auto offset = kv.first;
+        auto width = kv.second;
+        auto overlapping_cells
+            = m_stack_state.find_overlapping_cells(offset, width);
+        m_stack_state -= overlapping_cells;
+    }
     m_reg_state -= register_t{R0_RETURN_VALUE};
 }
 
+void offset_domain_t::operator()(const Call& u, location_t loc, int print) {
+    // nothing to do here
+}
 void offset_domain_t::operator()(const Exit& u, location_t loc, int print) {}
 
 void offset_domain_t::operator()(const Jmp& u, location_t loc, int print) {
