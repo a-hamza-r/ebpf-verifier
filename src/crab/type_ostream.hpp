@@ -17,3 +17,4 @@ void print_annotated(std::ostream& o, const Call& call, std::optional<crab::ptr_
 void print_annotated(std::ostream& o, const Bin& b, std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t>&, std::optional<crab::mock_interval_t>&);
 void print_annotated(std::ostream& o, const LoadMapFd& u, std::optional<crab::ptr_or_mapfd_t>& p);
 void print_annotated(std::ostream& o, const Mem& b, std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t>&, std::optional<crab::mock_interval_t>&);
+void print_annotated(std::ostream& o, const Un& b, std::optional<crab::mock_interval_t>&);

@@ -76,3 +76,29 @@ void print_annotated(std::ostream& o, const Mem& b, std::optional<crab::ptr_or_m
     o << "(" << b.access.basereg << sign << offset << ")\n";
 }
 
+std::string op(Un::Op op) {
+    switch (op) {
+        case Un::Op::NEG:
+            return "-";
+        case Un::Op::BE16:
+            return "be16";
+        case Un::Op::BE32:
+            return "be32";
+        case Un::Op::BE64:
+            return "be64";
+        case Un::Op::LE16:
+            return "le16";
+        case Un::Op::LE32:
+            return "le32";
+        case Un::Op::LE64:
+            return "le64";
+        default:
+            return "unknown";
+    }
+}
+
+void print_annotated(std::ostream& o, const Un& b, std::optional<crab::mock_interval_t>& n) {
+    o << "  ";
+    print_register(o, b.dst, std::nullopt, std::nullopt, n);
+    o << " = " << op(b.op) << " " << b.dst << "\n";
+}

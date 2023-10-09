@@ -619,6 +619,12 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
             auto region = typ.find_ptr_or_mapfd_at_loc(reg);
             print_annotated(o, u, region);
         }
+        else if (std::holds_alternative<Un>(statement)) {
+            auto u = std::get<Un>(statement);
+            auto reg = crab::reg_with_loc_t(u.dst.v, loc);
+            auto interval = typ.find_interval_at_loc(reg);
+            print_annotated(o, u, interval);
+        }
         else o << "  " << statement << "\n";
     }
 

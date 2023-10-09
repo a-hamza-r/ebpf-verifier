@@ -367,17 +367,18 @@ interval_prop_domain_t interval_prop_domain_t::setup_entry() {
 
 void interval_prop_domain_t::operator()(const Un& u, location_t loc, int print) {
     auto swap_endianness = [&](interval_t&& v, auto input, const auto& be_or_le) {
+        auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
         if (std::optional<number_t> n = v.singleton()) {
             if (n->fits_cast_to_int64()) {
                 input = (decltype(input))n.value().cast_to_sint64();
                 decltype(input) output = be_or_le(input);
-                auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
                 m_registers_interval_values.insert(u.dst.v, reg_with_loc,
                         interval_t(number_t(output)));
                 return;
             }
         }
-        m_registers_interval_values -= u.dst.v;
+        m_registers_interval_values.insert(u.dst.v, reg_with_loc,
+                interval_t::top());
     };
 
     auto mock_interval = m_registers_interval_values.find(u.dst.v);
