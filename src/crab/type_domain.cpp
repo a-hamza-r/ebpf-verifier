@@ -196,8 +196,20 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
     }
 }
 
-void type_domain_t::operator()(const ValidDivisor& s, location_t loc, int print) {
-    /* WARNING: The operation is not implemented yet.*/
+void type_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
+    auto maybe_ptr_or_mapfd_reg = m_region.find_ptr_or_mapfd_type(u.reg.v);
+    auto maybe_num_type_reg = m_interval.find_interval_value(u.reg.v);
+    assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
+
+    if (is_ptr_type(maybe_ptr_or_mapfd_reg)) {
+        m_errors.push_back("Only numbers can be used as divisors");
+    }
+    else if (maybe_num_type_reg.has_value() && !thread_local_options.allow_division_by_zero) {
+        auto num_type_reg = maybe_num_type_reg->to_interval();
+        if (interval_t{number_t{0}} <= num_type_reg) {
+            m_errors.push_back("Possible division by zero");
+        }
+    }
 }
 
 void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
@@ -275,32 +287,52 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
 }
 
 void type_domain_t::operator()(const Addable& u, location_t loc, int print) {
-    auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.ptr.v);
-    auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.num.v);
-    auto maybe_num_type1 = m_interval.find_interval_value(u.ptr.v);
-    auto maybe_num_type2 = m_interval.find_interval_value(u.num.v);
-    assert(!maybe_ptr_or_mapfd1 || !maybe_num_type1);
-    assert(!maybe_ptr_or_mapfd2 || !maybe_num_type2);
-    m_region(u, loc);
-    // TODO: move the definition from the region domain to the type domain
+    auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
+    auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
+    auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
+    auto maybe_num_type_num = m_interval.find_interval_value(u.num.v);
+    assert(!maybe_ptr_or_mapfd_ptr.has_value() || !maybe_num_type_ptr.has_value());
+    assert(!maybe_ptr_or_mapfd_num.has_value() || !maybe_num_type_num.has_value());
+
+    // a -> b <-> !a || b
+    // is_ptr(ptr) -> is_num(num) <-> !is_ptr(ptr) || is_num(num)
+    if (!is_ptr_type(maybe_ptr_or_mapfd_ptr) ||
+      (!maybe_ptr_or_mapfd_num.has_value() || maybe_num_type_num.has_value())) {
+        return;
+    }
+    m_errors.push_back("Addable assertion fail");
 }
 
 void type_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
-    auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.mem.v);
-    auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.val.v);
-    auto maybe_num_type1 = m_interval.find_interval_value(u.mem.v);
-    auto maybe_num_type2 = m_interval.find_interval_value(u.val.v);
-    assert(!maybe_ptr_or_mapfd1 || !maybe_num_type1);
-    assert(!maybe_ptr_or_mapfd2 || !maybe_num_type2);
-    m_region(u, loc);
-    // TODO: move the definition from the region domain to the type domain
+    auto maybe_ptr_or_mapfd_mem = m_region.find_ptr_or_mapfd_type(u.mem.v);
+    auto maybe_ptr_or_mapfd_val = m_region.find_ptr_or_mapfd_type(u.val.v);
+    auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
+    auto maybe_num_type_val = m_interval.find_interval_value(u.val.v);
+    assert(!maybe_ptr_or_mapfd_mem.has_value() || !maybe_num_type_mem.has_value());
+    assert(!maybe_ptr_or_mapfd_val.has_value() || !maybe_num_type_val.has_value());
+
+    // a -> b <-> !a || b
+    // !is_stack_ptr(mem) -> is_num(val) <-> is_stack_ptr(mem) || is_num(val)
+    if (is_stack_ptr(maybe_ptr_or_mapfd_mem) ||
+            (!maybe_ptr_or_mapfd_val.has_value() || maybe_num_type_val.has_value())) {
+        return;
+    }
+    m_errors.push_back("Valid store assertion fail");
 }
 
 void type_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
     auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type = m_interval.find_interval_value(u.reg.v);
     assert(!maybe_ptr_or_mapfd || !maybe_num_type);
-    m_interval(u, loc);
+
+    if (maybe_num_type) {
+        auto reg_value = maybe_num_type.value();
+        if ((u.can_be_zero && reg_value.lb() >= bound_t{number_t{0}})
+                || (!u.can_be_zero && reg_value.lb() > bound_t{number_t{0}})) {
+            return;
+        }
+    }
+    m_errors.push_back("Valid Size assertion fail");
 }
 
 void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int print) {

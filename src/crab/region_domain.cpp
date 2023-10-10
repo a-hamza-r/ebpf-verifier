@@ -448,7 +448,7 @@ void region_domain_t::operator()(const Un& u, location_t loc, int print) {
 }
 
 void region_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
-    /* WARNING: The operation is not implemented yet.*/
+    // nothing to do here
 }
 
 void region_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
@@ -628,15 +628,7 @@ void region_domain_t::operator()(const Packet& u, location_t loc, int print) {
 }
 
 void region_domain_t::operator()(const Addable &u, location_t loc, int print) {
-
-    auto maybe_ptr_type1 = m_registers.find(u.ptr.v);
-    auto maybe_ptr_type2 = m_registers.find(u.num.v);
-    // a -> b <-> !a || b
-    if (!maybe_ptr_type1 || !maybe_ptr_type2) {
-        return;
-    }
-    //std::cout << "type error: Addable assertion fail\n";
-    m_errors.push_back("Addable assertion fail");
+    // nothing to do here
 }
 
 void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
@@ -689,15 +681,7 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc, int print
 }
 
 void region_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
-
-    bool is_stack_p = is_stack_ptr(m_registers.find(u.val.v));
-    auto maybe_ptr_type2 = m_registers.find(u.val.v);
-
-    if (is_stack_p || !maybe_ptr_type2) {
-        return;
-    }
-    //std::cout << "type error: Valid store assertion fail\n";
-    m_errors.push_back("Valid store assertion fail");
+    // nothing to do here
 }
 
 region_domain_t&& region_domain_t::setup_entry() {

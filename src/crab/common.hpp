@@ -134,6 +134,11 @@ class reg_with_loc_t {
 
 using ptr_or_mapfd_t = std::variant<ptr_with_off_t, ptr_no_off_t, mapfd_t>;
 
+inline bool is_ptr_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
+    return (ptr_or_mapfd && (std::holds_alternative<ptr_with_off_t>(*ptr_or_mapfd)
+                || std::holds_alternative<ptr_no_off_t>(*ptr_or_mapfd)));
+}
+
 inline bool is_mapfd_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
     return (ptr_or_mapfd && std::holds_alternative<mapfd_t>(*ptr_or_mapfd));
 }

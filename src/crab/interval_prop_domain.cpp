@@ -425,16 +425,7 @@ void interval_prop_domain_t::operator()(const LoadMapFd &u, location_t loc, int 
 }
 
 void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc, int print) {
-    auto reg_v = m_registers_interval_values.find(s.reg.v);
-    if (reg_v) {
-        auto reg_value = reg_v.value();
-        if ((s.can_be_zero && reg_value.lb() >= bound_t{number_t{0}})
-                || (!s.can_be_zero && reg_value.lb() > bound_t{number_t{0}})) {
-            return;
-        }
-    }
-    //std::cout << "type error: Valid Size assertion fail\n";
-    m_errors.push_back("Valid Size assertion fail");
+    // nothing to do here
 }
 
 void interval_prop_domain_t::do_call(const Call& u, const stack_cells_t& store_in_stack,
