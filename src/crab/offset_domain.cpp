@@ -125,9 +125,9 @@ void equality_t::write(std::ostream& o) const {
     o << m_lhs << " = " << m_rhs;
 }
 
-void registers_state_t::insert(register_t reg, const reg_with_loc_t& reg_with_loc,
-        const dist_t& dist) {
-    (*m_offset_env)[reg_with_loc] = dist;
+void registers_state_t::insert(register_t reg, const location_t& loc, dist_t&& dist) {
+    reg_with_loc_t reg_with_loc{reg, loc};
+    (*m_offset_env)[reg_with_loc] = std::move(dist);
     m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
 }
 
@@ -139,8 +139,7 @@ std::optional<dist_t> registers_state_t::find(reg_with_loc_t reg) const {
 
 std::optional<dist_t> registers_state_t::find(register_t key) const {
     if (m_cur_def[key] == nullptr) return {};
-    const reg_with_loc_t& reg = *(m_cur_def[key]);
-    return find(reg);
+    return find(*(m_cur_def[key]));
 }
 
 std::vector<uint64_t> stack_state_t::find_overlapping_cells(uint64_t start, int width) const {
@@ -200,51 +199,42 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    live_registers_t out_vars;
+
+    auto region_env = std::make_shared<global_offset_env_t>();
+    registers_state_t joined_state(region_env);
     location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
 
-    for (size_t i = 0; i < m_cur_def.size(); i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
         if (it1 && it2) {
-            dist_t dist1 = it1.value(), dist2 = it2.value();
-            auto reg = reg_with_loc_t((register_t)i, loc);
+            auto dist1 = *it1, dist2 = *it2;
             if (dist1.m_slack != dist2.m_slack) continue;
             auto dist_joined = dist_t(std::move(dist1.m_dist | dist2.m_dist), dist1.m_slack);
-            out_vars[i] = std::make_shared<reg_with_loc_t>(reg);
-            (*m_offset_env)[reg] = dist_joined;
+            joined_state.insert(register_t{i}, loc, std::move(dist_joined));
         }
     }
-    return registers_state_t(std::move(out_vars), m_offset_env, false);
+    return joined_state;
 }
 
 void registers_state_t::adjust_bb_for_registers(location_t loc) {
-    location_t old_loc = location_t(std::make_pair(label_t(-2, -2), 0));
-    for (size_t i = 0; i < m_cur_def.size(); i++) {
-        auto new_reg = reg_with_loc_t((register_t)i, loc);
-        auto old_reg = reg_with_loc_t((register_t)i, old_loc);
-
-        auto it = find((register_t)i);
-        if (!it) continue;
-
-        if (*m_cur_def[i] == old_reg)
-            m_offset_env->erase(old_reg);
-
-        m_cur_def[i] = std::make_shared<reg_with_loc_t>(new_reg);
-        (*m_offset_env)[new_reg] = it.value();
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+        if (auto it = find(register_t{i})) {
+            insert(register_t{i}, loc, std::move(*it));
+        }
     }
 }
 
 void registers_state_t::scratch_caller_saved_registers() {
-    for (int i = R1_ARG; i <= R5_ARG; i++) {
-        operator-=(i);
+    for (uint8_t r = R1_ARG; r <= R5_ARG; r++) {
+        operator-=(register_t{r});
     }
 }
 
 void registers_state_t::forget_packet_pointers() {
-    for (int i = register_t{0}; i <= register_t{10}; i++) {
-        operator-=(i);
+    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS; r++) {
+        operator-=(register_t{r});
     }
 }
 
@@ -300,6 +290,7 @@ stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
+
     stack_slot_dists_t out_stack_dists;
     // We do not join dist cells because different dist values different types of offsets
     for (auto const&kv: m_slot_dists) {
@@ -455,13 +446,13 @@ std::optional<dist_t> ctx_offsets_t::find(int key) const {
     return it->second;
 }
 
-offset_domain_t offset_domain_t::setup_entry() {
-    std::shared_ptr<ctx_offsets_t> ctx = std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor);
-    std::shared_ptr<global_offset_env_t> all_types = std::make_shared<global_offset_env_t>();
-    registers_state_t regs(all_types);
+offset_domain_t&& offset_domain_t::setup_entry() {
+    std::shared_ptr<ctx_offsets_t> ctx
+        = std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor);
+    registers_state_t regs(std::make_shared<global_offset_env_t>());
 
-    offset_domain_t off_d(std::move(regs), stack_state_t::top(), ctx);
-    return off_d;
+    static offset_domain_t off_d(std::move(regs), stack_state_t::top(), ctx);
+    return std::move(off_d);
 }
 
 offset_domain_t offset_domain_t::bottom() {
@@ -513,7 +504,12 @@ offset_domain_t offset_domain_t::operator|(const offset_domain_t& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return offset_domain_t(m_reg_state | other.m_reg_state, m_stack_state | other.m_stack_state, m_extra_constraints | other.m_extra_constraints, m_ctx_dists, std::max(m_slack, other.m_slack));
+    return offset_domain_t(
+            m_reg_state | other.m_reg_state,
+            m_stack_state | other.m_stack_state,
+            m_extra_constraints | other.m_extra_constraints,
+            m_ctx_dists, std::max(m_slack, other.m_slack)
+    );
 }
 
 offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
@@ -523,7 +519,12 @@ offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return offset_domain_t(m_reg_state | std::move(other.m_reg_state), m_stack_state | std::move(other.m_stack_state), m_extra_constraints | std::move(other.m_extra_constraints), m_ctx_dists, std::max(m_slack, other.m_slack));
+    return offset_domain_t(
+            m_reg_state | std::move(other.m_reg_state),
+            m_stack_state | std::move(other.m_stack_state),
+            m_extra_constraints | std::move(other.m_extra_constraints),
+            m_ctx_dists, std::max(m_slack, other.m_slack)
+    );
 }
 
 // meet
@@ -597,7 +598,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc, int print) {
 }
 
 void offset_domain_t::update_offset_info(const dist_t&& dist, const interval_t&& change,
-        const reg_with_loc_t& reg_with_loc, uint8_t reg, Bin::Op op) {
+        const location_t& loc, uint8_t reg, Bin::Op op) {
     auto offset = dist.m_dist;
     if (op == Bin::Op::ADD) {
         if (dist.is_forward_pointer()) offset += change;
@@ -608,7 +609,7 @@ void offset_domain_t::update_offset_info(const dist_t&& dist, const interval_t&&
         // TODO: needs precise handling of subtraction
         offset = interval_t::top();
     }
-    m_reg_state.insert(reg, reg_with_loc, dist_t(offset));
+    m_reg_state.insert(reg, loc, dist_t(offset));
 }
 
 interval_t offset_domain_t::do_bin(const Bin &bin,
@@ -634,13 +635,13 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
     Reg src;
     if (std::holds_alternative<Reg>(bin.v)) src = std::get<Reg>(bin.v);
 
-    auto reg_with_loc = reg_with_loc_t(bin.dst.v, loc);
+    auto dst_register = register_t{bin.dst.v};
     switch (bin.op)
     {
         // ra = rb;
         case Op::MOV: {
             if (!is_packet_ptr(src_ptr_or_mapfd_opt)) {
-                m_reg_state -= bin.dst.v;
+                m_reg_state -= dst_register;
                 return interval_t::bottom();
             }
             auto src_offset_opt = m_reg_state.find(src.v);
@@ -649,7 +650,7 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
                 //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
                 return interval_t::bottom();
             }
-            m_reg_state.insert(bin.dst.v, reg_with_loc, src_offset_opt.value());
+            m_reg_state.insert(dst_register, loc, std::move(*src_offset_opt));
             break;
         }
         // ra += rb
@@ -658,15 +659,15 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             interval_t interval_to_add = interval_t::bottom();
             if (is_packet_ptr(dst_ptr_or_mapfd_opt)
                     && is_packet_ptr(src_ptr_or_mapfd_opt)) {
-                m_reg_state -= bin.dst.v;
+                m_reg_state -= dst_register;
                 return interval_t::bottom();
             }
             else if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_interval_opt) {
-                auto dst_offset_opt = m_reg_state.find(bin.dst.v);
+                auto dst_offset_opt = m_reg_state.find(dst_register);
                 if (!dst_offset_opt) {
                     m_errors.push_back("dst is a packet_pointer and no offset info found");
                     //std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
-                    m_reg_state -= bin.dst.v;
+                    m_reg_state -= dst_register;
                     return interval_t::bottom();
                 }
                 dist_to_update = std::move(dst_offset_opt.value());
@@ -678,7 +679,7 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
                 if (!src_offset_opt) {
                     m_errors.push_back("src is a packet_pointer and no offset info found");
                     //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
-                    m_reg_state -= bin.dst.v;
+                    m_reg_state -= dst_register;
                     return interval_t::bottom();
                 }
                 dist_to_update = std::move(src_offset_opt.value());
@@ -686,11 +687,11 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             }
             else if (is_packet_ptr(dst_ptr_or_mapfd_opt)) {
                 // this case is only needed till interval domain is added
-                m_reg_state.insert(bin.dst.v, reg_with_loc, dist_t());
+                m_reg_state.insert(dst_register, loc, dist_t());
                 break;
             }
             update_offset_info(std::move(dist_to_update), std::move(interval_to_add),
-                    reg_with_loc, bin.dst.v, bin.op);
+                    loc, dst_register, bin.op);
             break;
         }
         // ra -= rb
@@ -699,15 +700,15 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
             interval_t interval_to_sub = interval_t::bottom();
             if (is_packet_ptr(dst_ptr_or_mapfd_opt)
                     && is_packet_ptr(src_ptr_or_mapfd_opt)) {
-                m_reg_state -= bin.dst.v;
+                m_reg_state -= dst_register;
                 return interval_t::top();
             }
             else if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_interval_opt) {
-                auto dst_offset_opt = m_reg_state.find(bin.dst.v);
+                auto dst_offset_opt = m_reg_state.find(dst_register);
                 if (!dst_offset_opt) {
                     m_errors.push_back("dst is a packet_pointer and no offset info found");
                     //std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
-                    m_reg_state -= bin.dst.v;
+                    m_reg_state -= dst_register;
                     return interval_t::bottom();
                 }
                 dist_to_update = std::move(dst_offset_opt.value());
@@ -718,18 +719,18 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
                 if (!src_offset_opt) {
                     m_errors.push_back("src is a packet_pointer and no offset info found");
                     //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
-                    m_reg_state -= bin.dst.v;
+                    m_reg_state -= dst_register;
                     return interval_t::bottom();
                 }
                 dist_to_update = std::move(src_offset_opt.value());
                 interval_to_sub = std::move(dst_interval_opt.value());
             }
             update_offset_info(std::move(dist_to_update), std::move(interval_to_sub),
-                    reg_with_loc, bin.dst.v, bin.op);
+                    loc, dst_register, bin.op);
             break;
         }
         default: {
-            m_reg_state -= bin.dst.v;
+            m_reg_state -= dst_register;
             break;
         }
     }
@@ -908,14 +909,14 @@ void offset_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> m
     }
 }
 
-void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
+void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
         std::optional<ptr_or_mapfd_t> basereg_type, location_t loc) {
 
     bool is_stack_p = is_stack_ptr(basereg_type);
     bool is_ctx_p = is_ctx_ptr(basereg_type);
 
     if (!is_stack_p && !is_ctx_p) {
-        m_reg_state -= target_reg.v;
+        m_reg_state -= target_register;
         return;
     }
 
@@ -924,7 +925,7 @@ void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
     auto p_offset = type_with_off.get_offset();
     auto offset_singleton = p_offset.to_interval().singleton();
     if (!offset_singleton) {
-        m_reg_state -= target_reg.v;
+        m_reg_state -= target_register;
         return;
     }
     auto ptr_offset = *offset_singleton;
@@ -933,22 +934,18 @@ void offset_domain_t::do_load(const Mem& b, const Reg& target_reg,
     if (is_stack_p) {
         auto it = m_stack_state.find(load_at);
         if (!it) {
-            m_reg_state -= target_reg.v;
+            m_reg_state -= target_register;
             return;
         }
-        dist_t d = it->first;
-        auto reg = reg_with_loc_t(target_reg.v, loc);
-        m_reg_state.insert(target_reg.v, reg, d);
+        m_reg_state.insert(target_register, loc, std::move(it->first));
     }
     else if (is_ctx_p) {
         auto it = m_ctx_dists->find(load_at);
         if (!it) {
-            m_reg_state -= target_reg.v;
+            m_reg_state -= target_register;
             return;
         }
-        dist_t d = it.value();
-        auto reg = reg_with_loc_t(target_reg.v, loc);
-        m_reg_state.insert(target_reg.v, reg, dist_t(d));
+        m_reg_state.insert(target_register, loc, std::move(*it));
     }
 }
 

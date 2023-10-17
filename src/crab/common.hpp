@@ -11,14 +11,14 @@
 #include "string_constraints.hpp"
 #include "asm_syntax.hpp"
 
-constexpr int NUM_REGISTERS = 11;
+namespace crab {
+
+constexpr uint8_t NUM_REGISTERS = 11;
 
 constexpr int STACK_BEGIN = 0;
 constexpr int CTX_BEGIN = 0;
 constexpr int PACKET_BEGIN = 0;
 constexpr int SHARED_BEGIN = 0;
-
-namespace crab {
 
 enum class region_t {
 	T_CTX,
@@ -27,23 +27,19 @@ enum class region_t {
 	T_SHARED
 };
 
-class ptr_no_off_t {
-    region_t m_r;
+class packet_ptr_t {
+    region_t m_r = region_t::T_PACKET;
 
   public:
-    ptr_no_off_t() = default;
-    ptr_no_off_t(const ptr_no_off_t &) = default;
-    ptr_no_off_t(ptr_no_off_t &&) = default;
-    ptr_no_off_t &operator=(const ptr_no_off_t &) = default;
-    ptr_no_off_t &operator=(ptr_no_off_t &&) = default;
-    ptr_no_off_t(region_t _r) : m_r(_r) {}
+    packet_ptr_t() = default;
+    packet_ptr_t(const packet_ptr_t &) = default;
+    packet_ptr_t(packet_ptr_t &&) = default;
+    packet_ptr_t &operator=(const packet_ptr_t &) = default;
+    packet_ptr_t &operator=(packet_ptr_t &&) = default;
 
-    [[nodiscard]] region_t get_region() const { return m_r; }
-    void set_region(region_t);
-    void write(std::ostream&) const;
-    friend std::ostream& operator<<(std::ostream& o, const ptr_no_off_t& p);
-    bool operator==(const ptr_no_off_t&) const;
-    bool operator!=(const ptr_no_off_t&) const;
+    friend std::ostream& operator<<(std::ostream& o, const packet_ptr_t& p);
+    bool operator==(const packet_ptr_t&) const;
+    bool operator!=(const packet_ptr_t&) const;
 };
 
 class mock_interval_t {
@@ -80,7 +76,6 @@ class ptr_with_off_t {
     ptr_with_off_t(region_t _r, mock_interval_t _off,
             mock_interval_t _region_sz = mock_interval_t::top())
         : m_r(_r), m_offset(_off), m_region_size(_region_sz) {}
-    ptr_with_off_t(region_t _r, mock_interval_t _off) : m_r(_r), m_offset(_off) {}
     ptr_with_off_t operator|(const ptr_with_off_t&) const;
     mock_interval_t get_region_size() const;
     void set_region_size(mock_interval_t);
@@ -116,7 +111,7 @@ class mapfd_t {
     [[nodiscard]] mock_interval_t get_mapfd() const { return m_mapfd; }
 };
 
-using ptr_t = std::variant<ptr_no_off_t, ptr_with_off_t>;
+using ptr_t = std::variant<packet_ptr_t, ptr_with_off_t>;
 using register_t = uint8_t;
 using location_t = boost::optional<std::pair<label_t, uint32_t>>;
 
@@ -132,11 +127,11 @@ class reg_with_loc_t {
     void write(std::ostream& ) const;
 };
 
-using ptr_or_mapfd_t = std::variant<ptr_with_off_t, ptr_no_off_t, mapfd_t>;
+using ptr_or_mapfd_t = std::variant<ptr_with_off_t, packet_ptr_t, mapfd_t>;
 
 inline bool is_ptr_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
     return (ptr_or_mapfd && (std::holds_alternative<ptr_with_off_t>(*ptr_or_mapfd)
-                || std::holds_alternative<ptr_no_off_t>(*ptr_or_mapfd)));
+                || std::holds_alternative<packet_ptr_t>(*ptr_or_mapfd)));
 }
 
 inline bool is_mapfd_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
@@ -144,7 +139,7 @@ inline bool is_mapfd_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
 }
 
 inline bool same_region(const ptr_or_mapfd_t& ptr1, const ptr_or_mapfd_t& ptr2) {
-    if (std::holds_alternative<ptr_no_off_t>(ptr1) && std::holds_alternative<ptr_no_off_t>(ptr2))
+    if (std::holds_alternative<packet_ptr_t>(ptr1) && std::holds_alternative<packet_ptr_t>(ptr2))
         return true;
     return (std::holds_alternative<ptr_with_off_t>(ptr1)
             && std::holds_alternative<ptr_with_off_t>(ptr2)
@@ -163,7 +158,7 @@ inline bool is_ctx_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
 }
 
 inline bool is_packet_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
-    return (ptr && std::holds_alternative<ptr_no_off_t>(*ptr));
+    return (ptr && std::holds_alternative<packet_ptr_t>(*ptr));
 }
 
 inline bool is_shared_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
@@ -194,7 +189,7 @@ namespace std {
             return std::visit( overloaded
                {
                    []( const crab::ptr_with_off_t& x, const crab::ptr_with_off_t& y ){ return x == y;},
-                   []( const crab::ptr_no_off_t& x, const crab::ptr_no_off_t& y ){ return x == y;},
+                   []( const crab::packet_ptr_t& x, const crab::packet_ptr_t& y ){ return x == y;},
                    []( auto& , auto& ) { return true;}
                 }, lhs, rhs
             );
@@ -208,7 +203,7 @@ namespace std {
             return std::visit( overloaded
                {
                    []( const crab::ptr_with_off_t& x, const crab::ptr_with_off_t& y ){ return x == y;},
-                   []( const crab::ptr_no_off_t& x, const crab::ptr_no_off_t& y ){ return x == y;},
+                   []( const crab::packet_ptr_t& x, const crab::packet_ptr_t& y ){ return x == y;},
                    []( const crab::mapfd_t& x, const crab::mapfd_t& y ){ return x == y;},
                    []( auto& , auto& ) { return true;}
                 }, lhs, rhs

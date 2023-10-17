@@ -382,7 +382,7 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
                     return;
                 }
             }
-            else if (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd_basereg)) {
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd_basereg)) {
                 if (m_offset.check_packet_access(u.access_reg, width, 0, true)) return;
             }
             else {
@@ -460,11 +460,11 @@ void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
         std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc) {
-    m_region.do_load(b, target_reg, unknown_ptr, loc);
-    m_offset.do_load(b, target_reg, basereg_opt, loc);
+    m_region.do_load(b, register_t{target_reg.v}, unknown_ptr, loc);
+    m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, loc);
     // TODO: replace with a bool value returned from region do_load
     auto load_in_region = m_region.find_ptr_or_mapfd_type(target_reg.v).has_value();
-    m_interval.do_load(b, target_reg, basereg_opt, load_in_region, loc);
+    m_interval.do_load(b, register_t{target_reg.v}, basereg_opt, load_in_region, loc);
 }
 
 void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> target_opt,

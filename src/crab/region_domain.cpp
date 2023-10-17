@@ -8,13 +8,13 @@ namespace crab {
 ctx_t::ctx_t(const ebpf_context_descriptor_t* desc)
 {
     if (desc->data >= 0) {
-        m_packet_ptrs[desc->data] = crab::ptr_no_off_t(crab::region_t::T_PACKET);
+        m_packet_ptrs[desc->data] = std::move(crab::packet_ptr_t{});
     }
     if (desc->end >= 0) {
-        m_packet_ptrs[desc->end] = crab::ptr_no_off_t(crab::region_t::T_PACKET);
+        m_packet_ptrs[desc->end] = std::move(crab::packet_ptr_t{});
     }
     if (desc->meta >= 0) {
-        m_packet_ptrs[desc->meta] = crab::ptr_no_off_t(crab::region_t::T_PACKET);
+        m_packet_ptrs[desc->meta] = std::move(crab::packet_ptr_t{});
     }
     if (desc->size >= 0) {
         size = desc->size;
@@ -31,23 +31,22 @@ std::vector<uint64_t> ctx_t::get_keys() const {
     return keys;
 }
 
-std::optional<ptr_no_off_t> ctx_t::find(uint64_t key) const {
+std::optional<packet_ptr_t> ctx_t::find(uint64_t key) const {
     auto it = m_packet_ptrs.find(key);
     if (it == m_packet_ptrs.end()) return {};
     return it->second;
 }
 
 void register_types_t::scratch_caller_saved_registers() {
-    for (int i = R1_ARG; i <= R5_ARG; i++) {
-        operator-=(i);
+    for (uint8_t r = R1_ARG; r <= R5_ARG; r++) {
+        operator-=(register_t{r});
     }
 }
 
 void register_types_t::forget_packet_ptrs() {
-    for (auto r = register_t{0}; r <= register_t{10}; ++r) {
-        auto reg = find(r);
-        if (is_packet_ptr(reg)) {
-            operator-=(r);
+    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS; r++) {
+        if (is_packet_ptr(find(register_t{r}))) {
+            operator-=(register_t{r});
         }
     }
 }
@@ -58,46 +57,44 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    live_registers_t out_vars;
+    auto region_env = std::make_shared<global_region_env_t>();
+    register_types_t joined_reg_types(region_env);
 
     // a hack to store region information at the start of a joined basic block
     // in join, we do not know the label of the bb, hence we store the information
     // at a bb that is not used anywhere else in the program, and later when we know
     // the bb label, we can fix
-    location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
+    location_t loc = location_t{std::make_pair(label_t(-2, -2), 0)};
 
-    for (size_t i = 0; i < m_cur_def.size(); i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto maybe_ptr1 = find(*(m_cur_def[i]));
         auto maybe_ptr2 = other.find(*(other.m_cur_def[i]));
         if (maybe_ptr1 && maybe_ptr2) {
-            ptr_or_mapfd_t ptr_or_mapfd1 = maybe_ptr1.value(), ptr_or_mapfd2 = maybe_ptr2.value();
-            auto reg = reg_with_loc_t((register_t)i, loc);
+            ptr_or_mapfd_t ptr_or_mapfd1 = *maybe_ptr1, ptr_or_mapfd2 = *maybe_ptr2;
             if (ptr_or_mapfd1 == ptr_or_mapfd2) {
-                out_vars[i] = m_cur_def[i];
+                joined_reg_types.insert(register_t{i}, loc, std::move(ptr_or_mapfd1));
             }
             else { 
-                auto shared_reg = std::make_shared<reg_with_loc_t>(reg);
                 if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1)
                             && std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
                     ptr_with_off_t ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
                     ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
                     if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
-                        out_vars[i] = shared_reg;
-                        (*m_region_env)[reg] = std::move(ptr_with_off1 | ptr_with_off2);
+                        joined_reg_types.insert(register_t{i}, loc,
+                                std::move(ptr_with_off1 | ptr_with_off2));
                     }
                 }
                 else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
                         && std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
                     mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                     mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
-                    out_vars[i] = shared_reg;
-                    (*m_region_env)[reg] = std::move(mapfd1 | mapfd2);
+                    joined_reg_types.insert(register_t{i}, loc, std::move(mapfd1 | mapfd2));
                 }
             }
         }
     }
-    return register_types_t(std::move(out_vars), m_region_env, false);
+    return joined_reg_types;
 }
 
 void register_types_t::operator-=(register_t var) {
@@ -127,8 +124,8 @@ bool register_types_t::is_top() const {
     return true;
 }
 
-void register_types_t::insert(register_t reg, const reg_with_loc_t& reg_with_loc,
-        const ptr_or_mapfd_t& type) {
+void register_types_t::insert(register_t reg, const location_t& loc, const ptr_or_mapfd_t& type) {
+    reg_with_loc_t reg_with_loc = reg_with_loc_t{reg, loc};
     (*m_region_env)[reg_with_loc] = type;
     m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
 }
@@ -141,26 +138,14 @@ std::optional<ptr_or_mapfd_t> register_types_t::find(reg_with_loc_t reg) const {
 
 std::optional<ptr_or_mapfd_t> register_types_t::find(register_t key) const {
     if (m_cur_def[key] == nullptr) return {};
-    const reg_with_loc_t& reg = *(m_cur_def[key]);
-    return find(reg);
+    return find(*(m_cur_def[key]));
 }
 
 void register_types_t::adjust_bb_for_registers(location_t loc) {
-    location_t old_loc = location_t(std::make_pair(label_t(-2, -2), 0));
-    for (size_t i = 0; i < m_cur_def.size(); i++) {
-        auto new_reg = reg_with_loc_t((register_t)i, loc);
-        auto old_reg = reg_with_loc_t((register_t)i, old_loc);
-
-        auto it = find((register_t)i);
-        if (!it) continue;
-
-        if (*m_cur_def[i] == old_reg) {
-            m_region_env->erase(old_reg);
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+        if (auto it = find(register_t{i})) {
+            insert(register_t{i}, loc, *it);
         }
-
-        m_cur_def[i] = std::make_shared<reg_with_loc_t>(new_reg);
-        (*m_region_env)[new_reg] = it.value();
-
     }
 }
 
@@ -170,7 +155,7 @@ stack_t stack_t::operator|(const stack_t& other) const {
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    ptr_or_mapfd_types_t out_ptrs;
+    stack_t joined_stack;
     for (auto const&kv: m_ptrs) {
         auto maybe_ptr_or_mapfd_cells = other.find(kv.first);
         if (maybe_ptr_or_mapfd_cells) {
@@ -180,28 +165,28 @@ stack_t stack_t::operator|(const stack_t& other) const {
             auto ptr_or_mapfd2 = ptr_or_mapfd_cells2.first;
             int width1 = ptr_or_mapfd_cells1.second;
             int width2 = ptr_or_mapfd_cells2.second;
-            int width_joined = std::max(width1, width2);
+            int width_joined = std::min(width1, width2);
             if (ptr_or_mapfd1 == ptr_or_mapfd2) {
-                out_ptrs[kv.first] = std::make_pair(ptr_or_mapfd1, width_joined);
+                joined_stack.store(kv.first, ptr_or_mapfd1, width_joined);
             }
             else if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
                 auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
                 auto ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
                 if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
-                    out_ptrs[kv.first]
-                        = std::make_pair(ptr_with_off1 | ptr_with_off2, width_joined);
+                    joined_stack.store(kv.first, std::move(ptr_with_off1 | ptr_with_off2),
+                            width_joined);
                 }
             }
             else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
                 auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
-                out_ptrs[kv.first] = std::make_pair(mapfd1 | mapfd2, width_joined);
+                joined_stack.store(kv.first, std::move(mapfd1 | mapfd2), width_joined);
             }
         }
     }
-    return stack_t(std::move(out_ptrs), false);
+    return joined_stack;
 }
 
 void stack_t::operator-=(uint64_t key) {
@@ -333,7 +318,7 @@ std::vector<uint64_t> region_domain_t::get_stack_keys() const {
     return m_stack.get_keys();
 }
 
-std::optional<ptr_no_off_t> region_domain_t::find_in_ctx(uint64_t key) const {
+std::optional<packet_ptr_t> region_domain_t::find_in_ctx(uint64_t key) const {
     return m_ctx->find(key);
 }
 
@@ -546,13 +531,12 @@ interval_t region_domain_t::get_map_value_size(const Reg& map_fd_reg) const {
 }
 
 void region_domain_t::do_load_mapfd(const register_t& dst_reg, int mapfd, location_t loc) {
-    auto reg_with_loc = reg_with_loc_t(dst_reg, loc);
     const auto& platform = global_program_info->platform;
     const EbpfMapDescriptor& desc = platform->get_map_descriptor(mapfd);
     const EbpfMapValueType& map_value_type = platform->get_map_type(desc.type).value_type;
     auto mapfd_interval = interval_t{number_t{mapfd}};
     auto type = mapfd_t(mapfd_interval, map_value_type);
-    m_registers.insert(dst_reg, reg_with_loc, type);
+    m_registers.insert(dst_reg, loc, type);
 }
 
 void region_domain_t::operator()(const LoadMapFd &u, location_t loc, int print) {
@@ -572,32 +556,31 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
         if (param.kind == ArgSingle::Kind::MAP_FD) maybe_fd_reg = param.reg;
         break;
     }
-    register_t r0_reg{R0_RETURN_VALUE};
-    auto r0 = reg_with_loc_t(r0_reg, loc);
+    register_t r0{R0_RETURN_VALUE};
     if (u.is_map_lookup) {
         if (maybe_fd_reg) {
             if (auto map_type = get_map_type(*maybe_fd_reg)) {
                 if (global_program_info->platform->get_map_type(*map_type).value_type
                         == EbpfMapValueType::MAP) {
                     if (auto inner_map_fd = get_map_inner_map_fd(*maybe_fd_reg)) {
-                        do_load_mapfd(r0_reg, (int)*inner_map_fd, loc);
+                        do_load_mapfd(r0, (int)*inner_map_fd, loc);
                         goto out;
                     }
                 } else {
                     auto type = ptr_with_off_t(crab::region_t::T_SHARED, interval_t{number_t{0}},
                             get_map_value_size(*maybe_fd_reg));
-                    m_registers.insert(r0_reg, r0, type);
+                    m_registers.insert(r0, loc, type);
                 }
             }
         }
         else {
             auto type = ptr_with_off_t(
                  crab::region_t::T_SHARED, interval_t{number_t{0}}, crab::interval_t::top());
-            m_registers.insert(r0_reg, r0, type);
+            m_registers.insert(r0, loc, type);
         }
     }
     else {
-        m_registers -= r0_reg;
+        m_registers -= r0;
     }
 out:
     m_registers.scratch_caller_saved_registers();
@@ -638,29 +621,29 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
     if (maybe_ptr_or_mapfd_type) {
         auto reg_ptr_or_mapfd_type = *maybe_ptr_or_mapfd_type;
         if (std::holds_alternative<ptr_with_off_t>(reg_ptr_or_mapfd_type)) {
-            auto reg_with_off_ptr_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
-            auto offset = reg_with_off_ptr_type.get_offset();
+            auto ptr_with_off_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
+            auto offset = ptr_with_off_type.get_offset();
             auto offset_to_check = offset.to_interval()+interval_t{s.offset};
             auto offset_lb = offset_to_check.lb();
             auto offset_plus_width_ub = offset_to_check.ub()+crab::bound_t{width};
-            if (reg_with_off_ptr_type.get_region() == crab::region_t::T_STACK) {
+            if (ptr_with_off_type.get_region() == crab::region_t::T_STACK) {
                 if (crab::bound_t{STACK_BEGIN} <= offset_lb
                         && offset_plus_width_ub <= crab::bound_t{EBPF_STACK_SIZE})
                     return;
             }
-            else if (reg_with_off_ptr_type.get_region() == crab::region_t::T_CTX) {
+            else if (ptr_with_off_type.get_region() == crab::region_t::T_CTX) {
                 if (crab::bound_t{CTX_BEGIN} <= offset_lb
                         && offset_plus_width_ub <= crab::bound_t{ctx_size()})
                     return;
             }
             else { // shared
                 if (crab::bound_t{SHARED_BEGIN} <= offset_lb &&
-                        offset_plus_width_ub <= reg_with_off_ptr_type.get_region_size().lb()) return;
+                        offset_plus_width_ub <= ptr_with_off_type.get_region_size().lb()) return;
                 // TODO: check null access
                 //return;
             }
         }
-        else if (std::holds_alternative<ptr_no_off_t>(reg_ptr_or_mapfd_type)) {
+        else if (std::holds_alternative<packet_ptr_t>(reg_ptr_or_mapfd_type)) {
             // We do not handle packet ptr access in region domain
             return;
         }
@@ -686,20 +669,16 @@ void region_domain_t::operator()(const ValidStore& u, location_t loc, int print)
 
 region_domain_t&& region_domain_t::setup_entry() {
 
-    std::shared_ptr<ctx_t> ctx = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
-    std::shared_ptr<global_region_env_t> all_types = std::make_shared<global_region_env_t>();
+    std::shared_ptr<ctx_t> ctx
+        = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
 
-    register_types_t typ(all_types);
+    register_types_t typ(std::make_shared<global_region_env_t>());
 
-    auto r1 = reg_with_loc_t(R1_ARG, std::make_pair(label_t::entry, static_cast<unsigned int>(0)));
-    auto r10 = reg_with_loc_t(R10_STACK_POINTER, std::make_pair(label_t::entry, static_cast<unsigned int>(0)));
-
-    typ.insert(R1_ARG, r1,
-            ptr_with_off_t(crab::region_t::T_CTX,
-                mock_interval_t{number_t{0}}, mock_interval_t{number_t{-1}}));
-    typ.insert(R10_STACK_POINTER, r10,
-            ptr_with_off_t(crab::region_t::T_STACK,
-                mock_interval_t{number_t{512}}, mock_interval_t{number_t{-1}}));
+    auto loc = std::make_pair(label_t::entry, (unsigned int)0);
+    auto ctx_ptr_r1 = ptr_with_off_t(crab::region_t::T_CTX, mock_interval_t{number_t{0}});
+    auto stack_ptr_r10 = ptr_with_off_t(crab::region_t::T_STACK, mock_interval_t{number_t{512}});
+    typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
+    typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
     static region_domain_t inv(std::move(typ), crab::stack_t::top(), ctx);
     return std::move(inv);
@@ -739,7 +718,7 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc, int pr
                     }
                 }
             }
-            else if (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd_type)) {
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd_type)) {
                 if (s.types == TypeGroup::singleton_ptr) return;
                 if (s.types == TypeGroup::mem || s.types == TypeGroup::mem_or_num) return;
                 if (s.types == TypeGroup::packet || s.types == TypeGroup::stack_or_packet) return;
@@ -757,17 +736,17 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc, int pr
 }
 
 void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, const interval_t&& change,
-        const reg_with_loc_t& reg_with_loc, uint8_t reg) {
+        const location_t& loc, register_t reg) {
     if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd)) {
         auto ptr_or_mapfd_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd);
         auto offset = ptr_or_mapfd_with_off.get_offset();
         auto updated_offset =
             change == mock_interval_t::top() ? offset : offset.to_interval() + change;
         ptr_or_mapfd_with_off.set_offset(updated_offset);
-        m_registers.insert(reg, reg_with_loc, ptr_or_mapfd_with_off);
+        m_registers.insert(reg, loc, ptr_or_mapfd_with_off);
     }
-    else if (std::holds_alternative<ptr_no_off_t>(ptr_or_mapfd)) {
-        m_registers.insert(reg, reg_with_loc, ptr_or_mapfd);
+    else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd)) {
+        m_registers.insert(reg, loc, ptr_or_mapfd);
     }
     else {
         //std::cout << "type error: mapfd register cannot be incremented/decremented\n";
@@ -796,19 +775,18 @@ interval_t region_domain_t::do_bin(const Bin& bin,
     if (dst_ptr_or_mapfd_opt) dst_ptr_or_mapfd = std::move(dst_ptr_or_mapfd_opt.value());
     if (src_interval_opt) src_interval = std::move(src_interval_opt.value());
 
-    auto reg = reg_with_loc_t(bin.dst.v, loc);
-    interval_t to_return = interval_t::bottom();
-
+    interval_t subtracted = interval_t::bottom();
+    auto dst_register = register_t{bin.dst.v};
     switch (bin.op)
     {
         // ra = b, where b is a pointer/mapfd, a numerical register, or a constant;
         case Op::MOV: {
             // b is a pointer/mapfd
             if (src_ptr_or_mapfd_opt)
-                m_registers.insert(bin.dst.v, reg, src_ptr_or_mapfd);
+                m_registers.insert(dst_register, loc, src_ptr_or_mapfd);
             // b is a numerical register, or constant
             else if (dst_ptr_or_mapfd_opt) {
-                m_registers -= bin.dst.v;
+                m_registers -= dst_register;
             }
             break;
         }
@@ -824,28 +802,28 @@ interval_t region_domain_t::do_bin(const Bin& bin,
                     //std::cout << "type error: addition of two pointers\n";
                     m_errors.push_back("addition of two pointers");
                 }
-                m_registers -= bin.dst.v;
+                m_registers -= dst_register;
             }
             // ra is a pointer/mapfd
             // b is a numerical register, or a constant
             else if (dst_ptr_or_mapfd_opt && src_interval_opt) {
                 update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd), std::move(src_interval),
-                        reg, bin.dst.v);
+                        loc, dst_register);
             }
             // b is a pointer/mapfd
             // ra is a numerical register
             else if (src_ptr_or_mapfd_opt && !dst_ptr_or_mapfd_opt) {
                 update_ptr_or_mapfd(std::move(src_ptr_or_mapfd), interval_t::top(),
-                        reg, bin.dst.v);
+                        loc, dst_register);
             }
             else if (dst_ptr_or_mapfd_opt && !src_ptr_or_mapfd_opt) {
                 if (std::holds_alternative<ptr_with_off_t>(dst_ptr_or_mapfd)) {
                     auto updated_type = std::get<ptr_with_off_t>(dst_ptr_or_mapfd);
                     updated_type.set_offset(mock_interval_t::top());
-                    m_registers.insert(bin.dst.v, reg, updated_type);
+                    m_registers.insert(dst_register, loc, updated_type);
                 }
-                else if (std::holds_alternative<ptr_no_off_t>(dst_ptr_or_mapfd)) {
-                    m_registers.insert(bin.dst.v, reg, dst_ptr_or_mapfd);
+                else if (std::holds_alternative<packet_ptr_t>(dst_ptr_or_mapfd)) {
+                    m_registers.insert(dst_register, loc, dst_ptr_or_mapfd);
                 }
             }
             break;
@@ -865,33 +843,34 @@ interval_t region_domain_t::do_bin(const Bin& bin,
                             std::holds_alternative<ptr_with_off_t>(src_ptr_or_mapfd)) {
                         auto dst_ptr_with_off = std::get<ptr_with_off_t>(dst_ptr_or_mapfd);
                         auto src_ptr_with_off = std::get<ptr_with_off_t>(src_ptr_or_mapfd);
-                        to_return =
-                            dst_ptr_with_off.get_offset().to_interval() - src_ptr_with_off.get_offset().to_interval();
+                        subtracted =
+                            dst_ptr_with_off.get_offset().to_interval() -
+                            src_ptr_with_off.get_offset().to_interval();
                     }
                 }
                 else {
                     //std::cout << "type error: subtraction between pointers of different region\n";
                     m_errors.push_back("subtraction between pointers of different region");
                 }
-                m_registers -= bin.dst.v;
+                m_registers -= dst_register;
             }
             // b is a numerical register, or a constant
             else if (dst_ptr_or_mapfd_opt && src_interval_opt) {
                 update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd), -std::move(src_interval),
-                        reg, bin.dst.v);
+                        loc, dst_register);
             }
             break;
         }
         default: break;
     }
-    return to_return;
+    return subtracted;
 }
 
-void region_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
+void region_domain_t::do_load(const Mem& b, const register_t& target_register, bool unknown_ptr,
         location_t loc) {
 
     if (unknown_ptr) {
-        m_registers -= target_reg.v;
+        m_registers -= target_register;
         return;
     }
 
@@ -904,7 +883,7 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_
     bool is_ctx_p = is_ctx_ptr(ptr_or_mapfd_opt);
     if (!is_ctx_p && !is_stack_p) {
         // loading from either packet or shared region or mapfd does not happen in region domain
-        m_registers -= target_reg.v;
+        m_registers -= target_register;
         return;
     }
 
@@ -924,11 +903,11 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_
                     break;
                 }
             }
-            m_registers -= target_reg.v;
+            m_registers -= target_register;
         }
         else {
             if (width != 1 && width != 2 && width != 4 && width != 8) {
-                m_registers -= target_reg.v;
+                m_registers -= target_register;
                 return;
             }
             auto ptr_offset = offset_singleton.value();
@@ -937,12 +916,11 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_
             auto loaded = m_stack.find(load_at);
             if (!loaded) {
                 // no field at loaded offset in stack
-                m_registers -= target_reg.v;
+                m_registers -= target_register;
                 return;
             }
 
-            auto reg = reg_with_loc_t(target_reg.v, loc);
-            m_registers.insert(target_reg.v, reg, (*loaded).first);
+            m_registers.insert(target_register, loc, (*loaded).first);
         }
     }
     else {
@@ -957,7 +935,7 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_
                     break;
                 }
             }
-            m_registers -= target_reg.v;
+            m_registers -= target_register;
         }
         else {
             auto ptr_offset = offset_singleton.value();
@@ -966,12 +944,10 @@ void region_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_
             auto loaded = m_ctx->find(load_at);
             if (!loaded) {
                 // no field at loaded offset in ctx
-                m_registers -= target_reg.v;
+                m_registers -= target_register;
                 return;
             }
-
-            auto reg = reg_with_loc_t(target_reg.v, loc);
-            m_registers.insert(target_reg.v, reg, *loaded);
+            m_registers.insert(target_register, loc, *loaded);
         }
     }
 }

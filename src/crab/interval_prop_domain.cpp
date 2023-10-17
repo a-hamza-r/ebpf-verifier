@@ -28,9 +28,9 @@ void registers_cp_state_t::set_to_bottom() {
     m_is_bottom = true;
 }
 
-void registers_cp_state_t::insert(register_t reg, const reg_with_loc_t& reg_with_loc,
-        interval_t interval) {
-    (*m_interval_env)[reg_with_loc] = mock_interval_t(interval);
+void registers_cp_state_t::insert(register_t reg, const location_t& loc, interval_t interval) {
+    auto reg_with_loc = reg_with_loc_t{reg, loc};
+    (*m_interval_env)[reg_with_loc] = mock_interval_t{interval};
     m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
 }
 
@@ -52,37 +52,27 @@ registers_cp_state_t registers_cp_state_t::operator|(const registers_cp_state_t&
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    live_registers_t intervals_joined;
+    auto intervals_env = std::make_shared<global_interval_env_t>();
+    registers_cp_state_t intervals_joined(intervals_env);
     location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
-    for (size_t i = 0; i < m_cur_def.size(); i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
         if (it1 && it2) {
             auto interval1 = it1->to_interval(), interval2 = it2->to_interval();
-            auto reg = reg_with_loc_t((register_t)i, loc);
-            intervals_joined[i] = std::make_shared<reg_with_loc_t>(reg);
-            (*m_interval_env)[reg] = mock_interval_t(interval1 | interval2);
+            intervals_joined.insert(register_t{i}, loc,
+                    std::move(interval1 | interval2));
         }
     }
-    return registers_cp_state_t(std::move(intervals_joined), m_interval_env);
+    return intervals_joined;
 }
 
 void registers_cp_state_t::adjust_bb_for_registers(location_t loc) {
-    location_t old_loc = location_t(std::make_pair(label_t(-2, -2), 0));
-    for (size_t i = 0; i < m_cur_def.size(); i++) {
-        auto new_reg = reg_with_loc_t((register_t)i, loc);
-        auto old_reg = reg_with_loc_t((register_t)i, old_loc);
-
-        auto it = find((register_t)i);
-        if (!it) continue;
-
-        if (*m_cur_def[i] == old_reg)
-            m_interval_env->erase(old_reg);
-
-        m_cur_def[i] = std::make_shared<reg_with_loc_t>(new_reg);
-        (*m_interval_env)[new_reg] = mock_interval_t(it.value());
-
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+        if (auto it = find(register_t{i})) {
+            insert(register_t{i}, loc, it->to_interval());
+        }
     }
 }
 
@@ -92,8 +82,8 @@ void registers_cp_state_t::operator-=(register_t var) {
 }
 
 void registers_cp_state_t::scratch_caller_saved_registers() {
-    for (int i = R1_ARG; i <= R5_ARG; i++) {
-        operator-=(i);
+    for (uint8_t i = R1_ARG; i <= R5_ARG; i++) {
+        operator-=(register_t{i});
     }
 }
 
@@ -323,7 +313,8 @@ interval_prop_domain_t interval_prop_domain_t::operator|(interval_prop_domain_t&
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return interval_prop_domain_t(m_registers_interval_values | std::move(other.m_registers_interval_values),
+    return interval_prop_domain_t(
+            m_registers_interval_values | std::move(other.m_registers_interval_values),
             m_stack_slots_interval_values | std::move(other.m_stack_slots_interval_values));
 }
 
@@ -358,27 +349,22 @@ string_invariant interval_prop_domain_t::to_set() {
 }
 
 interval_prop_domain_t interval_prop_domain_t::setup_entry() {
-    std::shared_ptr<global_interval_env_t> all_intervals = std::make_shared<global_interval_env_t>();
-    registers_cp_state_t registers(all_intervals);
-
+    registers_cp_state_t registers(std::make_shared<global_interval_env_t>());
     interval_prop_domain_t cp(std::move(registers), stack_cp_state_t::top());
     return cp;
 }
 
 void interval_prop_domain_t::operator()(const Un& u, location_t loc, int print) {
     auto swap_endianness = [&](interval_t&& v, auto input, const auto& be_or_le) {
-        auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
         if (std::optional<number_t> n = v.singleton()) {
             if (n->fits_cast_to_int64()) {
                 input = (decltype(input))n.value().cast_to_sint64();
                 decltype(input) output = be_or_le(input);
-                m_registers_interval_values.insert(u.dst.v, reg_with_loc,
-                        interval_t(number_t(output)));
+                m_registers_interval_values.insert(u.dst.v, loc, interval_t{number_t{output}});
                 return;
             }
         }
-        m_registers_interval_values.insert(u.dst.v, reg_with_loc,
-                interval_t::top());
+        m_registers_interval_values.insert(u.dst.v, loc, interval_t::top());
     };
 
     auto mock_interval = m_registers_interval_values.find(u.dst.v);
@@ -415,7 +401,7 @@ void interval_prop_domain_t::operator()(const Un& u, location_t loc, int print) 
         break;
     case Un::Op::NEG:
         auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
-        m_registers_interval_values.insert(u.dst.v, reg_with_loc, -interval);
+        m_registers_interval_values.insert(u.dst.v, loc, -interval);
         break;
     }
 }
@@ -444,16 +430,14 @@ void interval_prop_domain_t::do_call(const Call& u, const stack_cells_t& store_i
         m_registers_interval_values -= r0;
     }
     else {
-        auto r0_with_loc = reg_with_loc_t(r0, loc);
-        m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
+        m_registers_interval_values.insert(r0, loc, interval_t::top());
     }
     m_registers_interval_values.scratch_caller_saved_registers();
 }
 
 void interval_prop_domain_t::operator()(const Packet& u, location_t loc, int print) {
     auto r0 = register_t{R0_RETURN_VALUE};
-    auto r0_with_loc = reg_with_loc_t(r0, loc);
-    m_registers_interval_values.insert(r0, r0_with_loc, interval_t::top());
+    m_registers_interval_values.insert(r0, loc, interval_t::top());
     m_registers_interval_values.scratch_caller_saved_registers();
 }
 
@@ -461,7 +445,6 @@ void interval_prop_domain_t::assume_lt(bool strict,
         interval_t&& left_interval, interval_t&& right_interval,
         interval_t&& left_interval_orig, interval_t&& right_interval_orig,
         register_t left, Value right, location_t loc, bool is_signed) {
-    auto reg_with_loc_left = reg_with_loc_t(left, loc);
     auto rlb = right_interval.lb();
     auto rub = right_interval.ub();
     auto llb = left_interval.lb();
@@ -474,26 +457,24 @@ void interval_prop_domain_t::assume_lt(bool strict,
     if (strict ? llb < rlb : llb <= rlb && lub >= rlb) {
         auto lb = is_signed ? llb_orig : number_t{0};
         auto interval_to_insert = interval_t(lb, strict ? rlb - number_t{1} : rlb);
-        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
+        m_registers_interval_values.insert(left, loc, interval_to_insert);
     }
     else if (left_interval <= right_interval && strict ? lub < rub : lub <= rub &&
             std::holds_alternative<Reg>(right)) {
         auto right_reg = std::get<Reg>(right).v;
-        auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
         auto interval_to_insert = interval_t(strict ? lub + number_t{1} : lub, rub_orig);
-        m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
+        m_registers_interval_values.insert(right_reg, loc, interval_to_insert);
     }
     else if (lub >= rub && strict ? llb < rub : llb <= rub) {
         auto lb = is_signed ? llb_orig : number_t{0};
         auto interval_to_insert_left = interval_t(lb, strict ? rub - number_t{1} : rub);
-        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
+        m_registers_interval_values.insert(left, loc, interval_to_insert_left);
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rub)
         // and set left to the rest of the interval < (or <=) of right
         // a more sound analysis is needed
         if (std::holds_alternative<Reg>(right)) {
             auto right_reg = std::get<Reg>(right).v;
-            auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
-            m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_t(rub));
+            m_registers_interval_values.insert(right_reg, loc, interval_t{rub});
         }
     }
     else {
@@ -506,7 +487,6 @@ void interval_prop_domain_t::assume_gt(bool strict,
         interval_t&& left_interval, interval_t&& right_interval,
         interval_t&& left_interval_orig, interval_t&& right_interval_orig,
         register_t left, Value right, location_t loc) {
-    auto reg_with_loc_left = reg_with_loc_t(left, loc);
     auto rlb = right_interval.lb();
     auto rub = right_interval.ub();
     auto llb = left_interval.lb();
@@ -518,25 +498,23 @@ void interval_prop_domain_t::assume_gt(bool strict,
 
     if (strict ? lub > rub : lub >= rub && llb <= rub) {
         auto interval_to_insert = interval_t(strict ? rub + number_t{1} : rub, lub_orig);
-        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert);
+        m_registers_interval_values.insert(left, loc, interval_to_insert);
     }
     else if (left_interval <= right_interval && strict ? llb > rlb : llb >= rlb &&
             std::holds_alternative<Reg>(right)) {
         auto right_reg = std::get<Reg>(right).v;
-        auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
         auto interval_to_insert = interval_t(rlb_orig, strict ? llb - number_t{1} : llb);
-        m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_to_insert);
+        m_registers_interval_values.insert(right_reg, loc, interval_to_insert);
     }
     else if (llb <= rlb && strict ? lub > rlb : lub >= rlb) {
         auto interval_to_insert_left = interval_t(strict ? rlb + number_t{1} : rlb, lub_orig);
-        m_registers_interval_values.insert(left, reg_with_loc_left, interval_to_insert_left);
+        m_registers_interval_values.insert(left, loc, interval_to_insert_left);
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rlb)
         // and set left to the rest of the interval > (or >=) of right
         // a more sound analysis is needed
         if (std::holds_alternative<Reg>(right)) {
             auto right_reg = std::get<Reg>(right).v;
-            auto reg_with_loc_right = reg_with_loc_t(right_reg, loc);
-            m_registers_interval_values.insert(right_reg, reg_with_loc_right, interval_t(rlb));
+            m_registers_interval_values.insert(right_reg, loc, interval_t{rlb});
         }
     }
     else {
@@ -573,11 +551,10 @@ void interval_prop_domain_t::assume_gt_and_lt(bool is64, bool strict, bool is_lt
         m_registers_interval_values.set_to_top();
         return;
     } else if (left_interval_orig.is_top() && right_interval_orig.is_top()) {
-        m_registers_interval_values.insert(left, reg_with_loc_t(left, loc), interval_t::top());
+        m_registers_interval_values.insert(left, loc, interval_t::top());
         if (std::holds_alternative<Reg>(right)) {
             auto right_reg = std::get<Reg>(right).v;
-            m_registers_interval_values.insert(right_reg, reg_with_loc_t(right_reg, loc),
-                    interval_t::top());
+            m_registers_interval_values.insert(right_reg, loc, interval_t::top());
         }
         return;
     }
@@ -642,11 +619,10 @@ void interval_prop_domain_t::assume_signed_cst_interval(Condition::Op op, bool i
 
     if (op == Condition::Op::EQ) {
         auto eq_interval = right_interval & left_interval;
-        m_registers_interval_values.insert(left, reg_with_loc_t(left, loc), eq_interval);
+        m_registers_interval_values.insert(left, loc, eq_interval);
         if (std::holds_alternative<Reg>(right)) {
             auto right_reg = std::get<Reg>(right).v;
-            m_registers_interval_values.insert(right_reg,
-                    reg_with_loc_t(right_reg, loc), eq_interval);
+            m_registers_interval_values.insert(right_reg, loc, eq_interval);
         }
         return;
     }
@@ -729,8 +705,10 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
     // if op is MOV,
         // we skip handling in this domain is when src is pointer,
         // additionally, we forget the dst pointer
+
+    auto dst_register = register_t{bin.dst.v};
     if (bin.op == Op::MOV && src_ptr_or_mapfd_opt) {
-        m_registers_interval_values -= bin.dst.v;
+        m_registers_interval_values -= dst_register;
         return;
     }
 
@@ -740,7 +718,6 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
     if (src_interval_opt) src_interval = std::move(src_interval_opt.value());
     if (dst_interval_opt) dst_interval = std::move(dst_interval_opt.value());
 
-    auto reg_with_loc = reg_with_loc_t(bin.dst.v, loc);
     switch (bin.op)
     {
         // ra = b
@@ -749,7 +726,7 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
                 dst_interval = src_interval;
             }
             else {
-                m_registers_interval_values -= bin.dst.v;
+                m_registers_interval_values -= dst_register;
                 return;
             }
             break;
@@ -760,7 +737,7 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
             if (dst_interval_opt && src_interval_opt)
                 dst_interval += src_interval;
             else if (dst_interval_opt && src_ptr_or_mapfd_opt) {
-                m_registers_interval_values -= bin.dst.v;
+                m_registers_interval_values -= dst_register;
                 return;
             }
             break;
@@ -772,7 +749,7 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
             else if (dst_interval_opt && src_interval_opt)
                 dst_interval -= src_interval;
             else if (dst_interval_opt && src_ptr_or_mapfd_opt) {
-                m_registers_interval_values -= bin.dst.v;
+                m_registers_interval_values -= dst_register;
                 return;
             }
             break;
@@ -971,23 +948,22 @@ void interval_prop_domain_t::do_bin(const Bin& bin,
             break;
         }
     }
-    m_registers_interval_values.insert(bin.dst.v, reg_with_loc, dst_interval);
+    m_registers_interval_values.insert(dst_register, loc, dst_interval);
 }
 
 
-void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
+void interval_prop_domain_t::do_load(const Mem& b, const register_t& target_register,
         std::optional<ptr_or_mapfd_t> basereg_type, bool load_in_region, location_t loc) {
 
     if (!basereg_type) {
-        m_registers_interval_values -= target_reg.v;
+        m_registers_interval_values -= target_register;
         return;
     }
 
-    auto reg_with_loc = reg_with_loc_t(target_reg.v, loc);
     // we check if we already loaded a pointer from ctx or stack in region domain,
         // we then do not store a number
     if (load_in_region) {
-        m_registers_interval_values -= target_reg.v;
+        m_registers_interval_values -= target_register;
         return;
     }
     int width = b.access.width;
@@ -995,14 +971,14 @@ void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
     auto basereg_ptr_or_mapfd_type = basereg_type.value();
 
     if (is_ctx_ptr(basereg_type)) {
-        m_registers_interval_values.insert(target_reg.v, reg_with_loc, interval_t::top());
+        m_registers_interval_values.insert(target_register, loc, interval_t::top());
         return;
     }
     if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
         interval_t to_insert = interval_t::top();
         if (width == 1) to_insert = interval_t(number_t{0}, number_t{UINT8_MAX});
         else if (width == 2) to_insert = interval_t(number_t{0}, number_t{UINT16_MAX});
-        m_registers_interval_values.insert(target_reg.v, reg_with_loc, to_insert);
+        m_registers_interval_values.insert(target_register, loc, to_insert);
         return;
     }
 
@@ -1014,7 +990,7 @@ void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
         if (auto load_at_singleton = load_at.singleton()) {
             start_offset = (uint64_t)(*load_at_singleton);
             if (auto loaded = m_stack_slots_interval_values.find(start_offset)) {
-                m_registers_interval_values.insert(target_reg.v, reg_with_loc,
+                m_registers_interval_values.insert(target_register, loc,
                         (*loaded).first.to_interval());
                 return;
             }
@@ -1030,15 +1006,15 @@ void interval_prop_domain_t::do_load(const Mem& b, const Reg& target_reg,
             }
         }
         if (m_stack_slots_interval_values.all_numeric(start_offset, width)) {
-            m_registers_interval_values.insert(target_reg.v, reg_with_loc,
-                    interval_t::top());
+            m_registers_interval_values.insert(target_register, loc, interval_t::top());
             return;
         }
     }
-    m_registers_interval_values -= target_reg.v;
+    m_registers_interval_values -= target_register;
 }
 
-void interval_prop_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> basereg_type) {
+void interval_prop_domain_t::do_mem_store(const Mem& b,
+        std::optional<ptr_or_mapfd_t> basereg_type) {
     int offset = b.access.offset;
     int width = b.access.width;
 

@@ -13,7 +13,7 @@
 namespace crab {
 
 class ctx_t {
-    using ptr_types_t = std::unordered_map<uint64_t, ptr_no_off_t>;
+    using ptr_types_t = std::unordered_map<uint64_t, packet_ptr_t>;
 
     ptr_types_t m_packet_ptrs;
     size_t size = 0;
@@ -22,7 +22,7 @@ class ctx_t {
     ctx_t(const ebpf_context_descriptor_t* desc);
     constexpr size_t get_size() const { return size; }
     std::vector<uint64_t> get_keys() const;
-    std::optional<ptr_no_off_t> find(uint64_t key) const;
+    std::optional<packet_ptr_t> find(uint64_t key) const;
 };
 
 using ptr_or_mapfd_cells_t = std::pair<ptr_or_mapfd_t, int>;
@@ -54,7 +54,7 @@ class stack_t {
     size_t size() const;
 };
 
-using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, 11>;
+using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS>;
 using global_region_env_t = std::unordered_map<reg_with_loc_t, ptr_or_mapfd_t>;
 
 class register_types_t {
@@ -79,7 +79,7 @@ class register_types_t {
     void set_to_top();
     bool is_bottom() const;
     bool is_top() const;
-    void insert(register_t reg, const reg_with_loc_t& reg_with_loc, const ptr_or_mapfd_t& type);
+    void insert(register_t, const location_t&, const ptr_or_mapfd_t&);
     std::optional<ptr_or_mapfd_t> find(reg_with_loc_t reg) const;
     std::optional<ptr_or_mapfd_t> find(register_t key) const;
     [[nodiscard]] live_registers_t &get_vars() { return m_cur_def; }
@@ -169,7 +169,7 @@ class region_domain_t final {
     std::optional<uint32_t> get_map_type(const Reg&) const;
     std::optional<uint32_t> get_map_inner_map_fd(const Reg&) const;
     void do_load_mapfd(const register_t&, int, location_t);
-    void do_load(const Mem&, const Reg&, bool, location_t);
+    void do_load(const Mem&, const register_t&, bool, location_t);
     void do_mem_store(const Mem&, location_t);
     interval_t do_bin(const Bin&, const std::optional<interval_t>&,
             const std::optional<crab::ptr_or_mapfd_t>&,
@@ -177,11 +177,11 @@ class region_domain_t final {
     void do_call(const Call&, const stack_cells_t&, location_t);
     void check_valid_access(const ValidAccess &, int);
     void update_ptr_or_mapfd(crab::ptr_or_mapfd_t&&, const interval_t&&,
-            const crab::reg_with_loc_t&, uint8_t);
+            const crab::location_t&, register_t);
 
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_type(register_t) const;
     [[nodiscard]] size_t ctx_size() const;
-    std::optional<crab::ptr_no_off_t> find_in_ctx(uint64_t key) const;
+    std::optional<crab::packet_ptr_t> find_in_ctx(uint64_t key) const;
     [[nodiscard]] std::vector<uint64_t> get_ctx_keys() const;
     std::optional<crab::ptr_or_mapfd_cells_t> find_in_stack(uint64_t key) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;

@@ -15,7 +15,7 @@
 
 namespace crab {
 
-using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, 11>;
+using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS>;
 using global_interval_env_t = std::unordered_map<reg_with_loc_t, mock_interval_t>;
 
 class registers_cp_state_t {
@@ -31,7 +31,7 @@ class registers_cp_state_t {
         void set_to_top();
         std::optional<mock_interval_t> find(reg_with_loc_t reg) const;
         std::optional<mock_interval_t> find(register_t key) const;
-        void insert(register_t, const reg_with_loc_t&, interval_t);
+        void insert(register_t, const location_t&, interval_t);
         void operator-=(register_t);
         registers_cp_state_t operator|(const registers_cp_state_t& other) const;
         registers_cp_state_t(bool is_bottom = false) : m_interval_env(nullptr),
@@ -147,7 +147,7 @@ class interval_prop_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f);
 
-    void do_load(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>, bool, location_t);
+    void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, bool, location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,

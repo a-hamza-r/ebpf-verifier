@@ -10,10 +10,7 @@
 #include "crab/common.hpp"
 
 namespace crab {
-constexpr int STACK_BEGIN = 0;
-constexpr int CTX_BEGIN = 0;
-constexpr int PACKET_BEGIN = 0;
-constexpr int SHARED_BEGIN = 0;
+
 constexpr int PACKET_END = -4100;
 constexpr int PACKET_META = -1;
 constexpr int MAX_PACKET_SIZE = 0xffff;
@@ -101,7 +98,7 @@ struct packet_constraint_t {
     friend std::ostream& operator<<(std::ostream&, const packet_constraint_t&);
 };
 
-using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, 11>;
+using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS>;
 using global_offset_env_t = std::unordered_map<reg_with_loc_t, dist_t>;
 
 class registers_state_t {
@@ -123,7 +120,7 @@ class registers_state_t {
         void set_to_bottom();
         bool is_bottom() const;
         bool is_top() const;
-        void insert(register_t, const reg_with_loc_t&, const dist_t&);
+        void insert(register_t, const location_t&, dist_t&&);
         std::optional<dist_t> find(reg_with_loc_t reg) const;
         std::optional<dist_t> find(register_t key) const;
         friend std::ostream& operator<<(std::ostream& o, const registers_state_t& p);
@@ -217,7 +214,7 @@ class offset_domain_t final {
             std::shared_ptr<ctx_offsets_t> ctx, slack_var_t s = 0) : m_reg_state(std::move(reg)),
     m_stack_state(std::move(stack)), m_ctx_dists(ctx), m_slack(s) {}
 
-    static offset_domain_t setup_entry();
+    static offset_domain_t&& setup_entry();
     // bottom/top
     static offset_domain_t bottom();
     void set_to_top();
@@ -274,7 +271,7 @@ class offset_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f) {}
 
-    void do_load(const Mem&, const Reg&, std::optional<ptr_or_mapfd_t>, location_t loc);
+    void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, location_t loc);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>, std::optional<ptr_or_mapfd_t>&);
     interval_t do_bin(const Bin&, const std::optional<interval_t>&,
             const std::optional<interval_t>&,
@@ -290,8 +287,8 @@ class offset_domain_t final {
     std::optional<dist_cells_t> find_in_stack(int) const;
     std::optional<dist_t> find_offset_at_loc(const reg_with_loc_t) const;
     std::optional<dist_t> find_offset_info(register_t reg) const;
-    void update_offset_info(const dist_t&&, const interval_t&&,
-        const reg_with_loc_t&, uint8_t, Bin::Op);
+    void update_offset_info(const dist_t&&, const interval_t&&, const location_t&,
+            uint8_t, Bin::Op);
     dist_t update_offset(const dist_t&, const weight_t&, const interval_t&, Bin::Op);
     void adjust_bb_for_types(location_t);
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }

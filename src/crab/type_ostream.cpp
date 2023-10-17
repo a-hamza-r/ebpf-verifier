@@ -7,8 +7,8 @@ void print_ptr_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr, std::optio
     if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
         o << std::get<crab::ptr_with_off_t>(ptr);
     }
-    else if (std::holds_alternative<crab::ptr_no_off_t>(ptr)) {
-        o << std::get<crab::ptr_no_off_t>(ptr) << "<" << (d ? *d : crab::dist_t{}) << ">";
+    else if (std::holds_alternative<crab::packet_ptr_t>(ptr)) {
+        o << std::get<crab::packet_ptr_t>(ptr) << "<" << (d ? *d : crab::dist_t{}) << ">";
     }
 }
 

@@ -9,7 +9,7 @@ namespace std {
     return std::visit( overloaded
                {
                    []( const crab::ptr_with_off_t& x ){ return crab::ptr_t{x};},
-                   []( const crab::ptr_no_off_t& x ){ return crab::ptr_t{x};},
+                   []( const crab::packet_ptr_t& x ){ return crab::ptr_t{x};},
                    []( auto& ) { return crab::ptr_t{};}
                 }, t
             );
@@ -32,11 +32,11 @@ bool ptr_with_off_t::operator!=(const ptr_with_off_t& other) const {
     return !(*this == other);
 }
 
-bool ptr_no_off_t::operator==(const ptr_no_off_t& other) const {
+bool packet_ptr_t::operator==(const packet_ptr_t& other) const {
     return (m_r == other.m_r);
 }
 
-bool ptr_no_off_t::operator!=(const ptr_no_off_t& other) const {
+bool packet_ptr_t::operator!=(const packet_ptr_t& other) const {
     return !(*this == other);
 }
 
@@ -64,8 +64,6 @@ ptr_with_off_t ptr_with_off_t::operator|(const ptr_with_off_t& other) const {
             m_region_size.to_interval() | other.m_region_size.to_interval());
     return ptr_with_off_t(m_r, std::move(mock_o), std::move(mock_r_s));
 }
-
-void ptr_no_off_t::set_region(region_t r) { m_r = r; }
 
 std::ostream& operator<<(std::ostream& o, const mapfd_t& m) {
     m.write(o);
@@ -116,10 +114,10 @@ inline std::string get_reg_ptr(const region_t& r) {
             return "ctx_p";
         case region_t::T_STACK:
             return "stack_p";
-        case region_t::T_PACKET:
-            return "packet_p";
-        default:
+        case region_t::T_SHARED:
             return "shared_p";
+        default:
+            return "packet_p";
     }
 }
 
@@ -134,12 +132,8 @@ std::ostream& operator<<(std::ostream& o, const ptr_with_off_t& p) {
     return o;
 }
 
-void ptr_no_off_t::write(std::ostream& o) const {
-    o << get_reg_ptr(get_region());
-}
-
-std::ostream& operator<<(std::ostream& o, const ptr_no_off_t& p) {
-    p.write(o);
+std::ostream& operator<<(std::ostream& o, const packet_ptr_t& p) {
+    o << "packet_p";
     return o;
 }
 
