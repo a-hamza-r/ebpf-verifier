@@ -392,29 +392,30 @@ string_invariant region_domain_t::to_set() {
     return string_invariant{};
 }
 
-void region_domain_t::operator()(const Undefined &u, location_t loc, int print) {}
+void region_domain_t::operator()(const Undefined &u, location_t loc) {}
 
-void region_domain_t::operator()(const Exit &u, location_t loc, int print) {}
+void region_domain_t::operator()(const Exit &u, location_t loc) {}
 
-void region_domain_t::operator()(const Jmp &u, location_t loc, int print) {}
+void region_domain_t::operator()(const Jmp &u, location_t loc) {}
 
-void region_domain_t::operator()(const Assume& u, location_t loc, int print) {
+
+void region_domain_t::operator()(const Assume& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const Assert& u, location_t loc, int print) {
+void region_domain_t::operator()(const Assert& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const Comparable& u, location_t loc, int print) {
+void region_domain_t::operator()(const Comparable& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int print) {
+void region_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print) {
+void region_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     auto maybe_ptr_or_mapfd = m_registers.find(u.reg.v);
     if (is_ctx_ptr(maybe_ptr_or_mapfd)) {
         auto ctx_ptr = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
@@ -428,15 +429,15 @@ void region_domain_t::operator()(const basic_block_t& bb, int print) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const Un& u, location_t loc, int print) {
+void region_domain_t::operator()(const Un& u, location_t loc) {
     m_registers -= u.dst.v;
 }
 
-void region_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
+void region_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
+void region_domain_t::operator()(const ValidSize& u, location_t loc) {
     /* WARNING: The operation is not implemented yet.*/
 }
 
@@ -539,7 +540,7 @@ void region_domain_t::do_load_mapfd(const register_t& dst_reg, int mapfd, locati
     m_registers.insert(dst_reg, loc, type);
 }
 
-void region_domain_t::operator()(const LoadMapFd &u, location_t loc, int print) {
+void region_domain_t::operator()(const LoadMapFd &u, location_t loc) {
     do_load_mapfd((register_t)u.dst.v, u.mapfd, loc);
 }
 
@@ -589,28 +590,28 @@ out:
     }
 }
 
-void region_domain_t::operator()(const Call& u, location_t loc, int print) {
+void region_domain_t::operator()(const Call& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const Callx &u, location_t loc, int print) {
+void region_domain_t::operator()(const Callx &u, location_t loc) {
     // WARNING: Not implemented yet.
 }
 
-void region_domain_t::operator()(const IncrementLoopCounter &u, location_t loc, int print) {
+void region_domain_t::operator()(const IncrementLoopCounter &u, location_t loc) {
     // WARNING: Not implemented yet.
 }
 
-void region_domain_t::operator()(const Atomic &u, location_t loc, int print) {
+void region_domain_t::operator()(const Atomic &u, location_t loc) {
     // WARNING: Not implemented yet.
 }
 
-void region_domain_t::operator()(const Packet& u, location_t loc, int print) {
+void region_domain_t::operator()(const Packet& u, location_t loc) {
     m_registers -= register_t{R0_RETURN_VALUE};
     m_registers.scratch_caller_saved_registers();
 }
 
-void region_domain_t::operator()(const Addable &u, location_t loc, int print) {
+void region_domain_t::operator()(const Addable &u, location_t loc) {
     // nothing to do here
 }
 
@@ -659,11 +660,11 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
 
 }
 
-void region_domain_t::operator()(const ValidAccess &s, location_t loc, int print) {
+void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
+void region_domain_t::operator()(const ValidStore& u, location_t loc) {
     // nothing to do here
 }
 
@@ -684,7 +685,7 @@ region_domain_t&& region_domain_t::setup_entry() {
     return std::move(inv);
 }
 
-void region_domain_t::operator()(const TypeConstraint& s, location_t loc, int print) {
+void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     auto ptr_or_mapfd_opt = m_registers.find(s.reg.v);
     if (ptr_or_mapfd_opt) {
         // it is a pointer or mapfd
@@ -755,7 +756,7 @@ void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, const i
     }
 }
 
-void region_domain_t::operator()(const Bin& b, location_t loc, int print) {
+void region_domain_t::operator()(const Bin& b, location_t loc) {
     // nothing to do here
 }
 
@@ -952,7 +953,7 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
     }
 }
 
-void region_domain_t::operator()(const Mem& m, location_t loc, int print) {
+void region_domain_t::operator()(const Mem& m, location_t loc) {
     // nothing to do here
 }
 

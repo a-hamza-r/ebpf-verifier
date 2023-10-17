@@ -131,30 +131,30 @@ class region_domain_t final {
     void operator-=(register_t var) { m_registers -= var; }
 
     //// abstract transformers
-    void operator()(const Undefined&, location_t loc = boost::none, int print = 0);
-    void operator()(const Bin&, location_t loc = boost::none, int print = 0);
-    void operator()(const Un&, location_t loc = boost::none, int print = 0);
-    void operator()(const LoadMapFd&, location_t loc = boost::none, int print = 0);
-    void operator()(const Atomic&, location_t loc = boost::none, int print = 0);
-    void operator()(const Call&, location_t loc = boost::none, int print = 0);
-    void operator()(const Callx&, location_t loc = boost::none, int print = 0);
-    void operator()(const Exit&, location_t loc = boost::none, int print = 0);
-    void operator()(const Jmp&, location_t loc = boost::none, int print = 0);
-    void operator()(const Mem&, location_t loc = boost::none, int print = 0);
-    void operator()(const Packet&, location_t loc = boost::none, int print = 0);
-    void operator()(const Assume&, location_t loc = boost::none, int print = 0);
-    void operator()(const Assert&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidAccess&, location_t loc = boost::none, int print = 0);
-    void operator()(const Comparable&, location_t loc = boost::none, int print = 0);
-    void operator()(const Addable&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidStore&, location_t loc = boost::none, int print = 0);
-    void operator()(const TypeConstraint&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidSize&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidMapKeyValue&, location_t loc = boost::none, int print = 0);
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidDivisor&, location_t loc = boost::none, int print = 0);
-    void operator()(const FuncConstraint& s, location_t loc = boost::none, int print = 0) {};
-    void operator()(const IncrementLoopCounter&, location_t loc = boost::none, int print = 0);
+    void operator()(const Undefined&, location_t loc = boost::none);
+    void operator()(const Bin&, location_t loc = boost::none);
+    void operator()(const Un&, location_t loc = boost::none);
+    void operator()(const LoadMapFd&, location_t loc = boost::none);
+    void operator()(const Atomic&, location_t loc = boost::none);
+    void operator()(const Call&, location_t loc = boost::none);
+    void operator()(const Callx&, location_t loc = boost::none);
+    void operator()(const Exit&, location_t loc = boost::none);
+    void operator()(const Jmp&, location_t loc = boost::none);
+    void operator()(const Mem&, location_t loc = boost::none);
+    void operator()(const Packet&, location_t loc = boost::none);
+    void operator()(const Assume&, location_t loc = boost::none);
+    void operator()(const Assert&, location_t loc = boost::none);
+    void operator()(const ValidAccess&, location_t loc = boost::none);
+    void operator()(const Comparable&, location_t loc = boost::none);
+    void operator()(const Addable&, location_t loc = boost::none);
+    void operator()(const ValidStore&, location_t loc = boost::none);
+    void operator()(const TypeConstraint&, location_t loc = boost::none);
+    void operator()(const ValidSize&, location_t loc = boost::none);
+    void operator()(const ValidMapKeyValue&, location_t loc = boost::none);
+    void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
+    void operator()(const ValidDivisor&, location_t loc = boost::none);
+    void operator()(const FuncConstraint& s, location_t loc = boost::none) {};
+    void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& o) const {}
     crab::bound_t get_loop_count_upper_bound();
@@ -188,7 +188,6 @@ class region_domain_t final {
     [[nodiscard]] std::vector<uint64_t> get_stack_keys() const;
     void set_registers_to_top();
     void adjust_bb_for_types(location_t);
-    void print_all_register_types() const;
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void reset_errors() { m_errors.clear(); }
 }; // end region_domain_t

@@ -565,7 +565,7 @@ void offset_domain_t::initialize_loop_counter(const label_t& label) {
 
 string_invariant offset_domain_t::to_set() { return string_invariant{}; }
 
-void offset_domain_t::operator()(const Assume &b, location_t loc, int print) {
+void offset_domain_t::operator()(const Assume &b, location_t loc) {
     Condition cond = b.cond;
     if (cond.op == Condition::Op::LE) {
         if (std::holds_alternative<Reg>(cond.right)) {
@@ -737,19 +737,19 @@ interval_t offset_domain_t::do_bin(const Bin &bin,
     return interval_t::bottom();
 }
 
-void offset_domain_t::operator()(const Bin& bin, location_t loc, int print) {
+void offset_domain_t::operator()(const Bin& bin, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const Undefined& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Undefined& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const Un& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Un& u, location_t loc) {
     m_reg_state -= u.dst.v;
 }
 
-void offset_domain_t::operator()(const LoadMapFd& u, location_t loc, int print) {
+void offset_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     m_reg_state -= u.dst.v;
 }
 
@@ -768,53 +768,53 @@ void offset_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
     }
 }
 
-void offset_domain_t::operator()(const Call& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Call& u, location_t loc) {
     // nothing to do here
 }
-void offset_domain_t::operator()(const Exit& u, location_t loc, int print) {}
+void offset_domain_t::operator()(const Exit& u, location_t loc) {}
 
-void offset_domain_t::operator()(const Jmp& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Jmp& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const Packet& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Packet& u, location_t loc) {
     m_reg_state -= register_t{R0_RETURN_VALUE};
     m_reg_state.scratch_caller_saved_registers();
 }
 
-void offset_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
+void offset_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     /* WARNING: This operation is not implemented yet. */
 }
 
-void offset_domain_t::operator()(const ValidAccess& u, location_t loc, int print) {
+void offset_domain_t::operator()(const ValidAccess& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const Comparable& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Comparable& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const Addable& u, location_t loc, int print) {
+void offset_domain_t::operator()(const Addable& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
+void offset_domain_t::operator()(const ValidStore& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const TypeConstraint& u, location_t loc, int print) {
+void offset_domain_t::operator()(const TypeConstraint& u, location_t loc) {
     // nothing to do here
 }
 
-void offset_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
+void offset_domain_t::operator()(const ValidSize& u, location_t loc) {
     /* WARNING: This operation is not implemented yet. */
 }
 
-void offset_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int print) {
+void offset_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
     /* WARNING: This operation is not implemented yet. */
 }
 
-void offset_domain_t::operator()(const ZeroCtxOffset&, location_t loc, int print) {
+void offset_domain_t::operator()(const ZeroCtxOffset&, location_t loc) {
     // nothing to do here
 }
 
@@ -877,7 +877,7 @@ void offset_domain_t::check_valid_access(const ValidAccess& s,
     //std::cout << "type_error: valid access assert fail\n";
 }
 
-void offset_domain_t::operator()(const Assert &u, location_t loc, int print) {
+void offset_domain_t::operator()(const Assert &u, location_t loc) {
     // nothing to do here
 }
 
@@ -949,7 +949,7 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
     }
 }
 
-void offset_domain_t::operator()(const Mem& b, location_t loc, int print) {
+void offset_domain_t::operator()(const Mem& b, location_t loc) {
     // nothing to do here
 }
 

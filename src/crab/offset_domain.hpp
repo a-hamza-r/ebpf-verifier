@@ -239,30 +239,30 @@ class offset_domain_t final {
     void operator-=(register_t reg) { m_reg_state -= reg; }
 
     //// abstract transformers
-    void operator()(const Undefined&, location_t loc = boost::none, int print = 0);
-    void operator()(const Bin&, location_t loc = boost::none, int print = 0);
-    void operator()(const Un&, location_t loc = boost::none, int print = 0);
-    void operator()(const LoadMapFd&, location_t loc = boost::none, int print = 0);
-    void operator()(const Atomic&, location_t loc = boost::none, int print = 0) {}
-    void operator()(const Call&, location_t loc = boost::none, int print = 0);
-    void operator()(const Callx&, location_t loc = boost::none, int print = 0);
-    void operator()(const Exit&, location_t loc = boost::none, int print = 0);
-    void operator()(const Jmp&, location_t loc = boost::none, int print = 0);
-    void operator()(const Mem&, location_t loc = boost::none, int print = 0);
-    void operator()(const Packet&, location_t loc = boost::none, int print = 0);
-    void operator()(const Assume&, location_t loc = boost::none, int print = 0);
-    void operator()(const Assert&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidAccess&, location_t loc = boost::none, int print = 0);
-    void operator()(const Comparable&, location_t loc = boost::none, int print = 0);
-    void operator()(const Addable&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidStore&, location_t loc = boost::none, int print = 0);
-    void operator()(const TypeConstraint&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidSize&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidMapKeyValue&, location_t loc = boost::none, int print = 0);
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none, int print = 0);
-    void operator()(const ValidDivisor&, location_t loc = boost::none, int print = 0);
-    void operator()(const FuncConstraint& s, location_t loc = boost::none, int print = 0) {};
-    void operator()(const IncrementLoopCounter&, location_t loc = boost::none, int print = 0) {};
+    void operator()(const Undefined&, location_t loc = boost::none);
+    void operator()(const Bin&, location_t loc = boost::none);
+    void operator()(const Un&, location_t loc = boost::none);
+    void operator()(const LoadMapFd&, location_t loc = boost::none);
+    void operator()(const Atomic&, location_t loc = boost::none) {}
+    void operator()(const Call&, location_t loc = boost::none);
+    void operator()(const Callx&, location_t loc = boost::none);
+    void operator()(const Exit&, location_t loc = boost::none);
+    void operator()(const Jmp&, location_t loc = boost::none);
+    void operator()(const Mem&, location_t loc = boost::none);
+    void operator()(const Packet&, location_t loc = boost::none);
+    void operator()(const Assume&, location_t loc = boost::none);
+    void operator()(const Assert&, location_t loc = boost::none);
+    void operator()(const ValidAccess&, location_t loc = boost::none);
+    void operator()(const Comparable&, location_t loc = boost::none);
+    void operator()(const Addable&, location_t loc = boost::none);
+    void operator()(const ValidStore&, location_t loc = boost::none);
+    void operator()(const TypeConstraint&, location_t loc = boost::none);
+    void operator()(const ValidSize&, location_t loc = boost::none);
+    void operator()(const ValidMapKeyValue&, location_t loc = boost::none);
+    void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
+    void operator()(const ValidDivisor&, location_t loc = boost::none);
+    void operator()(const FuncConstraint& s, location_t loc = boost::none) {};
+    void operator()(const IncrementLoopCounter&, location_t loc = boost::none) {};
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& os) const;
     std::string domain_name() const;

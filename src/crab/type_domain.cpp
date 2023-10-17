@@ -99,28 +99,29 @@ string_invariant type_domain_t::to_set() {
     return string_invariant{};
 }
 
-void type_domain_t::operator()(const Undefined& u, location_t loc, int print) {
+void type_domain_t::operator()(const Undefined& u, location_t loc) {
     // nothing to do here
 }
 
-void type_domain_t::operator()(const Un& u, location_t loc, int print) {
+void type_domain_t::operator()(const Un& u, location_t loc) {
     m_interval(u, loc);
 }
 
-void type_domain_t::operator()(const LoadMapFd& u, location_t loc, int print) {
+void type_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
-void type_domain_t::operator()(const Atomic &u, location_t loc, int print) {
-    // WARNING: Not implemented yet
-}
-void type_domain_t::operator()(const IncrementLoopCounter &u, location_t loc, int print) {
+void type_domain_t::operator()(const Atomic &u, location_t loc) {
     // WARNING: Not implemented yet
 }
 
-void type_domain_t::operator()(const Call& u, location_t loc, int print) {
+void type_domain_t::operator()(const IncrementLoopCounter &u, location_t loc) {
+    // WARNING: Not implemented yet
+}
+
+void type_domain_t::operator()(const Call& u, location_t loc) {
 
     stack_cells_t stack_values;
     for (ArgPair param : u.pairs) {
@@ -151,23 +152,23 @@ void type_domain_t::operator()(const Call& u, location_t loc, int print) {
     m_interval.do_call(u, stack_values, loc);
 }
 
-void type_domain_t::operator()(const Callx &u, location_t loc, int print) {
+void type_domain_t::operator()(const Callx &u, location_t loc) {
     // WARNING: Not implemented yet
 }
 
-void type_domain_t::operator()(const Exit& u, location_t loc, int print) {
+void type_domain_t::operator()(const Exit& u, location_t loc) {
     // nothing to do here
 }
 
-void type_domain_t::operator()(const Jmp& u, location_t loc, int print) {}
+void type_domain_t::operator()(const Jmp& u, location_t loc) {}
 
-void type_domain_t::operator()(const Packet& u, location_t loc, int print) {
+void type_domain_t::operator()(const Packet& u, location_t loc) {
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
-void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
+void type_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
     const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
     if (std::holds_alternative<Reg>(cond.right)) {
@@ -176,7 +177,7 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
         if (maybe_left_type && maybe_right_type) {
             // both pointers
             if (is_packet_ptr(maybe_left_type) && is_packet_ptr(maybe_right_type)) {
-                m_offset(s, loc, print);
+                m_offset(s, loc);
             }
         }
         else if (!maybe_left_type && !maybe_right_type) {
@@ -196,7 +197,7 @@ void type_domain_t::operator()(const Assume& s, location_t loc, int print) {
     }
 }
 
-void type_domain_t::operator()(const ValidDivisor& u, location_t loc, int print) {
+void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     auto maybe_ptr_or_mapfd_reg = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type_reg = m_interval.find_interval_value(u.reg.v);
     assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
@@ -212,7 +213,7 @@ void type_domain_t::operator()(const ValidDivisor& u, location_t loc, int print)
     }
 }
 
-void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
+void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
     auto interval_type = 
@@ -252,18 +253,18 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc, int print) 
     }
 }
 
-void type_domain_t::operator()(const TypeConstraint& s, location_t loc, int print) {
+void type_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
     assert(!reg_type || !mock_interval_type);
     m_region(s, loc);
 }
 
-void type_domain_t::operator()(const Assert& u, location_t loc, int print) {
-    std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, u.cst);
+void type_domain_t::operator()(const Assert& u, location_t loc) {
+    std::visit([this, loc](const auto& v) { std::apply(*this, std::make_tuple(v, loc)); }, u.cst);
 }
 
-void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
+void type_domain_t::operator()(const Comparable& u, location_t loc) {
 
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
@@ -286,7 +287,7 @@ void type_domain_t::operator()(const Comparable& u, location_t loc, int print) {
     m_errors.push_back("Non-comparable types");
 }
 
-void type_domain_t::operator()(const Addable& u, location_t loc, int print) {
+void type_domain_t::operator()(const Addable& u, location_t loc) {
     auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
     auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
     auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
@@ -303,7 +304,7 @@ void type_domain_t::operator()(const Addable& u, location_t loc, int print) {
     m_errors.push_back("Addable assertion fail");
 }
 
-void type_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
+void type_domain_t::operator()(const ValidStore& u, location_t loc) {
     auto maybe_ptr_or_mapfd_mem = m_region.find_ptr_or_mapfd_type(u.mem.v);
     auto maybe_ptr_or_mapfd_val = m_region.find_ptr_or_mapfd_type(u.val.v);
     auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
@@ -320,7 +321,7 @@ void type_domain_t::operator()(const ValidStore& u, location_t loc, int print) {
     m_errors.push_back("Valid store assertion fail");
 }
 
-void type_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
+void type_domain_t::operator()(const ValidSize& u, location_t loc) {
     auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type = m_interval.find_interval_value(u.reg.v);
     assert(!maybe_ptr_or_mapfd || !maybe_num_type);
@@ -335,7 +336,7 @@ void type_domain_t::operator()(const ValidSize& u, location_t loc, int print) {
     m_errors.push_back("Valid Size assertion fail");
 }
 
-void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int print) {
+void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
 
     // TODO: move map-related function to common
     //auto fd_type = m_region.get_map_type(u.map_fd_reg);
@@ -394,7 +395,7 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc, int pr
     m_errors.push_back("valid map key value assertion failed");
 }
 
-void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc, int print) {
+void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     m_region(u, loc);
 }
 
@@ -406,7 +407,7 @@ type_domain_t type_domain_t::setup_entry() {
     return typ;
 }
 
-void type_domain_t::operator()(const Bin& bin, location_t loc, int print) {
+void type_domain_t::operator()(const Bin& bin, location_t loc) {
     if (is_bottom()) return;
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
     std::optional<interval_t> src_interval;
@@ -476,7 +477,7 @@ void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> tar
     m_offset.do_mem_store(b, target_opt, basereg_opt);
 }
 
-void type_domain_t::operator()(const Mem& b, location_t loc, int print) {
+void type_domain_t::operator()(const Mem& b, location_t loc) {
     auto basereg = b.access.basereg;
     auto base_ptr_or_mapfd_opt = m_region.find_ptr_or_mapfd_type(basereg.v);
     bool unknown_ptr = !base_ptr_or_mapfd_opt.has_value();
@@ -569,7 +570,7 @@ void type_domain_t::operator()(const basic_block_t& bb, int print) {
 
     for (const Instruction& statement : bb) {
         loc = location_t(std::make_pair(label, ++curr_pos));
-        std::visit([this, loc, print](const auto& v) { std::apply(*this, std::make_tuple(v, loc, print)); }, statement);
+        std::visit([this, loc](const auto& v) { std::apply(*this, std::make_tuple(v, loc)); }, statement);
     }
 
     operator+=(m_region.get_errors());

@@ -354,7 +354,7 @@ interval_prop_domain_t interval_prop_domain_t::setup_entry() {
     return cp;
 }
 
-void interval_prop_domain_t::operator()(const Un& u, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Un& u, location_t loc) {
     auto swap_endianness = [&](interval_t&& v, auto input, const auto& be_or_le) {
         if (std::optional<number_t> n = v.singleton()) {
             if (n->fits_cast_to_int64()) {
@@ -406,11 +406,11 @@ void interval_prop_domain_t::operator()(const Un& u, location_t loc, int print) 
     }
 }
 
-void interval_prop_domain_t::operator()(const LoadMapFd &u, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const LoadMapFd &u, location_t loc) {
     m_registers_interval_values -= u.dst.v;
 }
 
-void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const ValidSize& s, location_t loc) {
     // nothing to do here
 }
 
@@ -435,7 +435,7 @@ void interval_prop_domain_t::do_call(const Call& u, const stack_cells_t& store_i
     m_registers_interval_values.scratch_caller_saved_registers();
 }
 
-void interval_prop_domain_t::operator()(const Packet& u, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Packet& u, location_t loc) {
     auto r0 = register_t{R0_RETURN_VALUE};
     m_registers_interval_values.insert(r0, loc, interval_t::top());
     m_registers_interval_values.scratch_caller_saved_registers();
@@ -688,7 +688,7 @@ void interval_prop_domain_t::assume_cst(Condition::Op op, bool is64, register_t 
     }
 }
 
-void interval_prop_domain_t::operator()(const Assume& s, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Assume& s, location_t loc) {
     // nothing to do here
 }
 
@@ -1089,59 +1089,59 @@ void interval_prop_domain_t::check_valid_access(const ValidAccess& s, interval_t
     }
 }
 
-void interval_prop_domain_t::operator()(const ValidAccess& s, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const ValidAccess& s, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Undefined& u, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Undefined& u, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Bin& b, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Bin& b, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Call&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Call&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Exit&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Exit&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Jmp&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Jmp&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Mem&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Mem&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Assert&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Assert&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Comparable&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Comparable&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const Addable&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const Addable&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const ValidStore&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const ValidStore&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const TypeConstraint&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const TypeConstraint&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const ValidMapKeyValue&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const ValidMapKeyValue&, location_t loc) {
     // nothing to do here
 }
 
-void interval_prop_domain_t::operator()(const ZeroCtxOffset&, location_t loc, int print) {
+void interval_prop_domain_t::operator()(const ZeroCtxOffset&, location_t loc) {
     // nothing to do here
 }
 
