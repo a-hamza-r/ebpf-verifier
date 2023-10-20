@@ -636,26 +636,8 @@ void interval_prop_domain_t::assume_signed_cst_interval(Condition::Op op, bool i
 }
 
 void interval_prop_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
-        Value right, location_t loc) {
+        Value right, interval_t&& left_interval, interval_t&& right_interval, location_t loc) {
     using Op = Condition::Op;
-    auto left_mock_interval = m_registers_interval_values.find(left);
-    if (!left_mock_interval) return;
-    auto left_interval = left_mock_interval->to_interval();
-    interval_t right_interval = interval_t::bottom();
-    int64_t imm;
-    bool is_right_reg = std::holds_alternative<Reg>(right);
-    if (is_right_reg) {
-        auto right_mock_interval = m_registers_interval_values.find(std::get<Reg>(right).v);
-        if (!right_mock_interval) return;
-        right_interval = right_mock_interval->to_interval();
-    }
-    else {
-        imm = static_cast<int64_t>(std::get<Imm>(right).v);
-        right_interval = is64 ? interval_t(number_t{imm}) : interval_t(number_t{(uint64_t)imm});
-    }
-    if (left_interval.is_bottom() || (is_right_reg && right_interval.is_bottom())) {
-        return;
-    }
     interval_t left_interval_orig = left_interval;
     interval_t right_interval_orig = right_interval;
 

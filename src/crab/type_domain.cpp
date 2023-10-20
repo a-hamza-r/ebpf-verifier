@@ -171,19 +171,31 @@ void type_domain_t::operator()(const Packet& u, location_t loc) {
 void type_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
     const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
+    const auto& maybe_left_interval = m_interval.find_interval_value(cond.left.v);
+    assert(!maybe_left_type.has_value() || !maybe_left_interval.has_value());
     if (std::holds_alternative<Reg>(cond.right)) {
         const auto& right_reg = std::get<Reg>(cond.right);
         const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
-        if (maybe_left_type && maybe_right_type) {
-            // both pointers
-            if (is_packet_ptr(maybe_left_type) && is_packet_ptr(maybe_right_type)) {
-                m_offset(s, loc);
+        const auto& maybe_right_interval = m_interval.find_interval_value(right_reg.v);
+        assert(!maybe_right_type.has_value() || !maybe_right_interval.has_value());
+        if (same_type(maybe_left_type, maybe_right_type,
+                    maybe_left_interval, maybe_right_interval)) {
+            if (maybe_left_interval) {
+                // both numbers
+                auto left_interval = maybe_left_interval->to_interval();
+                auto right_interval = maybe_right_interval->to_interval();
+                m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right,
+                        std::move(left_interval), std::move(right_interval), loc);
             }
-        }
-        else if (!maybe_left_type && !maybe_right_type) {
-            // both numbers
-            auto left_interval = m_interval.find_interval_value(cond.left.v);
-            m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right, loc);
+            else if (maybe_left_type) {
+                if (is_packet_ptr(maybe_left_type)) {
+                    // both packet pointers
+                    m_offset(s, loc);
+                }
+                else {
+                    // other cases, not implemented yet
+                }
+            }
         }
         else {
             // We should only reach here if `--assume-assert` is off
@@ -193,7 +205,18 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
         }
     }
     else {
-        m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right, loc);
+        if (is_shared_ptr(maybe_left_type) || is_mapfd_type(maybe_left_type)) {
+            // left is a shared pointer, or a mapfd
+            // TODO: need to work with values
+        }
+        else if (maybe_left_interval) {
+            auto left_interval = maybe_left_interval->to_interval();
+            int64_t imm = static_cast<int64_t>(std::get<Imm>(cond.right).v);
+            auto right_interval = cond.is64
+                ? interval_t{number_t{imm}} : interval_t{number_t{(uint64_t)imm}};
+            m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right,
+                    std::move(left_interval), std::move(right_interval), loc);
+        }
     }
 }
 

@@ -158,7 +158,7 @@ class interval_prop_domain_t final {
             interval_t&&, interval_t&&, register_t, Value, location_t);
     void assume_signed_cst_interval(Condition::Op, bool, interval_t&&, interval_t&&,
             interval_t&&, interval_t&&, register_t, Value, location_t);
-    void assume_cst(Condition::Op, bool, register_t, Value, location_t);
+    void assume_cst(Condition::Op, bool, register_t, Value, interval_t&&, interval_t&&, location_t);
     void assume_lt(bool, interval_t&&, interval_t&&, interval_t&&, interval_t&&,
             register_t, Value, location_t, bool);
     void assume_gt(bool, interval_t&&, interval_t&&, interval_t&&, interval_t&&,

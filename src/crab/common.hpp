@@ -166,6 +166,17 @@ inline bool is_shared_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
             && std::get<ptr_with_off_t>(*ptr).get_region() == region_t::T_SHARED);
 }
 
+inline bool same_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd1,
+        const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd2,
+        const std::optional<mock_interval_t>& interval1,
+        const std::optional<mock_interval_t>& interval2) {
+    if (is_mapfd_type(ptr_or_mapfd1) && is_mapfd_type(ptr_or_mapfd2)) return true;
+    if (ptr_or_mapfd1 && ptr_or_mapfd2 && same_region(*ptr_or_mapfd1, *ptr_or_mapfd2))
+        return true;
+    if (interval1 && interval2) return true;
+    return false;
+}
+
 inline std::ostream& operator<<(std::ostream& o, const region_t& t) {
     o << static_cast<std::underlying_type<region_t>::type>(t);
     return o;
