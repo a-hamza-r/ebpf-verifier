@@ -205,8 +205,14 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
         }
     }
     else {
-        if (is_shared_ptr(maybe_left_type) || is_mapfd_type(maybe_left_type)) {
-            // left is a shared pointer, or a mapfd
+        if (is_shared_ptr(maybe_left_type)) {
+            // left is a shared pointer
+            int64_t imm = static_cast<int64_t>(std::get<Imm>(cond.right).v);
+            auto shared_ptr = std::get<ptr_with_off_t>(*maybe_left_type);
+            m_region.assume_cst(cond.op, std::move(shared_ptr), imm, cond.left.v, loc);
+        }
+        if (is_mapfd_type(maybe_left_type)) {
+            // left is  a mapfd
             // TODO: need to work with values
         }
         else if (maybe_left_interval) {

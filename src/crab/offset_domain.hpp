@@ -13,7 +13,6 @@ namespace crab {
 
 constexpr int PACKET_END = -4100;
 constexpr int PACKET_META = -1;
-constexpr int MAX_PACKET_SIZE = 0xffff;
 
 using weight_t = interval_t;
 using slack_var_t = int;

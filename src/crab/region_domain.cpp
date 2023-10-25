@@ -5,6 +5,49 @@
 
 namespace crab {
 
+static inline std::vector<std::set<int>> join_shared_ptr_aliases(
+        const std::vector<std::set<int>>& A, const std::vector<std::set<int>>& B) {
+    auto flattenSet = [](const std::vector<std::set<int>>& v) {
+        std::set<int> s;
+        for (const auto& x : v) {
+            s.insert(x.begin(), x.end());
+        }
+        return s;
+    };
+
+    std::set<int> a, b, intersect;
+    a = flattenSet(A);
+    b = flattenSet(B);
+
+    std::set_intersection(a.begin(), a.end(), b.begin(), b.end(),
+            std::inserter(intersect, intersect.begin()));
+
+    std::vector<std::set<int>> powerset;
+    powerset.push_back({});
+    for (int n : intersect) {
+        auto size = (size_t)powerset.size();
+        for (size_t i = 0; i < size; i++) {
+            auto newSet = powerset[(int)i];
+            newSet.insert(n);
+            powerset.push_back(newSet);
+        }
+    }
+
+    std::vector<std::set<int>> result;
+    for (const auto& s : powerset) {
+        auto foundInA = std::find(A.begin(), A.end(), s);
+        auto foundInB = std::find(B.begin(), B.end(), s);
+        if (foundInA != A.end() || foundInB != B.end()) {
+            result.push_back(s);
+        }
+        auto flattened = flattenSet(result);
+        if (flattened.size() == intersect.size()) {
+            break;
+        }
+    }
+    return result;
+}
+
 ctx_t::ctx_t(const ebpf_context_descriptor_t* desc)
 {
     if (desc->data >= 0) {
@@ -68,29 +111,28 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
 
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
-        auto maybe_ptr1 = find(*(m_cur_def[i]));
-        auto maybe_ptr2 = other.find(*(other.m_cur_def[i]));
+        auto maybe_ptr1 = find(register_t{i});
+        auto maybe_ptr2 = other.find(register_t{i});
         if (maybe_ptr1 && maybe_ptr2) {
             ptr_or_mapfd_t ptr_or_mapfd1 = *maybe_ptr1, ptr_or_mapfd2 = *maybe_ptr2;
-            if (ptr_or_mapfd1 == ptr_or_mapfd2) {
-                joined_reg_types.insert(register_t{i}, loc, std::move(ptr_or_mapfd1));
+            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1)
+                        && std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
+                ptr_with_off_t ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
+                ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
+                if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
+                    auto joined_ptr = ptr_with_off1 | ptr_with_off2;
+                    joined_reg_types.insert(register_t{i}, loc, std::move(joined_ptr));
+                }
             }
-            else { 
-                if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1)
-                            && std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
-                    ptr_with_off_t ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
-                    ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
-                    if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
-                        joined_reg_types.insert(register_t{i}, loc,
-                                std::move(ptr_with_off1 | ptr_with_off2));
-                    }
-                }
-                else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
-                        && std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
-                    mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
-                    mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
-                    joined_reg_types.insert(register_t{i}, loc, std::move(mapfd1 | mapfd2));
-                }
+            else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
+                mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
+                mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
+                joined_reg_types.insert(register_t{i}, loc, std::move(mapfd1 | mapfd2));
+            }
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
+                joined_reg_types.insert(register_t{i}, loc, std::move(packet_ptr_t()));
             }
         }
     }
@@ -166,10 +208,7 @@ stack_t stack_t::operator|(const stack_t& other) const {
             int width1 = ptr_or_mapfd_cells1.second;
             int width2 = ptr_or_mapfd_cells2.second;
             int width_joined = std::min(width1, width2);
-            if (ptr_or_mapfd1 == ptr_or_mapfd2) {
-                joined_stack.store(kv.first, ptr_or_mapfd1, width_joined);
-            }
-            else if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
+            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
                 auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
                 auto ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
@@ -183,6 +222,10 @@ stack_t stack_t::operator|(const stack_t& other) const {
                 auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
                 joined_stack.store(kv.first, std::move(mapfd1 | mapfd2), width_joined);
+            }
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1) &&
+                    std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
+                joined_stack.store(kv.first, std::move(packet_ptr_t()), width_joined);
             }
         }
     }
@@ -351,7 +394,9 @@ region_domain_t region_domain_t::operator|(const region_domain_t& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return region_domain_t(m_registers | other.m_registers, m_stack | other.m_stack, other.m_ctx);
+    auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
+    return region_domain_t(m_registers | other.m_registers, m_stack | other.m_stack, other.m_ctx,
+            std::move(aliases));
 }
 
 region_domain_t region_domain_t::operator|(region_domain_t&& other) const {
@@ -361,7 +406,9 @@ region_domain_t region_domain_t::operator|(region_domain_t&& other) const {
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return region_domain_t(m_registers | std::move(other.m_registers), m_stack | std::move(other.m_stack), other.m_ctx);
+    auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
+    return region_domain_t(m_registers | std::move(other.m_registers),
+            m_stack | std::move(other.m_stack), other.m_ctx, std::move(aliases));
 }
 
 region_domain_t region_domain_t::operator&(const region_domain_t& abs) const {
@@ -398,6 +445,70 @@ void region_domain_t::operator()(const Exit &u, location_t loc) {}
 
 void region_domain_t::operator()(const Jmp &u, location_t loc) {}
 
+
+void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t&& shared_ptr, int64_t imm,
+        register_t left, location_t loc) {
+    // we only reach here when the ptr is shared ptr
+    auto nullness = shared_ptr.get_nullness();
+    auto set_nullness = [this, loc, left](nullness_t n, int id) {
+        if (id == -1) {
+            for (size_t i = 0; i < m_shared_ptr_aliases.size(); i++) {
+                if (m_shared_ptr_aliases[i].count(left)) {
+                    id = i;
+                    break;
+                }
+            }
+        }
+        if (id == -1) return;
+        for (const auto& s : m_shared_ptr_aliases[id]) {
+            if (s <= 10) {
+                auto type = m_registers.find(register_t{(uint8_t)s});
+                if (is_shared_ptr(type)) {
+                    auto shared_ptr = std::get<ptr_with_off_t>(*type);
+                    shared_ptr.set_nullness(n);
+                    m_registers.insert(register_t{(uint8_t)s}, loc, shared_ptr);
+                }
+            }
+            else {
+                auto offset = s - 11;
+                auto type_with_width = m_stack.find(offset);
+                if (!type_with_width) continue;
+                auto type = type_with_width->first;
+                if (is_shared_ptr(type)) {
+                    auto shared_ptr = std::get<ptr_with_off_t>(type);
+                    shared_ptr.set_nullness(n);
+                    m_stack.store(offset, shared_ptr, type_with_width->second);
+                }
+            }
+        }
+    };
+    if (imm == 0) {
+        if (op == Condition::Op::EQ) {
+            if (nullness == nullness_t::_NULL) {
+                m_registers.set_to_top();
+            }
+            else if (nullness == nullness_t::NOT_NULL) {
+                m_registers.set_to_bottom();
+            }
+            else {
+                auto id = shared_ptr.get_id();
+                set_nullness(nullness_t::_NULL, id);
+            }
+        }
+        else if (op == Condition::Op::NE) {
+            if (nullness == nullness_t::NOT_NULL) {
+                m_registers.set_to_top();
+            }
+            else if (nullness == nullness_t::_NULL) {
+                m_registers.set_to_bottom();
+            }
+            else {
+                auto id = shared_ptr.get_id();
+                set_nullness(nullness_t::NOT_NULL, id);
+            }
+        }
+    }
+}
 
 void region_domain_t::operator()(const Assume& u, location_t loc) {
     // nothing to do here
@@ -544,6 +655,31 @@ void region_domain_t::operator()(const LoadMapFd &u, location_t loc) {
     do_load_mapfd((register_t)u.dst.v, u.mapfd, loc);
 }
 
+void region_domain_t::set_aliases(int v, ptr_with_off_t& ptr) {
+    size_t i = 0;
+    for (; i < m_shared_ptr_aliases.size(); i++) {
+        if (m_shared_ptr_aliases[(int)i].count(v) > 0) {
+            break;
+        }
+    }
+    if (i < m_shared_ptr_aliases.size()) m_shared_ptr_aliases[(int)i].erase(v);
+    auto id = ptr.get_id();
+    /* NOTE: this check is supposed to be for newly generated pointers, but it could also be the
+     * case that an existing pointer has id == -1. This is because, at join of two ptr_with_off_t,
+     * we set id == -1 for simplicity. Some code for correcting this is in the assume_cst
+     * function, although it should work here as well but doesn't (ideally, may be not).
+     * In future, check this again.
+     */
+    if (id == -1) {
+        m_shared_ptr_aliases.push_back({v});
+        ptr.set_id(m_shared_ptr_aliases.size() - 1);
+    }
+    else {
+        m_shared_ptr_aliases[id].insert(v);
+        ptr.set_id(id);
+    }
+}
+
 void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {
     for (const auto& kv : cells) {
         auto offset = kv.first;
@@ -568,15 +704,18 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
                         goto out;
                     }
                 } else {
-                    auto type = ptr_with_off_t(crab::region_t::T_SHARED, interval_t{number_t{0}},
+                    auto type = ptr_with_off_t(region_t::T_SHARED, -1,
+                            interval_t{number_t{0}}, nullness_t::MAYBE_NULL,
                             get_map_value_size(*maybe_fd_reg));
+                    set_aliases((int)r0, type);
                     m_registers.insert(r0, loc, type);
                 }
             }
         }
         else {
-            auto type = ptr_with_off_t(
-                 crab::region_t::T_SHARED, interval_t{number_t{0}}, crab::interval_t::top());
+            auto type = ptr_with_off_t(region_t::T_SHARED, -1, interval_t{number_t{0}},
+                    nullness_t::MAYBE_NULL);
+            set_aliases((int)r0, type);
             m_registers.insert(r0, loc, type);
         }
     }
@@ -626,22 +765,29 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
             auto offset = ptr_with_off_type.get_offset();
             auto offset_to_check = offset.to_interval()+interval_t{s.offset};
             auto offset_lb = offset_to_check.lb();
-            auto offset_plus_width_ub = offset_to_check.ub()+crab::bound_t{width};
-            if (ptr_with_off_type.get_region() == crab::region_t::T_STACK) {
-                if (crab::bound_t{STACK_BEGIN} <= offset_lb
-                        && offset_plus_width_ub <= crab::bound_t{EBPF_STACK_SIZE})
+            auto offset_plus_width_ub = offset_to_check.ub()+bound_t{width};
+            if (ptr_with_off_type.get_region() == region_t::T_STACK) {
+                if (bound_t{STACK_BEGIN} <= offset_lb
+                        && offset_plus_width_ub <= bound_t{EBPF_STACK_SIZE})
                     return;
             }
-            else if (ptr_with_off_type.get_region() == crab::region_t::T_CTX) {
-                if (crab::bound_t{CTX_BEGIN} <= offset_lb
-                        && offset_plus_width_ub <= crab::bound_t{ctx_size()})
+            else if (ptr_with_off_type.get_region() == region_t::T_CTX) {
+                if (bound_t{CTX_BEGIN} <= offset_lb
+                        && offset_plus_width_ub <= bound_t{ctx_size()})
                     return;
             }
             else { // shared
                 if (crab::bound_t{SHARED_BEGIN} <= offset_lb &&
-                        offset_plus_width_ub <= ptr_with_off_type.get_region_size().lb()) return;
-                // TODO: check null access
-                //return;
+                        offset_plus_width_ub <= ptr_with_off_type.get_region_size().lb()) {
+                    if (!is_comparison_check && !s.or_null) {
+                        auto nullness = ptr_with_off_type.get_nullness();
+                        if (nullness != nullness_t::NOT_NULL) {
+                            m_errors.push_back("possible null access");
+                        }
+                        return;
+                    }
+                    return;
+                }
             }
         }
         else if (std::holds_alternative<packet_ptr_t>(reg_ptr_or_mapfd_type)) {
@@ -676,12 +822,12 @@ region_domain_t&& region_domain_t::setup_entry() {
     register_types_t typ(std::make_shared<global_region_env_t>());
 
     auto loc = std::make_pair(label_t::entry, (unsigned int)0);
-    auto ctx_ptr_r1 = ptr_with_off_t(crab::region_t::T_CTX, mock_interval_t{number_t{0}});
-    auto stack_ptr_r10 = ptr_with_off_t(crab::region_t::T_STACK, mock_interval_t{number_t{512}});
+    auto ctx_ptr_r1 = ptr_with_off_t(region_t::T_CTX, -1, mock_interval_t{number_t{0}});
+    auto stack_ptr_r10 = ptr_with_off_t(region_t::T_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
-    static region_domain_t inv(std::move(typ), crab::stack_t::top(), ctx);
+    static region_domain_t inv(std::move(typ), stack_t::top(), ctx);
     return std::move(inv);
 }
 
@@ -783,8 +929,16 @@ interval_t region_domain_t::do_bin(const Bin& bin,
         // ra = b, where b is a pointer/mapfd, a numerical register, or a constant;
         case Op::MOV: {
             // b is a pointer/mapfd
-            if (src_ptr_or_mapfd_opt)
-                m_registers.insert(dst_register, loc, src_ptr_or_mapfd);
+            if (src_ptr_or_mapfd_opt) {
+                if (is_shared_ptr(src_ptr_or_mapfd_opt)) {
+                    auto shared_ptr = std::get<ptr_with_off_t>(src_ptr_or_mapfd);
+                    set_aliases(dst_register, shared_ptr);
+                    m_registers.insert(dst_register, loc, shared_ptr);
+                }
+                else {
+                    m_registers.insert(dst_register, loc, src_ptr_or_mapfd);
+                }
+            }
             // b is a numerical register, or constant
             else if (dst_ptr_or_mapfd_opt) {
                 m_registers -= dst_register;
@@ -920,8 +1074,15 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
                 m_registers -= target_register;
                 return;
             }
-
-            m_registers.insert(target_register, loc, (*loaded).first);
+            auto ptr_or_mapfd = loaded->first;
+            if (is_shared_ptr(ptr_or_mapfd)) {
+                auto shared_ptr = std::get<ptr_with_off_t>(ptr_or_mapfd);
+                set_aliases((int)target_register, shared_ptr);
+                m_registers.insert(target_register, loc, shared_ptr);
+            }
+            else {
+                m_registers.insert(target_register, loc, ptr_or_mapfd);
+            }
         }
     }
     else {
@@ -1005,7 +1166,15 @@ void region_domain_t::do_mem_store(const Mem& b, location_t loc) {
 
     // if targetreg_type is empty, we are storing a number
     if (!targetreg_type) return;
-    m_stack.store(store_at, *targetreg_type, width);
+    auto type = *targetreg_type;
+    if (is_shared_ptr(type)) {
+        auto shared_ptr = std::get<ptr_with_off_t>(type);
+        set_aliases(store_at+11, shared_ptr);
+        m_stack.store(store_at, shared_ptr, width);
+    }
+    else {
+        m_stack.store(store_at, type, width);
+    }
 }
 
 void region_domain_t::adjust_bb_for_types(location_t loc) {

@@ -50,7 +50,9 @@ mapfd_t mapfd_t::operator|(const mapfd_t& other) const {
     return mapfd_t(std::move(mock_i), value_type);
 }
 
-mock_interval_t ptr_with_off_t::get_region_size() const { return m_region_size; }
+void ptr_with_off_t::set_nullness(nullness_t n) { m_nullness = n; }
+
+void ptr_with_off_t::set_id(int id) { m_id = id; }
 
 void ptr_with_off_t::set_offset(mock_interval_t off) { m_offset = off; }
 
@@ -59,10 +61,11 @@ void ptr_with_off_t::set_region_size(mock_interval_t region_sz) { m_region_size 
 void ptr_with_off_t::set_region(region_t r) { m_r = r; }
 
 ptr_with_off_t ptr_with_off_t::operator|(const ptr_with_off_t& other) const {
-    const auto& mock_o = mock_interval_t(m_offset.to_interval() | other.m_offset.to_interval());
-    const auto& mock_r_s = mock_interval_t(
+    auto&& mock_o = mock_interval_t(m_offset.to_interval() | other.m_offset.to_interval());
+    auto&& mock_r_s = mock_interval_t(
             m_region_size.to_interval() | other.m_region_size.to_interval());
-    return ptr_with_off_t(m_r, std::move(mock_o), std::move(mock_r_s));
+    auto&& nullness = m_nullness == other.m_nullness ? m_nullness : nullness_t::MAYBE_NULL;
+    return ptr_with_off_t(m_r, -1, std::move(mock_o), std::move(nullness), std::move(mock_r_s));
 }
 
 std::ostream& operator<<(std::ostream& o, const mapfd_t& m) {

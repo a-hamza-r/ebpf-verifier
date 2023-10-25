@@ -12,6 +12,8 @@
 
 namespace crab {
 
+using shared_ptr_aliases_t = std::vector<std::set<int>>;
+
 class ctx_t {
     using ptr_types_t = std::unordered_map<uint64_t, packet_ptr_t>;
 
@@ -94,6 +96,7 @@ class region_domain_t final {
     crab::stack_t m_stack;
     crab::register_types_t m_registers;
     std::shared_ptr<crab::ctx_t> m_ctx;
+    shared_ptr_aliases_t m_shared_ptr_aliases;
     std::vector<std::string> m_errors;
 
   public:
@@ -103,8 +106,10 @@ class region_domain_t final {
     region_domain_t(const region_domain_t& o) = default;
     region_domain_t& operator=(region_domain_t&& o) = default;
     region_domain_t& operator=(const region_domain_t& o) = default;
-    region_domain_t(crab::register_types_t&& _types, crab::stack_t&& _st, std::shared_ptr<crab::ctx_t> _ctx)
-            : m_stack(std::move(_st)), m_registers(std::move(_types)), m_ctx(_ctx) {}
+    region_domain_t(crab::register_types_t&& _types, crab::stack_t&& _st,
+            std::shared_ptr<crab::ctx_t> _ctx, shared_ptr_aliases_t&& _shared_ptr_aliases = {})
+            : m_stack(std::move(_st)), m_registers(std::move(_types)), m_ctx(_ctx),
+            m_shared_ptr_aliases(std::move(_shared_ptr_aliases)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static region_domain_t&& setup_entry();
     // bottom/top
@@ -176,6 +181,7 @@ class region_domain_t final {
             const std::optional<crab::ptr_or_mapfd_t>&, location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void check_valid_access(const ValidAccess &, int);
+    void assume_cst(Condition::Op, ptr_with_off_t&&, int64_t, register_t, location_t);
     void update_ptr_or_mapfd(crab::ptr_or_mapfd_t&&, const interval_t&&,
             const crab::location_t&, register_t);
 
@@ -185,6 +191,7 @@ class region_domain_t final {
     [[nodiscard]] std::vector<uint64_t> get_ctx_keys() const;
     std::optional<crab::ptr_or_mapfd_cells_t> find_in_stack(uint64_t key) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
+    void set_aliases(int, ptr_with_off_t&);
     [[nodiscard]] std::vector<uint64_t> get_stack_keys() const;
     void set_registers_to_top();
     void adjust_bb_for_types(location_t);

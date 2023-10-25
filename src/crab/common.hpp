@@ -19,6 +19,7 @@ constexpr int STACK_BEGIN = 0;
 constexpr int CTX_BEGIN = 0;
 constexpr int PACKET_BEGIN = 0;
 constexpr int SHARED_BEGIN = 0;
+constexpr int MAX_PACKET_SIZE = 0xffff;
 
 enum class region_t {
 	T_CTX,
@@ -26,6 +27,8 @@ enum class region_t {
 	T_PACKET,
 	T_SHARED
 };
+
+enum class nullness_t { MAYBE_NULL, NOT_NULL, _NULL };
 
 class packet_ptr_t {
     region_t m_r = region_t::T_PACKET;
@@ -64,7 +67,9 @@ class mock_interval_t {
 
 class ptr_with_off_t {
     region_t m_r;
+    int m_id;
     mock_interval_t m_offset;
+    nullness_t m_nullness = nullness_t::MAYBE_NULL;
     mock_interval_t m_region_size = mock_interval_t::top();
 
   public:
@@ -73,11 +78,16 @@ class ptr_with_off_t {
     ptr_with_off_t(ptr_with_off_t &&) = default;
     ptr_with_off_t &operator=(const ptr_with_off_t &) = default;
     ptr_with_off_t &operator=(ptr_with_off_t &&) = default;
-    ptr_with_off_t(region_t _r, mock_interval_t _off,
+    ptr_with_off_t(region_t _r, int _id, mock_interval_t _off,
+            nullness_t _nullness = nullness_t::MAYBE_NULL,
             mock_interval_t _region_sz = mock_interval_t::top())
-        : m_r(_r), m_offset(_off), m_region_size(_region_sz) {}
+        : m_r(_r), m_id(_id), m_offset(_off), m_nullness(_nullness), m_region_size(_region_sz) {}
     ptr_with_off_t operator|(const ptr_with_off_t&) const;
-    mock_interval_t get_region_size() const;
+    [[nodiscard]] nullness_t get_nullness() const { return m_nullness; }
+    void set_nullness(nullness_t);
+    [[nodiscard]] int get_id() const { return m_id; }
+    void set_id(int);
+    [[nodiscard]] mock_interval_t get_region_size() const { return m_region_size; }
     void set_region_size(mock_interval_t);
     [[nodiscard]] mock_interval_t get_offset() const { return m_offset; }
     void set_offset(mock_interval_t);
