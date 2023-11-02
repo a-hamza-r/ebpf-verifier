@@ -48,17 +48,33 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     } while (0)
 
 #define TEST_SECTION(project, filename, section) \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section, "[verify][samples][" project "]") { \
+    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true); \
+    } \
+    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") { \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
     }
 
 #define TEST_SECTION_REJECT(project, filename, section) \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section, "[verify][samples][" project "]") { \
+    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false); \
+    } \
+    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") { \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
     }
 
 #define TEST_SECTION_REJECT_IF_STRICT(project, filename, section) \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section, "[verify][samples][" project "]") { \
+    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
+        options.strict = true; \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
+    } \
+    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") { \
         ebpf_verifier_options_t options = ebpf_verifier_default_options; \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
         options.strict = true; \
@@ -66,15 +82,26 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     }
 
 #define TEST_SECTION_FAIL(project, filename, section) \
-    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section, "[!shouldfail][verify][samples][" project "]") { \
+    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true); \
+    } \
+    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") { \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
     }
 
 #define TEST_SECTION_REJECT_FAIL(project, filename, section) \
-    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section, "[!shouldfail][verify][samples][" project "]") { \
+    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false); \
+    } \
+    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") { \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
     }
 
+// need these defined for type domain as well
 #define TEST_SECTION_LEGACY(dirname, filename, sectionname) \
     TEST_SECTION(dirname, filename, sectionname) \
     TEST_CASE("Try unmarshalling bad program: " dirname "/" filename " " sectionname, "[unmarshal]") { \
@@ -87,6 +114,7 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
         REQUIRE(std::holds_alternative<std::string>(prog_or_error)); \
     }
 
+// Tests for zoneCrab domain
 TEST_SECTION("bpf_cilium_test", "bpf_lxc_jit.o", "1/0xdc06")
 TEST_SECTION("bpf_cilium_test", "bpf_lxc_jit.o", "2/1")
 TEST_SECTION("bpf_cilium_test", "bpf_lxc_jit.o", "2/3")
