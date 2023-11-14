@@ -814,7 +814,7 @@ void region_domain_t::operator()(const ValidStore& u, location_t loc) {
     // nothing to do here
 }
 
-region_domain_t&& region_domain_t::setup_entry() {
+region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
 
     std::shared_ptr<ctx_t> ctx
         = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
@@ -822,9 +822,11 @@ region_domain_t&& region_domain_t::setup_entry() {
     register_types_t typ(std::make_shared<global_region_env_t>());
 
     auto loc = std::make_pair(label_t::entry, (unsigned int)0);
-    auto ctx_ptr_r1 = ptr_with_off_t(region_t::T_CTX, -1, mock_interval_t{number_t{0}});
+    if (init_r1) {
+        auto ctx_ptr_r1 = ptr_with_off_t(region_t::T_CTX, -1, mock_interval_t{number_t{0}});
+        typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
+    }
     auto stack_ptr_r10 = ptr_with_off_t(region_t::T_STACK, -1,  mock_interval_t{number_t{512}});
-    typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
     static region_domain_t inv(std::move(typ), stack_t::top(), ctx);

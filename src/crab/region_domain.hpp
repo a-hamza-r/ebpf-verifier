@@ -111,7 +111,7 @@ class region_domain_t final {
             : m_stack(std::move(_st)), m_registers(std::move(_types)), m_ctx(_ctx),
             m_shared_ptr_aliases(std::move(_shared_ptr_aliases)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
-    static region_domain_t&& setup_entry();
+    static region_domain_t&& setup_entry(bool);
     // bottom/top
     static region_domain_t bottom();
     void set_to_top();

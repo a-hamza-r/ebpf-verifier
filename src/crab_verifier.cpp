@@ -159,7 +159,7 @@ static abstract_domain_t make_initial(const ebpf_verifier_options_t* options) {
         return abstract_domain_t(entry_inv);
     }
     case abstract_domain_kind::TYPE_DOMAIN: {
-        type_domain_t entry_inv = type_domain_t::setup_entry();
+        type_domain_t entry_inv = type_domain_t::setup_entry(true);
         return abstract_domain_t(entry_inv);
     }
     default:

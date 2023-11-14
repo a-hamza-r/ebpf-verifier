@@ -428,8 +428,8 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     m_region(u, loc);
 }
 
-type_domain_t type_domain_t::setup_entry() {
-    auto&& reg = crab::region_domain_t::setup_entry();
+type_domain_t type_domain_t::setup_entry(bool init_r1) {
+    auto&& reg = crab::region_domain_t::setup_entry(init_r1);
     auto&& off = offset_domain_t::setup_entry();
     auto&& interval = interval_prop_domain_t::setup_entry();
     type_domain_t typ(std::move(reg), std::move(off), std::move(interval));

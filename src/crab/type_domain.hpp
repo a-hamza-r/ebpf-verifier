@@ -29,7 +29,7 @@ class type_domain_t final {
     type_domain_t& operator=(type_domain_t&& o) = default;
     type_domain_t& operator=(const type_domain_t& o) = default;
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
-    static type_domain_t setup_entry();
+    static type_domain_t setup_entry(bool);
     // bottom/top
     static type_domain_t bottom();
     void set_to_top();
