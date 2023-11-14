@@ -3,44 +3,82 @@
 
 #include "crab/type_ostream.hpp"
 
-void print_ptr_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr, std::optional<crab::dist_t> d) {
+void print_non_numeric_memory_cell(std::ostream& o, int start, int end,
+        const crab::ptr_or_mapfd_t& ptr, std::optional<crab::dist_t> d) {
     if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
-        o << std::get<crab::ptr_with_off_t>(ptr);
+        o << "[" << start << "-" << end << "] : " << std::get<crab::ptr_with_off_t>(ptr);
     }
     else if (std::holds_alternative<crab::packet_ptr_t>(ptr)) {
-        o << std::get<crab::packet_ptr_t>(ptr) << "<" << (d ? *d : crab::dist_t{}) << ">";
-    }
-}
-
-void print_number(std::ostream& o, crab::interval_t n) {
-    o << "number";
-    if (!n.is_top()) {
-        if (auto n_singleton = n.singleton()) {
-            o << "<" << *n_singleton << ">";
+        if (d) {
+            o << "[" << start << "-" << end << "] : " <<
+                std::get<crab::packet_ptr_t>(ptr) << "<" << *d << ">";
         }
         else {
-            o << "<" << n << ">";
+            o << "[" << start << "-" << end << "] : " << std::get<crab::packet_ptr_t>(ptr);
+        }
+    }
+    else {
+        o << "[" << start << "-" << end << "] : " << std::get<crab::mapfd_t>(ptr);
+    }
+}
+
+void print_numeric_memory_cell(std::ostream& o, int start, int end, crab::interval_t n) {
+    if (n.is_top()) {
+        o << "[" << start << "-" << end << "] : number";
+    }
+    else {
+        if (auto n_singleton = n.singleton()) {
+            o << "[" << start << "-" << end << "] : number<" << *n_singleton << ">";
+        }
+        else {
+            o << "[" << start << "-" << end << "] : number<" << n << ">";
         }
     }
 }
 
-void print_ptr_or_mapfd_type(std::ostream& o, const crab::ptr_or_mapfd_t& ptr_or_mapfd, std::optional<crab::dist_t> d) {
-    if (std::holds_alternative<crab::mapfd_t>(ptr_or_mapfd)) {
-        o << std::get<crab::mapfd_t>(ptr_or_mapfd);
+void print_memory_cell(std::ostream& o, int start, int end,
+        const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t> d,
+        std::optional<crab::mock_interval_t> n) {
+    if (n) print_numeric_memory_cell(o, start, end, n->to_interval());
+    else if (p) print_non_numeric_memory_cell(o, start, end, *p, d);
+}
+
+void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd_t& ptr,
+        std::optional<crab::dist_t> d) {
+    if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
+        o << r << " : " << std::get<crab::ptr_with_off_t>(ptr);
+    }
+    else if (std::holds_alternative<crab::packet_ptr_t>(ptr)) {
+        if (d) {
+            o << r << " : " << std::get<crab::packet_ptr_t>(ptr) << "<" << *d << ">";
+        }
+        else {
+            o << r << " : " << std::get<crab::packet_ptr_t>(ptr);
+        }
     }
     else {
-        print_ptr_type(o, ptr_or_mapfd, d);
+        o << r << " : " << std::get<crab::mapfd_t>(ptr);
     }
 }
 
-void print_register(std::ostream& o, const Reg& r, const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::dist_t> d, std::optional<crab::mock_interval_t> n) {
-    o << r << " : ";
-    if (p) {
-        print_ptr_or_mapfd_type(o, *p, d);
+void print_numeric_register(std::ostream& o, Reg r, crab::interval_t n) {
+    if (n.is_top()) {
+        o << r << " : number";
     }
-    else if (n) {
-        print_number(o, n->to_interval());
+    else {
+        if (auto n_singleton = n.singleton()) {
+            o << r << " : number<" << *n_singleton << ">";
+        }
+        else {
+            o << r << " : number<" << n << ">";
+        }
     }
+}
+
+void print_register(std::ostream& o, Reg r, const std::optional<crab::ptr_or_mapfd_t>& p,
+        std::optional<crab::dist_t> d, std::optional<crab::mock_interval_t> n) {
+    if (n) print_numeric_register(o, r, n->to_interval());
+    else if (p) print_non_numeric_register(o, r, *p, d);
 }
 
 inline std::string size_(int w) { return std::string("u") + std::to_string(w * 8); }

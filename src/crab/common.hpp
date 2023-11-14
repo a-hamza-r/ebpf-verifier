@@ -28,6 +28,8 @@ enum class region_t {
 	T_SHARED
 };
 
+inline std::string get_reg_ptr(const region_t& r) noexcept;
+
 enum class nullness_t { MAYBE_NULL, NOT_NULL, _NULL };
 
 class packet_ptr_t {

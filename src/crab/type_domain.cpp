@@ -533,8 +533,8 @@ void type_domain_t::print_ctx() const {
         auto ptr = m_region.find_in_ctx(k);
         auto dist = m_offset.find_in_ctx(k);
         if (ptr) {
-            std::cout << "\t\t" << k << ": ";
-            print_ptr_type(std::cout, *ptr, dist);
+            std::cout << "\t\t";
+            print_non_numeric_memory_cell(std::cout, k, k+3, *ptr, dist);
             std::cout << ",\n";
         }
     }
@@ -552,11 +552,14 @@ void type_domain_t::print_stack() const {
             auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
-            std::cout << "\t\t[" << k << "-" << k+width-1 << "] : ";
-            if (dist) 
-                print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd, dist->first);
-            else 
-                print_ptr_or_mapfd_type(std::cout, ptr_or_mapfd, std::nullopt);
+            std::cout << "\t\t";
+            if (dist) {
+                print_non_numeric_memory_cell(std::cout, k, k+width-1, ptr_or_mapfd,
+                        std::optional<dist_t>(dist->first));
+            }
+            else {
+                print_non_numeric_memory_cell(std::cout, k, k+width-1, ptr_or_mapfd);
+            }
             std::cout << ",\n";
         }
     }
@@ -564,8 +567,9 @@ void type_domain_t::print_stack() const {
         auto maybe_interval_cells = m_interval.find_in_stack(k);
         if (maybe_interval_cells) {
             auto interval_cells = maybe_interval_cells.value();
-            std::cout << "\t\t" << "[" << k << "-" << k+interval_cells.second-1 << "] : ";
-            print_number(std::cout, interval_cells.first.to_interval());
+            std::cout << "\t\t";
+            print_numeric_memory_cell(std::cout, k, k+interval_cells.second-1,
+                    interval_cells.first.to_interval());
             std::cout << ",\n";
         }
     }

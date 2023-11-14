@@ -19,6 +19,20 @@ namespace std {
 
 namespace crab {
 
+inline std::string get_reg_ptr(const region_t& r) noexcept {
+    switch (r) {
+        case region_t::T_CTX:
+            return "ctx_p";
+        case region_t::T_STACK:
+            return "stack_p";
+        case region_t::T_SHARED:
+            return "shared_p";
+        default:
+            return "packet_p";
+    }
+    __builtin_unreachable();
+}
+
 bool mock_interval_t::operator==(const mock_interval_t& other) const {
     return (to_interval() == other.to_interval());
 }
@@ -79,10 +93,17 @@ bool mapfd_t::has_type_map_programs() const {
 
 void mapfd_t::write(std::ostream& o) const {
     if (has_type_map_programs()) {
-        o << "map_fd_programs";
+        o << "map_fd_programs ";
     }
     else {
-        o << "map_fd";
+        o << "map_fd ";
+    }
+    auto mapfd = m_mapfd.to_interval();
+    if (auto mapfd_singleton = mapfd.singleton()) {
+        o << *mapfd_singleton;
+    }
+    else {
+        o << mapfd;
     }
 }
 
@@ -111,23 +132,29 @@ std::size_t reg_with_loc_t::hash() const {
     return seed;
 }
 
-inline std::string get_reg_ptr(const region_t& r) {
-    switch (r) {
-        case region_t::T_CTX:
-            return "ctx_p";
-        case region_t::T_STACK:
-            return "stack_p";
-        case region_t::T_SHARED:
-            return "shared_p";
-        default:
-            return "packet_p";
-    }
-}
-
 void ptr_with_off_t::write(std::ostream& o) const {
-    o << get_reg_ptr(m_r) << "<" << m_offset.to_interval();
-    if (m_region_size.lb() >= number_t{0}) o << "," << m_region_size.to_interval();
-    o << ">";
+    o << get_reg_ptr(m_r);
+    auto offset = m_offset.to_interval();
+    auto region_size = m_region_size.to_interval();
+    if (!offset.is_top()) {
+        o << "<";
+        if (auto off_singleton = offset.singleton()) {
+            o << *off_singleton;
+        }
+        else {
+            o << offset;
+        }
+        if (region_size.lb() >= number_t{0}) {
+            o << ",";
+            if (auto rs_singleton = region_size.singleton()) {
+                o << *rs_singleton;
+            }
+            else {
+                o << region_size;
+            }
+        }
+        o << ">";
+    }
 }
 
 std::ostream& operator<<(std::ostream& o, const ptr_with_off_t& p) {
