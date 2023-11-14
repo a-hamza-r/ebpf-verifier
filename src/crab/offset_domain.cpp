@@ -969,6 +969,14 @@ std::optional<dist_t> offset_domain_t::find_offset_info(register_t reg) const {
     return m_reg_state.find(reg);
 }
 
+void offset_domain_t::insert_in_registers(register_t reg, location_t loc, dist_t dist) {
+    m_reg_state.insert(reg, loc, std::move(dist));
+}
+
+void offset_domain_t::store_in_stack(uint64_t key, dist_t d, int width) {
+    m_stack_state.store(key, d, width);
+}
+
 void offset_domain_t::adjust_bb_for_types(location_t loc) {
     m_reg_state.adjust_bb_for_registers(loc);
 }

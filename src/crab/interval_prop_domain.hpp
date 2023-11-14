@@ -168,6 +168,8 @@ class interval_prop_domain_t final {
     std::optional<mock_interval_t> find_interval_value(register_t) const;
     std::optional<mock_interval_t> find_interval_at_loc(const reg_with_loc_t reg) const;
     std::optional<interval_cells_t> find_in_stack(uint64_t) const;
+    void insert_in_registers(register_t, location_t, interval_t);
+    void store_in_stack(uint64_t, mock_interval_t, int);
     void adjust_bb_for_types(location_t);
     std::vector<uint64_t> get_stack_keys() const;
     bool all_numeric_in_stack(uint64_t, int) const;

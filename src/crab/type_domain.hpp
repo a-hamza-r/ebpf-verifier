@@ -78,11 +78,11 @@ class type_domain_t final {
     void operator()(const FuncConstraint& s, location_t loc = boost::none) {};
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
     void operator()(const basic_block_t& bb, int print = 0);
-    void write(std::ostream& os) const {}
+    void write(std::ostream& os) const;
     friend std::ostream& operator<<(std::ostream& o, const type_domain_t& dom);
     void initialize_loop_counter(label_t label);
     crab::bound_t get_loop_count_upper_bound();
-    string_invariant to_set();
+    string_invariant to_set() const;
     void set_require_check(check_require_func_t f) {}
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void print_ctx() const;
@@ -90,6 +90,13 @@ class type_domain_t final {
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::dist_t> find_offset_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::mock_interval_t> find_interval_at_loc(const crab::reg_with_loc_t&) const;
+    static type_domain_t from_predefined_types(const std::set<std::string>&, bool);
+    void insert_in_registers_in_region_domain(register_t, location_t, const ptr_or_mapfd_t&);
+    void store_in_stack_in_region_domain(uint64_t, ptr_or_mapfd_t, int);
+    void insert_in_registers_in_interval_domain(register_t, location_t, interval_t);
+    void store_in_stack_in_interval_domain(uint64_t, mock_interval_t, int);
+    void insert_in_registers_in_offset_domain(register_t, location_t, dist_t);
+    void store_in_stack_in_offset_domain(uint64_t, dist_t, int);
 
   private:
 

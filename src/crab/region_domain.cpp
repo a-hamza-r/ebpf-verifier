@@ -316,6 +316,15 @@ std::optional<ptr_or_mapfd_t> region_domain_t::find_ptr_or_mapfd_type(register_t
     return m_registers.find(reg);
 }
 
+void region_domain_t::insert_in_registers(register_t reg, location_t loc,
+        const ptr_or_mapfd_t& ptr) {
+    m_registers.insert(reg, loc, ptr);
+}
+
+void region_domain_t::store_in_stack(uint64_t key, ptr_or_mapfd_t value, int width) {
+    m_stack.store(key, value, width);
+}
+
 bool region_domain_t::is_bottom() const {
     if (m_is_bottom) return true;
     return (m_stack.is_bottom() || m_registers.is_bottom());

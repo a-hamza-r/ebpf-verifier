@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "crab/type_domain.hpp"
+#include <regex>
 
 namespace crab {
 
@@ -95,8 +96,53 @@ crab::bound_t type_domain_t::get_loop_count_upper_bound() {
     return crab::bound_t{crab::number_t{0}};
 }
 
-string_invariant type_domain_t::to_set() {
-    return string_invariant{};
+string_invariant type_domain_t::to_set() const {
+    if (is_top()) return string_invariant::top();
+    std::set<std::string> result;
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+        std::stringstream elem;
+        auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(register_t{i});
+        auto maybe_width_interval = m_interval.find_interval_value(register_t{i});
+        auto maybe_offset = m_offset.find_offset_info(register_t{i});
+        if (maybe_ptr_or_mapfd.has_value() || maybe_width_interval.has_value()) {
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_offset, maybe_width_interval);
+            result.insert(elem.str());
+        }
+    }
+    std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
+    for (auto const& k : stack_keys_region) {
+        std::stringstream elem;
+        auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
+        auto dist = m_offset.find_in_stack(k);
+        if (maybe_ptr_or_mapfd_cells.has_value()) {
+            auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
+            int width = ptr_or_mapfd_cells.second;
+            auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
+            elem << "stack";
+            if (dist) {
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd,
+                        std::optional<dist_t>(dist->first));
+            }
+            else {
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd);
+            }
+        }
+        result.insert(elem.str());
+    }
+
+    std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
+    for (auto const& k : stack_keys_interval) {
+        std::stringstream elem;
+        auto maybe_interval_cells = m_interval.find_in_stack(k);
+        if (maybe_interval_cells.has_value()) {
+            auto interval_cells = maybe_interval_cells.value();
+            elem << "stack";
+            print_numeric_memory_cell(elem, k, k+interval_cells.second-1,
+                    interval_cells.first.to_interval());
+        }
+        result.insert(elem.str());
+    }
+    return string_invariant{result};
 }
 
 void type_domain_t::operator()(const Undefined& u, location_t loc) {
@@ -624,6 +670,207 @@ type_domain_t::find_offset_at_loc(const crab::reg_with_loc_t& loc) const {
 std::optional<crab::mock_interval_t>
 type_domain_t::find_interval_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_interval.find_interval_at_loc(loc);
+}
+
+static inline region_t string_to_region(const std::string& s) {
+    static std::map<std::string, region_t> string_to_region{
+        {std::string("ctx"), region_t::T_CTX},
+        {std::string("stack"), region_t::T_STACK},
+        {std::string("packet"), region_t::T_PACKET},
+        {std::string("shared"), region_t::T_SHARED},
+    };
+    if (string_to_region.count(s)) {
+        return string_to_region[s];
+    }
+    throw std::runtime_error(std::string("Unsupported region name: ") + s);
+}
+
+void type_domain_t::insert_in_registers_in_interval_domain(register_t r, location_t loc,
+        interval_t interval) {
+    m_interval.insert_in_registers(r, loc, interval);
+}
+
+void type_domain_t::store_in_stack_in_interval_domain(uint64_t key, mock_interval_t p, int width) {
+    m_interval.store_in_stack(key, p, width);
+}
+
+void type_domain_t::insert_in_registers_in_offset_domain(register_t r, location_t loc, dist_t d) {
+    m_offset.insert_in_registers(r, loc, d);
+}
+
+void type_domain_t::store_in_stack_in_offset_domain(uint64_t key, dist_t d, int width) {
+    m_offset.store_in_stack(key, d, width);
+}
+
+void type_domain_t::insert_in_registers_in_region_domain(register_t r, location_t loc,
+        const ptr_or_mapfd_t& p) {
+    m_region.insert_in_registers(r, loc, p);
+}
+
+void type_domain_t::store_in_stack_in_region_domain(uint64_t key, ptr_or_mapfd_t p, int width) {
+    m_region.store_in_stack(key, p, width);
+}
+
+type_domain_t type_domain_t::from_predefined_types(const std::set<std::string>& types,
+        bool setup_constraints) {
+    using std::regex;
+    using std::regex_match;
+
+    #define NUMERIC R"_(\s*\[?([-+]?(?:\d+|oo))(?:,\s*([-+]?(?:\d+|oo))\])?\s*)_"
+    #define NUMERIC_ENCLOSED "<" NUMERIC ">"
+    #define NUMERIC_NUMERIC_ENCLOSED "<" NUMERIC ",\\s*" NUMERIC ">"
+    #define REG R"_(\s*r(\d\d?)\s*)_"
+    #define STACK_CELL R"_(\s*stack\[(\d+)-(\d+)\]\s*)_"
+    #define SHARED_PTR "\\s*shared_p(?:" NUMERIC_NUMERIC_ENCLOSED ")?\\s*"
+    #define CTX_OR_STACK_PTR "\\s*(ctx|stack)_p(?:" NUMERIC_ENCLOSED ")?\\s*"
+    #define PACKET_PTR "\\s*packet_p(?:<(begin|end|meta)\\+" NUMERIC ">)?\\s*"
+    #define NUMBER "\\s*number(?:" NUMERIC_ENCLOSED ")?\\s*"
+    #define MAPFD "\\s*(map_fd|map_fd_programs)" NUMERIC "\\s*"
+
+    auto create_interval = [](std::string lb, std::string ub) {
+        if (lb == "" && ub == "") {
+            return crab::mock_interval_t::top();
+        }
+        bound_t lb_num = bound_t::minus_infinity();
+        if (lb != "-oo") {
+            try {
+                lb_num = bound_t{number_t{static_cast<int64_t>(std::stoll(lb))}};
+            } catch (std::out_of_range& e) {
+                // TODO: Separate handling for such cases
+                lb_num = bound_t{number_t{static_cast<uint64_t>(std::stoull(lb))}};
+            }
+        }
+        auto ub_num = lb_num;
+        if (ub != "" && ub != "+oo") {
+            try {
+                ub_num = bound_t{number_t{static_cast<int64_t>(std::stoll(ub))}};
+            }
+            catch (std::out_of_range& e) {
+                // TODO: Separate handling for such cases
+                ub_num = bound_t{number_t{static_cast<uint64_t>(std::stoull(ub))}};
+            }
+        }
+        else if (ub == "+oo") ub_num = bound_t::plus_infinity();
+        return crab::mock_interval_t{lb_num, ub_num};
+    };
+
+    auto create_ptr = [create_interval](std::string region, std::string off_lb,
+            std::string off_ub, std::string region_sz_lb = "", std::string region_sz_ub = "") {
+        auto region_type = string_to_region(region);
+        auto mock_offset = create_interval(off_lb, off_ub);
+        auto mock_region_size = create_interval(region_sz_lb, region_sz_ub);
+        return crab::ptr_with_off_t{region_type, -1, mock_offset, nullness_t::MAYBE_NULL,
+            mock_region_size};
+    };
+
+    auto create_mapfd = [create_interval](std::string mapfd_type, std::string lb_mapfd,
+            std::string ub_mapfd) {
+        auto interval = create_interval(lb_mapfd, ub_mapfd);
+        if (mapfd_type == "map_fd_programs") {
+            return crab::mapfd_t(interval, EbpfMapValueType::PROGRAM);
+        }
+        else {
+            return crab::mapfd_t(interval, EbpfMapValueType::MAP);
+        }
+    };
+
+    auto create_pkt_offset = [create_interval](std::string offset_type, std::string offset_lb,
+            std::string offset_ub) {
+        auto offset = create_interval(offset_lb, offset_ub).to_interval();
+        if (offset_type == "begin") {
+            return dist_t{offset};
+        }
+        else if (offset_type == "end") {
+            auto packet_end = crab::interval_t{number_t{PACKET_END}};
+            return dist_t{packet_end - offset};
+        }
+        else {
+            auto packet_meta = crab::interval_t{number_t{PACKET_META}};
+            return dist_t{packet_meta - offset};
+        }
+    };
+
+    type_domain_t typ;
+    if (setup_constraints) {
+        typ = type_domain_t::setup_entry(false);
+    }
+    auto loc = location_t{std::make_pair(label_t::entry, 0)};
+    for (const auto& t : types) {
+        std::cout << t << "\n";
+        std::smatch m;
+        if (regex_match(t, m, regex(REG ":" CTX_OR_STACK_PTR))) {
+            auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
+            auto ptr = create_ptr(m[2], m[3], m[4]);
+            typ.insert_in_registers_in_region_domain(reg, loc, ptr);
+        }
+        else if (regex_match(t, m, regex(REG ":" PACKET_PTR))) {
+            auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
+            auto ptr = packet_ptr_t{};
+            auto offset = create_pkt_offset(m[2], m[3], m[4]);
+            typ.insert_in_registers_in_region_domain(reg, loc, ptr);
+            typ.insert_in_registers_in_offset_domain(reg, loc, offset);
+        }
+        else if (regex_match(t, m, regex(REG ":" SHARED_PTR))) {
+            auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
+            auto ptr = create_ptr("shared", m[2], m[3], m[4], m[5]);
+            typ.insert_in_registers_in_region_domain(reg, loc, ptr);
+        }
+        else if (regex_match(t, m, regex(REG ":" NUMBER))) {
+            auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
+            auto num = create_interval(m[2], m[3]).to_interval();
+            typ.insert_in_registers_in_interval_domain(reg, loc, num);
+        }
+        else if (regex_match(t, m, regex(REG ":" MAPFD))) {
+            auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
+            auto mapfd = create_mapfd(m[2], m[3], m[4]);
+            typ.insert_in_registers_in_region_domain(reg, loc, mapfd);
+        }
+        else if (regex_match(t, m, regex(STACK_CELL ":" CTX_OR_STACK_PTR))) {
+            auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
+            auto stack_cell_end = static_cast<uint64_t>(std::stoul(m[2]));
+            auto ptr = create_ptr(m[3], m[4], m[5]);
+            typ.store_in_stack_in_region_domain(stack_cell_start, ptr,
+                    stack_cell_end-stack_cell_start);
+        }
+        else if (regex_match(t, m, regex(STACK_CELL ":" PACKET_PTR))) {
+            auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
+            auto stack_cell_end = std::stoi(m[2]);
+            auto ptr = packet_ptr_t{};
+            auto pkt_offset = create_pkt_offset(m[3], m[4], m[5]);
+            int width = stack_cell_end - stack_cell_start;
+            typ.store_in_stack_in_region_domain(stack_cell_start, ptr, width);
+            typ.store_in_stack_in_offset_domain(stack_cell_start, pkt_offset, width);
+        }
+        else if (regex_match(t, m, regex(STACK_CELL ":" SHARED_PTR))) {
+            auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
+            auto stack_cell_end = std::stoi(m[2]);
+            auto ptr = create_ptr("shared", m[3], m[4], m[5], m[6]);
+            typ.store_in_stack_in_region_domain(stack_cell_start, ptr,
+                    stack_cell_end-stack_cell_start);
+        }
+        else if (regex_match(t, m, regex(STACK_CELL ":" NUMBER))) {
+            auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
+            auto stack_cell_end = std::stoi(m[2]);
+            auto num = create_interval(m[3], m[4]);
+            typ.store_in_stack_in_interval_domain(stack_cell_start, num,
+                    stack_cell_end-stack_cell_start);
+        }
+        else if (regex_match(t, m, regex(STACK_CELL ":" MAPFD))) {
+            auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
+            auto stack_cell_end = std::stoi(m[2]);
+            auto mapfd = create_mapfd(m[3], m[4], m[5]);
+            typ.store_in_stack_in_region_domain(stack_cell_start, mapfd,
+                    stack_cell_end-stack_cell_start);
+        }
+        else {
+            std::cout << "type not recognized: " << t << "\n";
+        }
+    }
+    return typ;
+}
+
+void type_domain_t::write(std::ostream& os) const {
+    os << to_set();
 }
 
 std::ostream& operator<<(std::ostream& o, const type_domain_t& typ) {

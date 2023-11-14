@@ -289,6 +289,8 @@ class offset_domain_t final {
     void update_offset_info(const dist_t&&, const interval_t&&, const location_t&,
             uint8_t, Bin::Op);
     dist_t update_offset(const dist_t&, const weight_t&, const interval_t&, Bin::Op);
+    void insert_in_registers(register_t, location_t, dist_t);
+    void store_in_stack(uint64_t, dist_t, int);
     void adjust_bb_for_types(location_t);
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void reset_errors() { m_errors.clear(); }

@@ -277,6 +277,15 @@ std::optional<mock_interval_t> interval_prop_domain_t::find_interval_at_loc(
     return m_registers_interval_values.find(reg);
 }
 
+void interval_prop_domain_t::insert_in_registers(register_t reg, location_t loc,
+        interval_t interval) {
+    m_registers_interval_values.insert(reg, loc, interval);
+}
+
+void interval_prop_domain_t::store_in_stack(uint64_t key, mock_interval_t interval, int width) {
+    m_stack_slots_interval_values.store(key, interval, width);
+}
+
 bool interval_prop_domain_t::operator<=(const interval_prop_domain_t& abs) const {
     /* WARNING: The operation is not implemented yet.*/
     return true;
