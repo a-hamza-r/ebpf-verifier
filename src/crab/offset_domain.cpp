@@ -405,7 +405,7 @@ std::optional<bound_t> packet_constraint_t::get_limit() const {
     // TODO: normalize constraint, if required
     auto dist = m_eq.m_lhs.m_dist;
     if (dist.is_top()) return {};
-    return dist.ub();
+    return dist.lb();
 }
 
 extra_constraints_t extra_constraints_t::operator|(const extra_constraints_t& other) const {
@@ -581,9 +581,12 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
                 return;
             }
             dist_t left_reg_dist = dist_left.value();
+            // keep only the upper bound to generate the constraint
+            auto ub = left_reg_dist.m_dist.ub();
+            auto left = weight_t{ub};
             dist_t right_reg_dist = dist_right.value();
             slack_var_t s = m_slack++;
-            dist_t f = dist_t(left_reg_dist.m_dist, s);
+            dist_t f = dist_t(left, s);
             dist_t b = dist_t(right_reg_dist.m_dist);
             auto eq = equality_t(f, b);
             auto ineq = inequality_t(s, rop_t::R_GE, weight_t{number_t{0}});
