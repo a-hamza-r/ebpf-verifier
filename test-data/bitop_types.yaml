@@ -1,0 +1,94 @@
+# Copyright (c) Prevail Verifier contributors.
+# SPDX-License-Identifier: MIT
+---
+test-case: Bitwise OR imm
+
+pre: ["r1 : number<-9223372036854775808>"]
+
+code:
+  <start>: |
+    r1 |= 1 ; 0x8000000000000000 | 1
+
+post: ["r1 : number<-9223372036854775807>"]
+
+---
+
+test-case: Bitwise OR reg
+
+pre: ["r1 : number<-9223372036854775808>", "r2 : number<1>"]
+
+code:
+  <start>: |
+    r1 |= r2 ; 0x8000000000000000 | 1
+
+post: ["r1 : number<-9223372036854775807>", "r2 : number<1>"]
+
+---
+
+test-case: Bitwise XOR imm
+
+pre: ["r1 : number<-9223372036854775807>"]
+
+code:
+  <start>: |
+    r1 ^= 3 ; 0x8000000000000001 ^ 3
+
+post: ["r1 : number<-9223372036854775806>"]
+
+---
+
+test-case: Bitwise XOR reg
+
+pre: ["r1 : number<-9223372036854775807>", "r2 : number<3>"]
+
+code:
+  <start>: |
+    r1 ^= r2 ; 0x8000000000000001 ^ 3
+
+post: ["r1 : number<-9223372036854775806>", "r2 : number<3>"]
+
+---
+
+test-case: Bitwise AND imm
+
+pre: ["r1 : number<-9223372036854775805>"]
+
+code:
+  <start>: |
+    r1 &= 5 ; 0x8000000000000003 & 5
+
+post: ["r1 : number<1>"]
+
+---
+
+test-case: Bitwise AND reg
+
+pre: ["r1 : number<-9223372036854775805>", "r2 : number<-9223372036854775803>"]
+
+code:
+  <start>: |
+    r1 &= r2 ; 0x8000000000000003 & 0x8000000000000005 = 0x8000000000000001
+
+post: ["r1 : number<-9223372036854775807>", "r2 : number<-9223372036854775803>"]
+
+---
+
+test-case: Bitwise [-1, 1] AND 0 == 0
+
+pre: ["r1 : number<[-1,1]>"]
+
+code:
+  <start>: |
+    r1 &= 0
+
+post: ["r1 : number<0>"]
+---
+test-case: Bitwise 2 AND 1 == 0
+
+pre: ["r1 : number<2>"]
+
+code:
+  <start>: |
+    r1 &= 1
+
+post: ["r1 : number<0>"]

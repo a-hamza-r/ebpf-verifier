@@ -1,0 +1,120 @@
+# Copyright (c) Prevail Verifier contributors.
+# SPDX-License-Identifier: MIT
+---
+test-case: add immediate to large singleton number
+
+pre: ["r0 : number<2147483647>"]
+
+code:
+  <start>: |
+    r0 += 2 ; make sure value does not become a negative 64 bit number
+
+post: ["r0 : number<2147483649>"]
+
+---
+
+test-case: add immediate to large number range
+
+pre: ["r0 : number<[2147483645, 2147483647]>"]
+
+code:
+  <start>: |
+    r0 += 4 ; make sure value does not become a negative 64 bit number
+
+post: ["r0 : number<[2147483649, 2147483651]>"]
+
+---
+
+test-case: add immediate to unknown number
+
+pre: ["r1 : number"]
+
+code:
+  <start>: |
+    r1 += 0
+
+post: ["r1 : number"]
+
+---
+
+test-case: add number register to unknown number
+
+pre: ["r1 : number", "r2 : number"]
+
+code:
+  <start>: |
+    r1 += r2
+
+post: ["r1 : number", "r2 : number"]
+
+---
+
+test-case: add immediate to singleton number
+
+pre: ["r1 : number<5>"]
+
+code:
+  <start>: |
+    r1 += 3
+
+post: ["r1 : number<8>"]
+
+---
+
+test-case: add constant register to singleton number
+
+pre: ["r1 : number<5>", "r2 : number<7>"]
+
+code:
+  <start>: |
+    r1 += r2
+
+post: ["r1 : number<12>", "r2 : number<7>"]
+
+---
+
+test-case: add immediate to finite interval number
+
+pre: ["r1 : number<[5, 10]>"]
+
+code:
+  <start>: |
+    r1 += 5
+
+post: ["r1 : number<[10, 15]>"]
+
+---
+
+test-case: add constant register number to finite interval number
+
+pre: ["r1 : number<[5, 10]>", "r2 : number<5>"]
+
+code:
+  <start>: |
+    r1 += r2
+
+post: ["r1 : number<[10, 15]>", "r2 : number<5>"]
+
+---
+
+test-case: add interval number register to constant register pointer
+
+pre: ["r2 : packet_p<begin+0>", "r7 : number<[3, 5]>"]
+
+code:
+  <start>: |
+    r2 += r7
+
+post: ["r2 : packet_p<begin+[3, 5]>", "r7 : number<[3, 5]>"]
+
+---
+
+test-case: add constant register pointer to interval number
+
+pre: ["r2 : packet_p<begin+0>", "r7 : number<[3, 5]>"]
+
+code:
+  <start>: |
+    r7 += r2
+
+post: ["r2 : packet_p<begin+0>", "r7 : packet_p<begin+[3, 5]>"]

@@ -1,0 +1,44 @@
+# Copyright (c) Prevail Verifier contributors.
+# SPDX-License-Identifier: MIT
+---
+test-case: bpf_map_lookup_elem
+
+pre: ["r1 : map_fd 1", "r2 : stack_p<504>", "stack[504-511] : number"]
+
+code:
+  <start>: |
+    call 1; bpf_map_lookup_elem
+
+post: ["r0 : shared_p<0,4>", "stack[504-511] : number"]
+
+---
+
+test-case: bpf_map_lookup_elem with non-numeric stack key
+
+pre: ["r1 : map_fd 1", "r2 : stack_p"]
+
+code:
+  <start>: |
+    call 1; bpf_map_lookup_elem
+
+post: ["r0 : shared_p<0,4>"]
+
+messages:
+  - "0: Illegal map update with a non-numerical value [-oo-oo) (within stack(r2:key_size(r1)))"
+
+---
+
+test-case: bpf_map_update_elem with non-numeric stack value
+
+pre: ["r1 : map_fd 1", "r2 : stack_p<504>", "r3 : stack_p<496>", "r4 : number",
+    "stack[504-511] : number"]
+
+code:
+  <start>: |
+    call 2; bpf_map_update_elem
+
+post: ["r0 : number", "stack[504-511] : number"]
+
+messages:
+  - "0: Illegal map update with a non-numerical value [496-500) (within stack(r3:value_size(r1)))"
+

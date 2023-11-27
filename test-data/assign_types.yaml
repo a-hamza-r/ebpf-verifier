@@ -1,0 +1,155 @@
+# Copyright (c) Prevail Verifier contributors.
+# SPDX-License-Identifier: MIT
+---
+test-case: assign immediate
+
+pre: []
+
+code:
+  <start>: |
+    r1 = 0
+
+post: ["r1 : number<0>"]
+
+---
+
+test-case: assign register
+
+pre: []
+
+code:
+  <start>: |
+    r1 = r2;
+
+post: []
+
+---
+
+test-case: re-assign immediate
+
+pre: ["r1 : number<5>"]
+
+code:
+  <start>: |
+    r1 = 0
+
+post: ["r1 : number<0>"]
+
+---
+
+test-case: re-assign register
+
+pre: ["r1 : number<[-3, 5]>"]
+
+code:
+  <start>: |
+    r1 = 0
+
+post: ["r1 : number<0>"]
+
+---
+
+test-case: stack assign immediate
+
+pre: ["r10 : stack_p<512>"]
+
+code:
+  <start>: |
+    *(u64 *)(r10 - 8) = 0
+
+post: ["r10 : stack_p<512>", "stack[504-511] : number<0>"]
+
+---
+test-case: stack assign number register
+
+pre: ["r10 : stack_p<512>", "r1 : number<0>"]
+
+code:
+  <start>: |
+    *(u64 *)(r10 - 8) = r1
+
+post: ["r10 : stack_p<512>", "r1 : number<0>", "stack[504-511] : number<0>"]
+
+---
+
+test-case: stack assign packet register
+
+pre: ["r10 : stack_p<512>", "r1 : packet_p<begin+0>"]
+
+code:
+  <start>: |
+    *(u64 *)(r10 - 8) = r1
+
+post: ["r10 : stack_p<512>", "r1 : packet_p<begin+0>", "stack[504-511] : packet_p<begin+0>"]
+
+---
+
+test-case: stack extend numeric range
+
+pre: ["r10 : stack_p<512>", "stack[500-507] : number"]
+
+code:
+  <start>: |
+    *(u64 *)(r10 - 8) = 0
+
+post: ["r10 : stack_p<512>", "stack[500-503] : number", "stack[504-511] : number<0>"]
+
+---
+
+test-case: stack narrow numeric range
+
+pre: ["r10 : stack_p<512>", "r1 : packet_p<begin+0>", "stack[500-507] : number"]
+
+code:
+  <start>: |
+    *(u64 *)(r10 - 8) = r1
+
+post: ["r10 : stack_p<512>", "r1 : packet_p<begin+0>", "stack[500-503] : number", "stack[504-511] : packet_p<begin+0>"]
+
+---
+
+test-case: assign register number value
+
+pre: ["r1 : number<0>"]
+
+code:
+  <start>: |
+    r2 = r1
+
+post: ["r1 : number<0>", "r2 : number<0>"]
+
+---
+
+test-case: assign register stack value
+
+pre: ["r1 : stack_p<0>"]
+
+code:
+  <start>: |
+    r2 = r1
+
+post: ["r1 : stack_p<0>", "r2 : stack_p<0>"]
+
+---
+
+test-case: assign register shared value
+
+pre: ["r1 : shared_p<0,16>"]
+
+code:
+  <start>: |
+    r2 = r1
+
+post: ["r1 : shared_p<0,16>", "r2 : shared_p<0,16>"]
+
+---
+
+test-case: 32-bit indirect assignment from context
+
+pre: ["r1 : ctx_p<0>"]
+
+code:
+  <start>: |
+    r2 = *(u32 *)(r1 + 8)
+
+post: ["r1 : ctx_p<0>", "r2 : packet_p"]
