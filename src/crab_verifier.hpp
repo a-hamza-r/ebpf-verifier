@@ -72,7 +72,8 @@ crab_results ebpf_verify_program(
 
 using string_invariant_map = std::map<crab::label_t, string_invariant>;
 
-std::tuple<string_invariant, bool> ebpf_analyze_program_for_test(std::ostream& os, const InstructionSeq& prog,
+std::tuple<string_invariant, bool> ebpf_analyze_program_for_test(abstract_domain_kind domain,
+                                                                 std::ostream& os, const InstructionSeq& prog,
                                                                  const string_invariant& entry_invariant,
                                                                  const program_info& info,
                                                                  const ebpf_verifier_options_t& options);

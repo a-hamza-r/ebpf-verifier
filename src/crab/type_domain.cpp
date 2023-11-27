@@ -794,9 +794,11 @@ type_domain_t type_domain_t::from_predefined_types(const std::set<std::string>& 
     if (setup_constraints) {
         typ = type_domain_t::setup_entry(false);
     }
+    else {
+        typ.set_to_top();
+    }
     auto loc = location_t{std::make_pair(label_t::entry, 0)};
     for (const auto& t : types) {
-        std::cout << t << "\n";
         std::smatch m;
         if (regex_match(t, m, regex(REG ":" CTX_OR_STACK_PTR))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};

@@ -164,6 +164,7 @@ std::vector<uint64_t> stack_state_t::find_overlapping_cells(uint64_t start, int 
 }
 
 void registers_state_t::set_to_top() {
+    m_offset_env = std::make_shared<global_offset_env_t>();
     m_cur_def = live_registers_t{nullptr};
     m_is_bottom = false;
 }

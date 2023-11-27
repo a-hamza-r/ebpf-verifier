@@ -15,9 +15,6 @@
 #include "crab/abstract_domain.hpp"
 #include "crab/ebpf_domain.hpp"
 #include "crab/type_domain.hpp"
-#include "crab/interval_prop_domain.hpp"
-#include "crab/region_domain.hpp"
-#include "crab/offset_domain.hpp"
 #include "crab/fwd_analyzer.hpp"
 #include "crab_utils/lazy_allocator.hpp"
 
@@ -180,7 +177,10 @@ static abstract_domain_t make_initial(abstract_domain_kind abstract_domain, cons
         return abstract_domain_t(entry_inv);
     }
     case abstract_domain_kind::TYPE_DOMAIN: {
-        // TODO
+        type_domain_t entry_inv = entry_invariant.is_bottom()
+                                      ? type_domain_t::from_predefined_types({"false"}, setup_constraints)
+                                      : type_domain_t::from_predefined_types(entry_invariant.value(), setup_constraints);
+        return abstract_domain_t(entry_inv);
     }
     default:
         // FIXME: supported abstract domains should be checked in check.cpp
@@ -238,17 +238,17 @@ static string_invariant_map to_string_invariant_map(crab::invariant_table_t& inv
     return res;
 }
 
-std::tuple<string_invariant, bool> ebpf_analyze_program_for_test(std::ostream& os, const InstructionSeq& prog,
-                                                                 const string_invariant& entry_invariant,
-                                                                 const program_info& info,
-                                                                 const ebpf_verifier_options_t& options) {
+std::tuple<string_invariant, bool>
+ebpf_analyze_program_for_test(abstract_domain_kind domain, std::ostream& os, const InstructionSeq& prog,
+                              const string_invariant& entry_invariant, const program_info& info,
+                              const ebpf_verifier_options_t& options) {
     crab::domains::clear_global_state();
     crab::variable_t::clear_thread_local_state();
 
     thread_local_options = options;
     global_program_info = info;
     assert(!entry_invariant.is_bottom());
-    abstract_domain_t entry_inv = make_initial(abstract_domain_kind::EBPF_DOMAIN, entry_invariant, options.setup_constraints);
+    abstract_domain_t entry_inv = make_initial(domain, entry_invariant, options.setup_constraints);
     if (entry_inv.is_bottom())
         throw std::runtime_error("Entry invariant is inconsistent");
     cfg_t cfg = prepare_cfg(prog, info, !options.no_simplify, false);

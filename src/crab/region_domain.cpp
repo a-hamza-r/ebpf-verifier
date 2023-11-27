@@ -151,6 +151,7 @@ void register_types_t::set_to_bottom() {
 }
 
 void register_types_t::set_to_top() {
+    m_region_env = std::make_shared<global_region_env_t>();
     m_cur_def = live_registers_t{nullptr};
     m_is_bottom = false;
 }

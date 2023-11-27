@@ -20,6 +20,7 @@ bool registers_cp_state_t::is_top() const {
 }
 
 void registers_cp_state_t::set_to_top() {
+    m_interval_env = std::make_shared<global_interval_env_t>();
     m_cur_def = live_registers_t{nullptr};
     m_is_bottom = false;
 }

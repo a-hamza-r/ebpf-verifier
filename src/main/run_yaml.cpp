@@ -24,12 +24,15 @@ int main(int argc, char** argv) {
 
     CLI11_PARSE(app, argc, argv);
     bool res = true;
+    bool tests_for_type_d = filename.find("types") != filename.npos;
+    auto domain = tests_for_type_d ? abstract_domain_kind::TYPE_DOMAIN :
+        abstract_domain_kind::EBPF_DOMAIN;
     foreach_suite(filename, [&](const TestCase& test_case) {
         if (!pattern.empty() && test_case.name.find(pattern) == test_case.name.npos) {
             return;
         }
         std::cout << test_case.name << ": " << std::flush;
-        const auto& maybe_failure = run_yaml_test_case(test_case, verbose);
+        const auto& maybe_failure = run_yaml_test_case(domain, test_case, verbose);
         if (!quiet && (verbose || maybe_failure)) {
             std::cout << "\n";
             std::cout << "Pre-invariant:" << test_case.assumed_pre_invariant << "\n";

@@ -232,7 +232,8 @@ static Diff<T> make_diff(const T& actual, const T& expected) {
     };
 }
 
-std::optional<Failure> run_yaml_test_case(TestCase test_case, bool debug) {
+std::optional<Failure> run_yaml_test_case(abstract_domain_kind domain, TestCase test_case,
+        bool debug) {
     if (debug) {
         test_case.options.print_failures = true;
         test_case.options.print_invariants = true;
@@ -246,6 +247,7 @@ std::optional<Failure> run_yaml_test_case(TestCase test_case, bool debug) {
 
     std::ostringstream ss;
     const auto& [actual_last_invariant, result] = ebpf_analyze_program_for_test(
+        domain,
         ss, test_case.instruction_seq,
         test_case.assumed_pre_invariant,
         info, test_case.options);
@@ -351,7 +353,8 @@ ConformanceTestResult run_conformance_test_case(const std::vector<uint8_t>& memo
     try {
         std::ostringstream null_stream;
         const auto& [actual_last_invariant, result] =
-            ebpf_analyze_program_for_test(null_stream, prog, pre_invariant, info, options);
+            ebpf_analyze_program_for_test(abstract_domain_kind::EBPF_DOMAIN, null_stream, prog,
+                    pre_invariant, info, options);
 
         for (const std::string& invariant : actual_last_invariant.value()) {
             if (invariant.rfind("r0.svalue=", 0) == 0) {
@@ -407,7 +410,7 @@ void print_failure(const Failure& failure, std::ostream& out) {
 bool all_suites(const string& path) {
     bool result = true;
     for (const TestCase& test_case: read_suite(path)) {
-        result = result && bool(run_yaml_test_case(test_case));
+        result = result && bool(run_yaml_test_case(abstract_domain_kind::EBPF_DOMAIN, test_case));
     }
     return result;
 }
