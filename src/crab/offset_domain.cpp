@@ -555,9 +555,6 @@ offset_domain_t offset_domain_t::narrow(const offset_domain_t& other) const {
     return other;
 }
 
-//forget
-void offset_domain_t::operator-=(variable_t var) {}
-
 void offset_domain_t::write(std::ostream& os) const {}
 
 std::string offset_domain_t::domain_name() const {
@@ -810,42 +807,6 @@ void offset_domain_t::operator()(const Jmp& u, location_t loc) {
 void offset_domain_t::operator()(const Packet& u, location_t loc) {
     m_reg_state -= register_t{R0_RETURN_VALUE};
     m_reg_state.scratch_caller_saved_registers();
-}
-
-void offset_domain_t::operator()(const ValidDivisor& u, location_t loc) {
-    /* WARNING: This operation is not implemented yet. */
-}
-
-void offset_domain_t::operator()(const ValidAccess& u, location_t loc) {
-    // nothing to do here
-}
-
-void offset_domain_t::operator()(const Comparable& u, location_t loc) {
-    // nothing to do here
-}
-
-void offset_domain_t::operator()(const Addable& u, location_t loc) {
-    // nothing to do here
-}
-
-void offset_domain_t::operator()(const ValidStore& u, location_t loc) {
-    // nothing to do here
-}
-
-void offset_domain_t::operator()(const TypeConstraint& u, location_t loc) {
-    // nothing to do here
-}
-
-void offset_domain_t::operator()(const ValidSize& u, location_t loc) {
-    /* WARNING: This operation is not implemented yet. */
-}
-
-void offset_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
-    /* WARNING: This operation is not implemented yet. */
-}
-
-void offset_domain_t::operator()(const ZeroCtxOffset&, location_t loc) {
-    // nothing to do here
 }
 
 bool offset_domain_t::lower_bound_satisfied(const dist_t& dist, int offset) const {

@@ -339,8 +339,8 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
 }
 
 void type_domain_t::operator()(const TypeConstraint& s, location_t loc) {
-    auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
-    auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
+    //auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
+    //auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
     //assert(!reg_type.has_value() || !mock_interval_type.has_value());
     m_region(s, loc);
 }
@@ -353,8 +353,8 @@ void type_domain_t::operator()(const Comparable& u, location_t loc) {
 
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
-    auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);
-    auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
+    //auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);
+    //auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
     //assert(!maybe_ptr_or_mapfd1.has_value() || !maybe_num_type1.has_value());
     //assert(!maybe_ptr_or_mapfd2.has_value() || !maybe_num_type2.has_value());
     if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
@@ -375,7 +375,7 @@ void type_domain_t::operator()(const Comparable& u, location_t loc) {
 void type_domain_t::operator()(const Addable& u, location_t loc) {
     auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
     auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
-    auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
+    //auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
     auto maybe_num_type_num = m_interval.find_interval_value(u.num.v);
     //assert(!maybe_ptr_or_mapfd_ptr.has_value() || !maybe_num_type_ptr.has_value());
     //assert(!maybe_ptr_or_mapfd_num.has_value() || !maybe_num_type_num.has_value());
@@ -392,7 +392,7 @@ void type_domain_t::operator()(const Addable& u, location_t loc) {
 void type_domain_t::operator()(const ValidStore& u, location_t loc) {
     auto maybe_ptr_or_mapfd_mem = m_region.find_ptr_or_mapfd_type(u.mem.v);
     auto maybe_ptr_or_mapfd_val = m_region.find_ptr_or_mapfd_type(u.val.v);
-    auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
+    //auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
     auto maybe_num_type_val = m_interval.find_interval_value(u.val.v);
     //assert(!maybe_ptr_or_mapfd_mem.has_value() || !maybe_num_type_mem.has_value());
     //assert(!maybe_ptr_or_mapfd_val.has_value() || !maybe_num_type_val.has_value());
@@ -447,28 +447,19 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
     if (maybe_ptr_or_mapfd_basereg && maybe_mapfd) {
         auto mapfd = maybe_mapfd.value();
         if (is_mapfd_type(maybe_mapfd)) {
-            auto ptr_or_mapfd_basereg = maybe_ptr_or_mapfd_basereg.value();
-            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_basereg)) {
-                auto ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd_basereg);
-                if (ptr_with_off.get_region() == region_t::T_STACK) {
-                    auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
-                    if (!offset_singleton) {
-                        //std::cout << "type error: reading the stack at an unknown offset\n";
-                        m_errors.push_back("reading the stack at an unknown offset");
-                        return;
-                    }
-                    auto offset_to_check = (uint64_t)offset_singleton.value();
-                    auto it = m_interval.all_numeric_in_stack(offset_to_check, width);
-                    if (it) return;
-                    auto it2 = m_region.find_in_stack(offset_to_check);
-                    if (it2) {
-                        //std::cout << "type error: map update with a non-numerical value\n";
-                        m_errors.push_back("map update with a non-numerical value");
-                    }
+            if (is_stack_ptr(maybe_ptr_or_mapfd_basereg)) {
+                auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd_basereg);
+                auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
+                if (!offset_singleton) {
+                    //std::cout << "type error: reading the stack at an unknown offset\n";
+                    m_errors.push_back("reading the stack at an unknown offset");
                     return;
                 }
+                auto offset_to_check = (uint64_t)offset_singleton.value();
+                auto it = m_interval.all_numeric_in_stack(offset_to_check, width);
+                if (it) return;
             }
-            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd_basereg)) {
+            else if (is_packet_ptr(maybe_ptr_or_mapfd_basereg)) {
                 if (m_offset.check_packet_access(u.access_reg, width, 0, true)) return;
             }
             else {
@@ -476,8 +467,7 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
             }
         }
     }
-    //std::cout << "type error: valid map key value assertion failed\n";
-    m_errors.push_back("valid map key value assertion failed");
+    m_errors.push_back("map update with a non-numerical value");
 }
 
 void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {

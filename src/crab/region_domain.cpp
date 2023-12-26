@@ -531,14 +531,6 @@ void region_domain_t::operator()(const Assert& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const Comparable& u, location_t loc) {
-    // nothing to do here
-}
-
-void region_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
-    // nothing to do here
-}
-
 void region_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     auto maybe_ptr_or_mapfd = m_registers.find(u.reg.v);
     if (is_ctx_ptr(maybe_ptr_or_mapfd)) {
@@ -555,14 +547,6 @@ void region_domain_t::operator()(const basic_block_t& bb, int print) {
 
 void region_domain_t::operator()(const Un& u, location_t loc) {
     m_registers -= u.dst.v;
-}
-
-void region_domain_t::operator()(const ValidDivisor& u, location_t loc) {
-    // nothing to do here
-}
-
-void region_domain_t::operator()(const ValidSize& u, location_t loc) {
-    /* WARNING: The operation is not implemented yet.*/
 }
 
 // Get the start and end of the range of possible map fd values.
@@ -763,10 +747,6 @@ void region_domain_t::operator()(const Packet& u, location_t loc) {
     m_registers.scratch_caller_saved_registers();
 }
 
-void region_domain_t::operator()(const Addable &u, location_t loc) {
-    // nothing to do here
-}
-
 void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
     bool is_comparison_check = s.width == (Value)Imm{0};
 
@@ -820,10 +800,6 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
 }
 
 void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
-    // nothing to do here
-}
-
-void region_domain_t::operator()(const ValidStore& u, location_t loc) {
     // nothing to do here
 }
 

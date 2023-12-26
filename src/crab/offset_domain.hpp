@@ -230,7 +230,6 @@ class offset_domain_t final {
     // narrowing
     offset_domain_t narrow(const offset_domain_t& other) const;
     //forget
-    void operator-=(variable_t var);
     void operator-=(register_t reg) { m_reg_state -= reg; }
 
     //// abstract transformers
@@ -247,16 +246,6 @@ class offset_domain_t final {
     void operator()(const Packet&, location_t loc = boost::none);
     void operator()(const Assume&, location_t loc = boost::none);
     void operator()(const Assert&, location_t loc = boost::none);
-    void operator()(const ValidAccess&, location_t loc = boost::none);
-    void operator()(const Comparable&, location_t loc = boost::none);
-    void operator()(const Addable&, location_t loc = boost::none);
-    void operator()(const ValidStore&, location_t loc = boost::none);
-    void operator()(const TypeConstraint&, location_t loc = boost::none);
-    void operator()(const ValidSize&, location_t loc = boost::none);
-    void operator()(const ValidMapKeyValue&, location_t loc = boost::none);
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
-    void operator()(const ValidDivisor&, location_t loc = boost::none);
-    void operator()(const FuncConstraint& s, location_t loc = boost::none) {};
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none) {};
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& os) const;

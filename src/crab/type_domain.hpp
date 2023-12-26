@@ -49,8 +49,6 @@ class type_domain_t final {
     type_domain_t widen(const type_domain_t& other, bool);
     // narrowing
     type_domain_t narrow(const type_domain_t& other) const;
-    //forget
-    void operator-=(crab::variable_t var);
 
     //// abstract transformers
     void operator()(const Undefined&, location_t loc = boost::none);
