@@ -7,7 +7,8 @@
 namespace crab {
 
 bool type_domain_t::is_bottom() const {
-    return m_is_bottom;
+    if (m_is_bottom) return true;
+    return (m_region.is_bottom() || m_offset.is_bottom() || m_interval.is_bottom());
 }
 
 bool type_domain_t::is_top() const {
@@ -23,9 +24,13 @@ type_domain_t type_domain_t::bottom() {
 
 void type_domain_t::set_to_bottom() {
     m_is_bottom = true;
+    m_region.set_to_bottom();
+    m_offset.set_to_bottom();
+    m_interval.set_to_bottom();
 }
 
 void type_domain_t::set_to_top() {
+    m_is_bottom = false;
     m_region.set_to_top();
     m_offset.set_to_top();
     m_interval.set_to_top();
@@ -213,7 +218,9 @@ void type_domain_t::operator()(const Exit& u, location_t loc) {
     // nothing to do here
 }
 
-void type_domain_t::operator()(const Jmp& u, location_t loc) {}
+void type_domain_t::operator()(const Jmp& u, location_t loc) {
+    // nothing to do here
+}
 
 void type_domain_t::operator()(const Packet& u, location_t loc) {
     m_region(u, loc);

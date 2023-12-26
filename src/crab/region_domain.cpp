@@ -344,9 +344,12 @@ region_domain_t region_domain_t::bottom() {
 
 void region_domain_t::set_to_bottom() {
     m_is_bottom = true;
+    m_stack.set_to_bottom();
+    m_registers.set_to_bottom();
 }
 
 void region_domain_t::set_to_top() {
+    m_is_bottom = false;
     m_stack.set_to_top();
     m_registers.set_to_top();
 }

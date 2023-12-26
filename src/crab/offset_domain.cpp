@@ -37,7 +37,8 @@ bool dist_t::is_top() const {
 }
 
 bool dist_t::is_bottom() const {
-    return m_is_bottom;
+    if (m_is_bottom) return true;
+    return (m_slack == -1 && m_dist.is_bottom());
 }
 
 void dist_t::set_to_top() {
@@ -71,7 +72,8 @@ bool inequality_t::is_top() const {
 }
 
 bool inequality_t::is_bottom() const {
-    return m_is_bottom;
+    if (m_is_bottom) return true;
+    return (m_slack == -1 && m_value.is_bottom());
 }
 
 void inequality_t::set_to_top() {
@@ -103,7 +105,8 @@ bool equality_t::is_top() const {
 }
 
 bool equality_t::is_bottom() const {
-    return m_is_bottom;
+    if (m_is_bottom) return true;
+    return (m_lhs.is_bottom() || m_rhs.is_bottom());
 }
 
 void equality_t::set_to_top() {
@@ -466,14 +469,20 @@ void offset_domain_t::set_to_top() {
     m_reg_state.set_to_top();
     m_stack_state.set_to_top();
     m_extra_constraints.set_to_top();
+    m_is_bottom = false;
 }
 
 void offset_domain_t::set_to_bottom() {
     m_is_bottom = true;
+    m_reg_state.set_to_bottom();
+    m_stack_state.set_to_bottom();
+    m_extra_constraints.set_to_bottom();
 }
 
 bool offset_domain_t::is_bottom() const {
-    return m_is_bottom;
+    if (m_is_bottom) return true;
+    return (m_reg_state.is_bottom() || m_stack_state.is_bottom()
+            || m_extra_constraints.is_bottom());
 }
 
 bool offset_domain_t::is_top() const {
