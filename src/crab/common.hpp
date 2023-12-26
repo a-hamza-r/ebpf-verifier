@@ -7,12 +7,15 @@
 #include <functional>
 #include <optional>
 #include <vector>
+#include <unordered_map>
 
 #include "string_constraints.hpp"
 #include "asm_syntax.hpp"
+#include "array_domain.hpp"
 
 namespace crab {
 
+using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
 constexpr uint8_t NUM_REGISTERS = 11;
 
 constexpr int STACK_BEGIN = 0;

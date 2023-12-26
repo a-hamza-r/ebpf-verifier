@@ -74,7 +74,8 @@ type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
         return *this;
     }
     return type_domain_t(m_region | std::move(other.m_region),
-            m_offset | std::move(other.m_offset), m_interval | std::move(other.m_interval));
+            m_offset | std::move(other.m_offset),
+            m_interval | std::move(other.m_interval));
 }
 
 type_domain_t type_domain_t::operator&(const type_domain_t& abs) const {
@@ -102,10 +103,12 @@ string_invariant type_domain_t::to_set() const {
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         std::stringstream elem;
         auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(register_t{i});
-        auto maybe_width_interval = m_interval.find_interval_value(register_t{i});
+        // TODO: Only allowing signed intervals for now, because otherwise parsing needs to be
+        // changed; support unsigned intervals
+        auto maybe_signed_interval = m_interval.find_signed_interval_value(register_t{i});
         auto maybe_offset = m_offset.find_offset_info(register_t{i});
-        if (maybe_ptr_or_mapfd.has_value() || maybe_width_interval.has_value()) {
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_offset, maybe_width_interval);
+        if (maybe_ptr_or_mapfd.has_value() || maybe_signed_interval.has_value()) {
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_offset, maybe_signed_interval);
             result.insert(elem.str());
         }
     }
@@ -133,9 +136,11 @@ string_invariant type_domain_t::to_set() const {
     std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
     for (auto const& k : stack_keys_interval) {
         std::stringstream elem;
-        auto maybe_interval_cells = m_interval.find_in_stack(k);
-        if (maybe_interval_cells.has_value()) {
-            auto interval_cells = maybe_interval_cells.value();
+        // TODO: Only allowing signed intervals for now, because otherwise parsing needs to be
+        // changed; support unsigned intervals
+        auto maybe_interval_cells_signed = m_interval.find_in_stack_signed(k);
+        if (maybe_interval_cells_signed.has_value()) {
+            auto interval_cells = maybe_interval_cells_signed.value();
             elem << "stack";
             print_numeric_memory_cell(elem, k, k+interval_cells.second-1,
                     interval_cells.first.to_interval());
@@ -150,6 +155,8 @@ void type_domain_t::operator()(const Undefined& u, location_t loc) {
 }
 
 void type_domain_t::operator()(const Un& u, location_t loc) {
+    m_region(u, loc);
+    m_offset(u, loc);
     m_interval(u, loc);
 }
 
@@ -173,7 +180,7 @@ void type_domain_t::operator()(const Call& u, location_t loc) {
     for (ArgPair param : u.pairs) {
         if (param.kind == ArgPair::Kind::PTR_TO_WRITABLE_MEM) {
             auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(param.mem.v);
-            auto maybe_width_interval = m_interval.find_interval_value(param.size.v);
+            auto maybe_width_interval = m_interval.find_signed_interval_value(param.size.v);
             if (!maybe_ptr_or_mapfd || !maybe_width_interval) continue;
             if (is_stack_ptr(maybe_ptr_or_mapfd)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
@@ -228,10 +235,8 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
                     maybe_left_interval, maybe_right_interval)) {
             if (maybe_left_interval) {
                 // both numbers
-                auto left_interval = maybe_left_interval->to_interval();
-                auto right_interval = maybe_right_interval->to_interval();
-                m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right,
-                        std::move(left_interval), std::move(right_interval), loc);
+                m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v},
+                        cond.right, loc);
             }
             else if (maybe_left_type) {
                 if (is_packet_ptr(maybe_left_type)) {
@@ -262,19 +267,14 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
             // TODO: need to work with values
         }
         else if (maybe_left_interval) {
-            auto left_interval = maybe_left_interval->to_interval();
-            int64_t imm = static_cast<int64_t>(std::get<Imm>(cond.right).v);
-            auto right_interval = cond.is64
-                ? interval_t{number_t{imm}} : interval_t{number_t{(uint64_t)imm}};
-            m_interval.assume_cst(cond.op, cond.is64, cond.left.v, cond.right,
-                    std::move(left_interval), std::move(right_interval), loc);
+            m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v}, cond.right, loc);
         }
     }
 }
 
 void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     auto maybe_ptr_or_mapfd_reg = m_region.find_ptr_or_mapfd_type(u.reg.v);
-    auto maybe_num_type_reg = m_interval.find_interval_value(u.reg.v);
+    auto maybe_num_type_reg = m_interval.find_unsigned_interval_value(u.reg.v);
     //assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
 
     if (is_ptr_type(maybe_ptr_or_mapfd_reg)) {
@@ -290,9 +290,6 @@ void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {
 
 void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
-    auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
-    auto interval_type = 
-        mock_interval_type ? mock_interval_type->to_interval() : std::optional<interval_t>{};
     if (reg_type) {
         std::optional<mock_interval_t> width_mock_interval;
         if (std::holds_alternative<Reg>(s.width)) {
@@ -324,7 +321,13 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
         }
     }
     else {
-        m_interval.check_valid_access(s, std::move(*interval_type), -1);
+        auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
+        if (mock_interval_type) {
+            m_interval.check_valid_access(s, std::move(mock_interval_type->to_interval()));
+        }
+        else {
+            m_errors.push_back("valid access on unknown register");
+        }
     }
 }
 
@@ -477,61 +480,41 @@ void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
 type_domain_t type_domain_t::setup_entry(bool init_r1) {
     auto&& reg = crab::region_domain_t::setup_entry(init_r1);
     auto&& off = offset_domain_t::setup_entry();
-    auto&& interval = interval_prop_domain_t::setup_entry();
+    auto&& interval = interval_domain_t::setup_entry();
     type_domain_t typ(std::move(reg), std::move(off), std::move(interval));
     return typ;
 }
 
 void type_domain_t::operator()(const Bin& bin, location_t loc) {
-    if (is_bottom()) return;
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
-    std::optional<interval_t> src_interval;
+    std::optional<interval_t> src_signed_interval, src_unsigned_interval;
 
     if (std::holds_alternative<Reg>(bin.v)) {
         Reg r = std::get<Reg>(bin.v);
         src_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(r.v);
-        auto src_mock_interval = m_interval.find_interval_value(r.v);
-        if (src_mock_interval) {
-            src_interval = src_mock_interval->to_interval();
+        if (auto src_mock_signed_interval = m_interval.find_signed_interval_value(r.v)) {
+            src_signed_interval = src_mock_signed_interval->to_interval();
+        }
+        if (auto src_mock_unsigned_interval = m_interval.find_unsigned_interval_value(r.v)) {
+            src_unsigned_interval = src_mock_unsigned_interval->to_interval();
         }
     }
-    else {
-        int64_t imm;
-        if (bin.is64) {
-            imm = static_cast<int64_t>(std::get<Imm>(bin.v).v);
-        }
-        else {
-            imm = static_cast<int>(std::get<Imm>(bin.v).v);
-        }
-        src_interval = interval_t{number_t{imm}};
-    }
-    //assert(!src_ptr_or_mapfd.has_value() || !src_interval.has_value());
-
     auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
-    auto dst_mock_interval = m_interval.find_interval_value(bin.dst.v);
-    auto dst_interval = dst_mock_interval ? dst_mock_interval->to_interval() :
-        std::optional<interval_t>();
-    //assert(!dst_ptr_or_mapfd.has_value() || !dst_interval.has_value());
-
-    using Op = Bin::Op;
-    // for all operations except mov, add, sub, the src and dst should be numbers
-    if ((src_ptr_or_mapfd || dst_ptr_or_mapfd)
-            && (bin.op != Op::MOV && bin.op != Op::ADD && bin.op != Op::SUB)) {
-        m_errors.push_back("operation on pointers not allowed");
-        //std::cout << "type error: operation on pointers not allowed\n";
-        m_region -= bin.dst.v;
-        m_offset -= bin.dst.v;
-        m_interval -= bin.dst.v;
-        return;
+    std::optional<interval_t> dst_signed_interval, dst_unsigned_interval;
+    if (auto dst_mock_signed_interval = m_interval.find_signed_interval_value(bin.dst.v)) {
+        dst_signed_interval = dst_mock_signed_interval->to_interval();
+    }
+    if (auto dst_mock_unsigned_interval = m_interval.find_unsigned_interval_value(bin.dst.v)) {
+        dst_unsigned_interval = dst_mock_unsigned_interval->to_interval();
     }
 
-    interval_t subtracted_reg =
-        m_region.do_bin(bin, src_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
-    interval_t subtracted_off =
-        m_offset.do_bin(bin, src_interval, dst_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd, loc);
+    interval_t subtracted_reg = m_region.do_bin(bin, src_signed_interval, src_ptr_or_mapfd,
+            dst_signed_interval, dst_ptr_or_mapfd, loc);
+    interval_t subtracted_off = m_offset.do_bin(bin, src_signed_interval, src_ptr_or_mapfd,
+            dst_signed_interval, dst_ptr_or_mapfd, loc);
     auto subtracted = subtracted_reg.is_bottom() ? subtracted_off : subtracted_reg;
-    m_interval.do_bin(bin, src_interval, dst_interval, src_ptr_or_mapfd, dst_ptr_or_mapfd,
-            subtracted, loc);
+    m_interval.do_bin(bin, src_signed_interval, src_unsigned_interval, src_ptr_or_mapfd,
+            dst_signed_interval, dst_unsigned_interval, dst_ptr_or_mapfd, subtracted, loc);
 }
 
 void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
@@ -610,7 +593,8 @@ void type_domain_t::print_stack() const {
         }
     }
     for (auto const& k : stack_keys_interval) {
-        auto maybe_interval_cells = m_interval.find_in_stack(k);
+        auto maybe_interval_cells = m_interval.find_in_stack_signed(k);
+        // TODO: also handle unsigned intervals
         if (maybe_interval_cells) {
             auto interval_cells = maybe_interval_cells.value();
             std::cout << "\t\t";
@@ -668,8 +652,13 @@ type_domain_t::find_offset_at_loc(const crab::reg_with_loc_t& loc) const {
 }
 
 std::optional<crab::mock_interval_t>
-type_domain_t::find_interval_at_loc(const crab::reg_with_loc_t& loc) const {
-    return m_interval.find_interval_at_loc(loc);
+type_domain_t::find_signed_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+    return m_interval.find_signed_interval_at_loc(loc);
+}
+
+std::optional<crab::mock_interval_t>
+type_domain_t::find_unsigned_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+    return m_interval.find_unsigned_interval_at_loc(loc);
 }
 
 static inline region_t string_to_region(const std::string& s) {
@@ -690,8 +679,28 @@ void type_domain_t::insert_in_registers_in_interval_domain(register_t r, locatio
     m_interval.insert_in_registers(r, loc, interval);
 }
 
+void type_domain_t::insert_in_registers_in_signed_interval_domain(register_t r, location_t loc,
+        interval_t interval) {
+    m_interval.insert_in_registers_signed(r, loc, interval);
+}
+
+void type_domain_t::insert_in_registers_in_unsigned_interval_domain(register_t r, location_t loc,
+        interval_t interval) {
+    m_interval.insert_in_registers_unsigned(r, loc, interval);
+}
+
 void type_domain_t::store_in_stack_in_interval_domain(uint64_t key, mock_interval_t p, int width) {
     m_interval.store_in_stack(key, p, width);
+}
+
+void type_domain_t::store_in_stack_in_signed_interval_domain(uint64_t key, mock_interval_t p,
+        int width) {
+    m_interval.store_in_stack_signed(key, p, width);
+}
+
+void type_domain_t::store_in_stack_in_unsigned_interval_domain(uint64_t key, mock_interval_t p,
+        int width) {
+    m_interval.store_in_stack_unsigned(key, p, width);
 }
 
 void type_domain_t::insert_in_registers_in_offset_domain(register_t r, location_t loc, dist_t d) {
@@ -820,6 +829,7 @@ type_domain_t type_domain_t::from_predefined_types(const std::set<std::string>& 
         else if (regex_match(t, m, regex(REG ":" NUMBER))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
             auto num = create_interval(m[2], m[3]).to_interval();
+            // TODO: support separately for signed and unsigned intervals
             typ.insert_in_registers_in_interval_domain(reg, loc, num);
         }
         else if (regex_match(t, m, regex(REG ":" MAPFD))) {
@@ -898,14 +908,15 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
 
     o << bb.label() << ":\n";
     uint32_t curr_pos = 0;
+    // TODO: add support for printing unsigned intervals as well
     for (const Instruction& statement : bb) {
         ++curr_pos;
-        location_t loc = location_t(std::make_pair(bb.label(), curr_pos));
+        crab::location_t loc = crab::location_t(std::make_pair(bb.label(), curr_pos));
         o << "   " << curr_pos << ".";
         if (std::holds_alternative<Call>(statement)) {
             auto r0_reg = crab::reg_with_loc_t(register_t{R0_RETURN_VALUE}, loc);
             auto region = typ.find_ptr_or_mapfd_at_loc(r0_reg);
-            auto interval = typ.find_interval_at_loc(r0_reg);
+            auto interval = typ.find_signed_interval_at_loc(r0_reg);
             print_annotated(o, std::get<Call>(statement), region, interval);
         }
         else if (std::holds_alternative<Bin>(statement)) {
@@ -913,7 +924,7 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
             auto reg_with_loc = crab::reg_with_loc_t(b.dst.v, loc);
             auto region = typ.find_ptr_or_mapfd_at_loc(reg_with_loc);
             auto offset = typ.find_offset_at_loc(reg_with_loc);
-            auto interval = typ.find_interval_at_loc(reg_with_loc);
+            auto interval = typ.find_signed_interval_at_loc(reg_with_loc);
             print_annotated(o, b, region, offset, interval);
         }
         else if (std::holds_alternative<Mem>(statement)) {
@@ -923,7 +934,7 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
                 auto target_reg_loc = crab::reg_with_loc_t(target_reg.v, loc);
                 auto region = typ.find_ptr_or_mapfd_at_loc(target_reg_loc);
                 auto offset = typ.find_offset_at_loc(target_reg_loc);
-                auto interval = typ.find_interval_at_loc(target_reg_loc);
+                auto interval = typ.find_signed_interval_at_loc(target_reg_loc);
                 print_annotated(o, u, region, offset, interval);
             }
             else o << "  " << u << "\n";
@@ -937,7 +948,7 @@ void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
         else if (std::holds_alternative<Un>(statement)) {
             auto u = std::get<Un>(statement);
             auto reg = crab::reg_with_loc_t(u.dst.v, loc);
-            auto interval = typ.find_interval_at_loc(reg);
+            auto interval = typ.find_signed_interval_at_loc(reg);
             print_annotated(o, u, interval);
         }
         else o << "  " << statement << "\n";

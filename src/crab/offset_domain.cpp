@@ -601,141 +601,158 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
     else {}     //we do not need to deal with other cases
 }
 
-void offset_domain_t::update_offset_info(const dist_t&& dist, const interval_t&& change,
-        const location_t& loc, uint8_t reg, Bin::Op op) {
+void offset_domain_t::update_offset_info(dist_t&& dist, interval_t&& change,
+        const location_t& loc, register_t reg) {
     auto offset = dist.m_dist;
-    if (op == Bin::Op::ADD) {
-        if (dist.is_forward_pointer()) offset += change;
-        else if (dist.is_backward_pointer()) offset -= change;
-        else offset -= change;
-    }
-    else if (op == Bin::Op::SUB) {
-        // TODO: needs precise handling of subtraction
-        offset = interval_t::top();
-    }
-    m_reg_state.insert(reg, loc, dist_t(offset));
+    if (dist.is_forward_pointer()) offset += change;
+    else if (dist.is_backward_pointer()) offset -= change;
+    else offset -= change;
+    m_reg_state.insert(reg, loc, dist_t{offset});
 }
 
-interval_t offset_domain_t::do_bin(const Bin &bin,
-        const std::optional<interval_t>& src_interval_opt,
-        const std::optional<interval_t>& dst_interval_opt,
-        std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
-        std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt, location_t loc) {
+interval_t offset_domain_t::do_bin(const Bin& bin,
+        const std::optional<interval_t>& src_signed_interval_opt,
+        const std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
+        const std::optional<interval_t>& dst_signed_interval_opt,
+        const std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt, location_t loc) {
 
-    using Op = Bin::Op;
-    // if both src and dst are numbers, nothing to do in offset domain
-    // if we are doing a move, where src is a number and dst is not set, nothing to do
-    if ((dst_interval_opt && src_interval_opt)
-            || (src_interval_opt && !dst_ptr_or_mapfd_opt && bin.op == Op::MOV))
-        return interval_t::bottom();
     // offset domain only handles packet pointers
     if (!is_packet_ptr(src_ptr_or_mapfd_opt) && !is_packet_ptr(dst_ptr_or_mapfd_opt))
         return interval_t::bottom();
 
-    interval_t src_interval = interval_t::bottom(), dst_interval = interval_t::bottom();
-    if (src_interval_opt) src_interval = std::move(src_interval_opt.value());
-    if (dst_interval_opt) dst_interval = std::move(dst_interval_opt.value());
-
-    Reg src;
-    if (std::holds_alternative<Reg>(bin.v)) src = std::get<Reg>(bin.v);
+    using Op = Bin::Op;
 
     auto dst_register = register_t{bin.dst.v};
-    switch (bin.op)
-    {
-        // ra = rb;
-        case Op::MOV: {
-            if (!is_packet_ptr(src_ptr_or_mapfd_opt)) {
-                m_reg_state -= dst_register;
-                return interval_t::bottom();
-            }
-            auto src_offset_opt = m_reg_state.find(src.v);
-            if (!src_offset_opt) {
-                m_errors.push_back("src is a packet_pointer and no offset info found");
-                //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
-                return interval_t::bottom();
-            }
-            m_reg_state.insert(dst_register, loc, std::move(*src_offset_opt));
-            break;
+
+    if (std::holds_alternative<Imm>(bin.v)) {
+        int64_t imm;
+        if (bin.is64) {
+            // Use the full signed value.
+            imm = static_cast<int64_t>(std::get<Imm>(bin.v).v);
+        } else {
+            // Use only the low 32 bits of the value.
+            imm = static_cast<int>(std::get<Imm>(bin.v).v);
         }
-        // ra += rb
-        case Op::ADD: {
-            dist_t dist_to_update;
-            interval_t interval_to_add = interval_t::bottom();
-            if (is_packet_ptr(dst_ptr_or_mapfd_opt)
-                    && is_packet_ptr(src_ptr_or_mapfd_opt)) {
+        auto imm_interval = interval_t{number_t{imm}};
+        switch (bin.op) {
+            case Op::MOV: {
+                // ra = imm, we forget the type in the offset domain
                 m_reg_state -= dst_register;
-                return interval_t::bottom();
-            }
-            else if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_interval_opt) {
-                auto dst_offset_opt = m_reg_state.find(dst_register);
-                if (!dst_offset_opt) {
-                    m_errors.push_back("dst is a packet_pointer and no offset info found");
-                    //std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
-                    m_reg_state -= dst_register;
-                    return interval_t::bottom();
-                }
-                dist_to_update = std::move(dst_offset_opt.value());
-                interval_to_add = std::move(src_interval_opt.value());
-            }
-            // Condition might not be necessary once interval domain is added
-            else if (is_packet_ptr(src_ptr_or_mapfd_opt) && dst_interval_opt) {
-                auto src_offset_opt = m_reg_state.find(src.v);
-                if (!src_offset_opt) {
-                    m_errors.push_back("src is a packet_pointer and no offset info found");
-                    //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
-                    m_reg_state -= dst_register;
-                    return interval_t::bottom();
-                }
-                dist_to_update = std::move(src_offset_opt.value());
-                interval_to_add = std::move(dst_interval_opt.value());
-            }
-            else if (is_packet_ptr(dst_ptr_or_mapfd_opt)) {
-                // this case is only needed till interval domain is added
-                m_reg_state.insert(dst_register, loc, dist_t());
                 break;
             }
-            update_offset_info(std::move(dist_to_update), std::move(interval_to_add),
-                    loc, dst_register, bin.op);
-            break;
-        }
-        // ra -= rb
-        case Op::SUB: {
-            dist_t dist_to_update;
-            interval_t interval_to_sub = interval_t::bottom();
-            if (is_packet_ptr(dst_ptr_or_mapfd_opt)
-                    && is_packet_ptr(src_ptr_or_mapfd_opt)) {
+            case Op::ADD: {
+                // ra += imm
+                if (imm == 0) break;
+                if (is_packet_ptr(dst_ptr_or_mapfd_opt)) {
+                    if (auto dst_offset_opt = m_reg_state.find(dst_register)) {
+                        update_offset_info(std::move(*dst_offset_opt), std::move(imm_interval),
+                                loc, dst_register);
+                        return interval_t::bottom();
+                    }
+                }
                 m_reg_state -= dst_register;
-                return interval_t::top();
+                break;
             }
-            else if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_interval_opt) {
-                auto dst_offset_opt = m_reg_state.find(dst_register);
-                if (!dst_offset_opt) {
-                    m_errors.push_back("dst is a packet_pointer and no offset info found");
-                    //std::cout << "type_error: dst is a packet_pointer and no offset info found\n";
-                    m_reg_state -= dst_register;
-                    return interval_t::bottom();
+            case Op::SUB: {
+                // ra -= imm
+                if (imm == 0) break;
+                if (is_packet_ptr(dst_ptr_or_mapfd_opt)) {
+                    if (auto dst_offset_opt = m_reg_state.find(dst_register)) {
+                        update_offset_info(std::move(*dst_offset_opt), -std::move(imm_interval),
+                                loc, dst_register);
+                        return interval_t::bottom();
+                    }
                 }
-                dist_to_update = std::move(dst_offset_opt.value());
-                interval_to_sub = std::move(src_interval_opt.value());
+                m_reg_state -= dst_register;
+                break;
             }
-            else {
-                auto src_offset_opt = m_reg_state.find(src.v);
-                if (!src_offset_opt) {
-                    m_errors.push_back("src is a packet_pointer and no offset info found");
-                    //std::cout << "type_error: src is a packet_pointer and no offset info found\n";
-                    m_reg_state -= dst_register;
-                    return interval_t::bottom();
-                }
-                dist_to_update = std::move(src_offset_opt.value());
-                interval_to_sub = std::move(dst_interval_opt.value());
+            default: {
+                // no other operations supported for offset domain
+                m_reg_state -= dst_register;
+                break;
             }
-            update_offset_info(std::move(dist_to_update), std::move(interval_to_sub),
-                    loc, dst_register, bin.op);
-            break;
         }
-        default: {
-            m_reg_state -= dst_register;
-            break;
+    }
+    else {
+        auto src = std::get<Reg>(bin.v);
+        switch (bin.op) {
+            case Op::MOV: {
+                // ra = rb
+                if (is_packet_ptr(src_ptr_or_mapfd_opt)) {
+                    if (auto src_offset_opt = m_reg_state.find(src.v)) {
+                        m_reg_state.insert(dst_register, loc, std::move(*src_offset_opt));
+                        return interval_t::bottom();
+                    }
+                }
+                m_reg_state -= dst_register;
+                break;
+            }
+            case Op::ADD: {
+                // ra += rb
+                if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_signed_interval_opt) {
+                    auto src_signed = std::move(*src_signed_interval_opt);
+                    if (auto dst_offset_opt = m_reg_state.find(dst_register)) {
+                        update_offset_info(std::move(*dst_offset_opt),
+                                std::move(src_signed), loc, dst_register);
+                        return interval_t::bottom();
+                    }
+                }
+                else if (is_packet_ptr(src_ptr_or_mapfd_opt) && dst_signed_interval_opt) {
+                    auto dst_signed = std::move(*dst_signed_interval_opt);
+                    if (auto src_offset_opt = m_reg_state.find(src.v)) {
+                        update_offset_info(std::move(*src_offset_opt),
+                                std::move(dst_signed), loc, dst_register);
+                        return interval_t::bottom();
+                    }
+                }
+                else if (dst_signed_interval_opt && src_signed_interval_opt) {
+                    // we do not deal with numbers in offset domain
+                }
+                else {
+                    // possibly adding two pointers
+                    set_to_bottom();
+                }
+                m_reg_state -= dst_register;
+                break;
+            }
+            case Op::SUB: {
+                // ra -= rb
+                if (is_packet_ptr(dst_ptr_or_mapfd_opt) && src_signed_interval_opt) {
+                    if (auto dst_offset_opt = m_reg_state.find(dst_register)) {
+                        update_offset_info(std::move(*dst_offset_opt),
+                                -std::move(*src_signed_interval_opt), loc, dst_register);
+                        return interval_t::bottom();
+                    }
+                }
+                else if (is_packet_ptr(src_ptr_or_mapfd_opt) && dst_signed_interval_opt) {
+                    m_reg_state -= dst_register;
+                }
+                else if (dst_signed_interval_opt && src_signed_interval_opt) {
+                    // we do not deal with numbers in region domain
+                }
+                else {
+                    // ptr -= ptr
+                    // TODO: be precise with ptr -= ptr, especially for packet end
+                    if (is_packet_ptr(dst_ptr_or_mapfd_opt), is_packet_ptr(src_ptr_or_mapfd_opt)) {
+                        m_reg_state -= dst_register;
+                        return interval_t::top();
+                        /*
+                        if (auto dst_offset_opt = m_reg_state.find(dst_register)) {
+                            if (auto src_offset_opt = m_reg_state.find(src.v)) {
+                                return (dst_offset_opt->m_dist - src_offset_opt->m_dist);
+                            }
+                        }
+                        */
+                    }
+                }
+                m_reg_state -= dst_register;
+                break;
+            }
+            default: {
+                // no other operations supported for offset domain
+                m_reg_state -= dst_register;
+                break;
+            }
         }
     }
     return interval_t::bottom();

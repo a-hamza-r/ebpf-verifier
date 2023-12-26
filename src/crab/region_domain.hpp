@@ -3,10 +3,7 @@
 
 #pragma once
 
-#include "crab/abstract_domain.hpp"
 #include "crab/common.hpp"
-#include "crab/type_ostream.hpp"
-#include "crab/cfg.hpp"
 
 #include "platform.hpp"
 
@@ -177,12 +174,13 @@ class region_domain_t final {
     void do_load(const Mem&, const register_t&, bool, location_t);
     void do_mem_store(const Mem&, location_t);
     interval_t do_bin(const Bin&, const std::optional<interval_t>&,
-            const std::optional<crab::ptr_or_mapfd_t>&,
-            const std::optional<crab::ptr_or_mapfd_t>&, location_t);
+            const std::optional<ptr_or_mapfd_t>&,
+            const std::optional<interval_t>&,
+            const std::optional<ptr_or_mapfd_t>&, location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void check_valid_access(const ValidAccess &, int);
     void assume_cst(Condition::Op, ptr_with_off_t&&, int64_t, register_t, location_t);
-    void update_ptr_or_mapfd(crab::ptr_or_mapfd_t&&, const interval_t&&,
+    void update_ptr_or_mapfd(crab::ptr_or_mapfd_t&&, interval_t&&,
             const crab::location_t&, register_t);
 
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_type(register_t) const;

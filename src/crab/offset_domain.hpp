@@ -3,10 +3,6 @@
 
 #pragma once
 
-#include <unordered_map>
-
-#include <boost/optional/optional_io.hpp>
-#include "crab/abstract_domain.hpp"
 #include "crab/common.hpp"
 
 namespace crab {
@@ -273,9 +269,9 @@ class offset_domain_t final {
     void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, location_t loc);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>, std::optional<ptr_or_mapfd_t>&);
     interval_t do_bin(const Bin&, const std::optional<interval_t>&,
+            const std::optional<ptr_or_mapfd_t>&,
             const std::optional<interval_t>&,
-            std::optional<ptr_or_mapfd_t>&,
-            std::optional<ptr_or_mapfd_t>&, location_t);
+            const std::optional<ptr_or_mapfd_t>&, location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     bool upper_bound_satisfied(const dist_t&, int, int, bool) const;
     bool lower_bound_satisfied(const dist_t&, int) const;
@@ -286,9 +282,7 @@ class offset_domain_t final {
     std::optional<dist_cells_t> find_in_stack(int) const;
     std::optional<dist_t> find_offset_at_loc(const reg_with_loc_t) const;
     std::optional<dist_t> find_offset_info(register_t reg) const;
-    void update_offset_info(const dist_t&&, const interval_t&&, const location_t&,
-            uint8_t, Bin::Op);
-    dist_t update_offset(const dist_t&, const weight_t&, const interval_t&, Bin::Op);
+    void update_offset_info(dist_t&&, interval_t&&, const location_t&, register_t);
     void insert_in_registers(register_t, location_t, dist_t);
     void store_in_stack(uint64_t, dist_t, int);
     void adjust_bb_for_types(location_t);

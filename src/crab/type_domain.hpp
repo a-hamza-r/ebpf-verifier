@@ -3,18 +3,18 @@
 
 #pragma once
 
-#include "crab/abstract_domain.hpp"
 #include "crab/region_domain.hpp"
-#include "crab/interval_prop_domain.hpp"
+#include "crab/interval_domain.hpp"
 #include "crab/offset_domain.hpp"
 #include "crab/common.hpp"
+#include "crab/type_ostream.hpp"
 
 namespace crab {
 
 class type_domain_t final {
     region_domain_t m_region;
     offset_domain_t m_offset;
-    interval_prop_domain_t m_interval;
+    interval_domain_t m_interval;
     bool m_is_bottom = false;
     std::vector<std::string> m_errors;
 
@@ -23,8 +23,8 @@ class type_domain_t final {
     type_domain_t() = default;
     type_domain_t(type_domain_t&& o) = default;
     type_domain_t(const type_domain_t& o) = default;
-    explicit type_domain_t(region_domain_t&& reg, offset_domain_t&& off, interval_prop_domain_t&&
-            interval, bool is_bottom = false) :
+    explicit type_domain_t(region_domain_t&& reg, offset_domain_t&& off,
+            interval_domain_t&& interval, bool is_bottom = false) :
         m_region(reg), m_offset(off), m_interval(interval), m_is_bottom(is_bottom) {}
     type_domain_t& operator=(type_domain_t&& o) = default;
     type_domain_t& operator=(const type_domain_t& o) = default;
@@ -89,12 +89,17 @@ class type_domain_t final {
     void print_stack() const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::dist_t> find_offset_at_loc(const crab::reg_with_loc_t&) const;
-    std::optional<crab::mock_interval_t> find_interval_at_loc(const crab::reg_with_loc_t&) const;
+    std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::reg_with_loc_t&) const;
+    std::optional<crab::mock_interval_t> find_unsigned_interval_at_loc(const crab::reg_with_loc_t&) const;
     static type_domain_t from_predefined_types(const std::set<std::string>&, bool);
     void insert_in_registers_in_region_domain(register_t, location_t, const ptr_or_mapfd_t&);
     void store_in_stack_in_region_domain(uint64_t, ptr_or_mapfd_t, int);
     void insert_in_registers_in_interval_domain(register_t, location_t, interval_t);
+    void insert_in_registers_in_signed_interval_domain(register_t, location_t, interval_t);
+    void insert_in_registers_in_unsigned_interval_domain(register_t, location_t, interval_t);
     void store_in_stack_in_interval_domain(uint64_t, mock_interval_t, int);
+    void store_in_stack_in_signed_interval_domain(uint64_t, mock_interval_t, int);
+    void store_in_stack_in_unsigned_interval_domain(uint64_t, mock_interval_t, int);
     void insert_in_registers_in_offset_domain(register_t, location_t, dist_t);
     void store_in_stack_in_offset_domain(uint64_t, dist_t, int);
 

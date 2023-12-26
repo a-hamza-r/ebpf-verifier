@@ -894,13 +894,12 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     m_errors.push_back("type constraint assert fail");
 }
 
-void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, const interval_t&& change,
+void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, interval_t&& change,
         const location_t& loc, register_t reg) {
     if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd)) {
         auto ptr_or_mapfd_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd);
         auto offset = ptr_or_mapfd_with_off.get_offset();
-        auto updated_offset =
-            change == mock_interval_t::top() ? offset : offset.to_interval() + change;
+        auto updated_offset = offset.to_interval() + change;
         ptr_or_mapfd_with_off.set_offset(updated_offset);
         m_registers.insert(reg, loc, ptr_or_mapfd_with_off);
     }
@@ -908,7 +907,6 @@ void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, const i
         m_registers.insert(reg, loc, ptr_or_mapfd);
     }
     else {
-        //std::cout << "type error: mapfd register cannot be incremented/decremented\n";
         m_errors.push_back("mapfd register cannot be incremented/decremented");
         m_registers -= reg;
     }
@@ -919,118 +917,155 @@ void region_domain_t::operator()(const Bin& b, location_t loc) {
 }
 
 interval_t region_domain_t::do_bin(const Bin& bin,
-        const std::optional<interval_t>& src_interval_opt,
+        const std::optional<interval_t>& src_signed_interval_opt,
         const std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
+        const std::optional<interval_t>& dst_signed_interval_opt,
         const std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt, location_t loc) {
 
     using Op = Bin::Op;
-    // if we are doing a move, where src is a number and dst is not set, nothing to do
-    if (src_interval_opt && !dst_ptr_or_mapfd_opt && bin.op == Op::MOV)
-        return interval_t::bottom();
 
-    ptr_or_mapfd_t src_ptr_or_mapfd, dst_ptr_or_mapfd;
-    interval_t src_interval = interval_t::bottom();
-    if (src_ptr_or_mapfd_opt) src_ptr_or_mapfd = std::move(src_ptr_or_mapfd_opt.value());
-    if (dst_ptr_or_mapfd_opt) dst_ptr_or_mapfd = std::move(dst_ptr_or_mapfd_opt.value());
-    if (src_interval_opt) src_interval = std::move(src_interval_opt.value());
-
-    interval_t subtracted = interval_t::bottom();
     auto dst_register = register_t{bin.dst.v};
-    switch (bin.op)
-    {
-        // ra = b, where b is a pointer/mapfd, a numerical register, or a constant;
-        case Op::MOV: {
-            // b is a pointer/mapfd
-            if (src_ptr_or_mapfd_opt) {
-                if (is_shared_ptr(src_ptr_or_mapfd_opt)) {
-                    auto shared_ptr = std::get<ptr_with_off_t>(src_ptr_or_mapfd);
-                    set_aliases(dst_register, shared_ptr);
-                    m_registers.insert(dst_register, loc, shared_ptr);
+
+    if (std::holds_alternative<Imm>(bin.v)) {
+        int64_t imm;
+        if (bin.is64) {
+            // Use the full signed value.
+            imm = static_cast<int64_t>(std::get<Imm>(bin.v).v);
+        } else {
+            // Use only the low 32 bits of the value.
+            imm = static_cast<int>(std::get<Imm>(bin.v).v);
+        }
+        auto imm_interval = interval_t{number_t{imm}};
+        switch (bin.op) {
+            case Op::MOV: {
+                // ra = imm, we forget the type in the region domain
+                m_registers -= dst_register;
+                break;
+            }
+            case Op::ADD: {
+                // ra += imm
+                if (imm == 0) break;
+                if (dst_ptr_or_mapfd_opt) {
+                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
+                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
+                            std::move(imm_interval), loc, dst_register);
                 }
                 else {
-                    m_registers.insert(dst_register, loc, src_ptr_or_mapfd);
+                    m_registers -= dst_register;
                 }
+                break;
             }
-            // b is a numerical register, or constant
-            else if (dst_ptr_or_mapfd_opt) {
-                m_registers -= dst_register;
-            }
-            break;
-        }
-        // ra += b, where ra is a pointer/mapfd, or a numerical register,
-        // b is a pointer/mapfd, a numerical register, or a constant;
-        case Op::ADD: {
-            // adding pointer to another
-            if (src_ptr_or_mapfd_opt && dst_ptr_or_mapfd_opt) {
-                if (is_stack_ptr(dst_ptr_or_mapfd))
-                    m_stack.set_to_top();
+            case Op::SUB: {
+                // ra -= imm
+                if (imm == 0) break;
+                if (dst_ptr_or_mapfd_opt) {
+                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
+                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
+                            -std::move(imm_interval), loc, dst_register);
+                }
                 else {
-                    // TODO: handle other cases properly
-                    //std::cout << "type error: addition of two pointers\n";
-                    m_errors.push_back("addition of two pointers");
+                    m_registers -= dst_register;
                 }
+                break;
+            }
+            default: {
+                // no other operations supported for region domain
                 m_registers -= dst_register;
+                break;
             }
-            // ra is a pointer/mapfd
-            // b is a numerical register, or a constant
-            else if (dst_ptr_or_mapfd_opt && src_interval_opt) {
-                update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd), std::move(src_interval),
-                        loc, dst_register);
-            }
-            // b is a pointer/mapfd
-            // ra is a numerical register
-            else if (src_ptr_or_mapfd_opt && !dst_ptr_or_mapfd_opt) {
-                update_ptr_or_mapfd(std::move(src_ptr_or_mapfd), interval_t::top(),
-                        loc, dst_register);
-            }
-            else if (dst_ptr_or_mapfd_opt && !src_ptr_or_mapfd_opt) {
-                if (std::holds_alternative<ptr_with_off_t>(dst_ptr_or_mapfd)) {
-                    auto updated_type = std::get<ptr_with_off_t>(dst_ptr_or_mapfd);
-                    updated_type.set_offset(mock_interval_t::top());
-                    m_registers.insert(dst_register, loc, updated_type);
-                }
-                else if (std::holds_alternative<packet_ptr_t>(dst_ptr_or_mapfd)) {
-                    m_registers.insert(dst_register, loc, dst_ptr_or_mapfd);
-                }
-            }
-            break;
         }
-        // ra -= b, where ra is a pointer/mapfd
-        // b is a pointer/mapfd, numerical register, or a constant;
-        case Op::SUB: {
-            // b is a pointer/mapfd
-            if (dst_ptr_or_mapfd_opt && src_ptr_or_mapfd_opt) {
-                if (std::holds_alternative<mapfd_t>(dst_ptr_or_mapfd) &&
-                        std::holds_alternative<mapfd_t>(src_ptr_or_mapfd)) {
-                    //std::cout << "type error: mapfd registers subtraction not defined\n";
-                    m_errors.push_back("mapfd registers subtraction not defined");
-                }
-                else if (same_region(dst_ptr_or_mapfd, src_ptr_or_mapfd)) {
-                    if (std::holds_alternative<ptr_with_off_t>(dst_ptr_or_mapfd) &&
-                            std::holds_alternative<ptr_with_off_t>(src_ptr_or_mapfd)) {
-                        auto dst_ptr_with_off = std::get<ptr_with_off_t>(dst_ptr_or_mapfd);
-                        auto src_ptr_with_off = std::get<ptr_with_off_t>(src_ptr_or_mapfd);
-                        subtracted =
-                            dst_ptr_with_off.get_offset().to_interval() -
-                            src_ptr_with_off.get_offset().to_interval();
+    }
+    else {
+        switch (bin.op) {
+            case Op::MOV: {
+                // ra = rb
+                if (src_ptr_or_mapfd_opt) {
+                    auto src_ptr_or_mapfd = std::move(*src_ptr_or_mapfd_opt);
+                    if (is_shared_ptr(src_ptr_or_mapfd)) {
+                        auto shared_ptr = std::get<ptr_with_off_t>(src_ptr_or_mapfd);
+                        set_aliases(dst_register, shared_ptr);
+                        m_registers.insert(dst_register, loc, shared_ptr);
+                    }
+                    else {
+                        m_registers.insert(dst_register, loc, *src_ptr_or_mapfd_opt);
                     }
                 }
                 else {
-                    //std::cout << "type error: subtraction between pointers of different region\n";
-                    m_errors.push_back("subtraction between pointers of different region");
+                    m_registers -= dst_register;
                 }
+                break;
+            }
+            case Op::ADD: {
+                // ra += rb
+                if (dst_ptr_or_mapfd_opt && src_signed_interval_opt) {
+                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
+                    auto src_signed = std::move(*src_signed_interval_opt);
+                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
+                            std::move(src_signed), loc, dst_register);
+                }
+                else if (src_ptr_or_mapfd_opt && dst_signed_interval_opt) {
+                    auto src_ptr_or_mapfd = std::move(*src_ptr_or_mapfd_opt);
+                    auto dst_signed = std::move(*dst_signed_interval_opt);
+                    update_ptr_or_mapfd(std::move(src_ptr_or_mapfd),
+                            std::move(dst_signed), loc, dst_register);
+                }
+                else if (dst_signed_interval_opt && src_signed_interval_opt) {
+                    // we do not deal with numbers in region domain
+                    m_registers -= dst_register;
+                }
+                else {
+                    // possibly adding two pointers
+                    set_to_bottom();
+                }
+                break;
+            }
+            case Op::SUB: {
+                // ra -= rb
+                if (dst_ptr_or_mapfd_opt && src_signed_interval_opt) {
+                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
+                    auto src_signed = std::move(*src_signed_interval_opt);
+                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
+                            -std::move(src_signed), loc, dst_register);
+                }
+                else if (src_ptr_or_mapfd_opt && dst_signed_interval_opt) {
+                    m_registers -= dst_register;
+                }
+                else if (dst_signed_interval_opt && src_signed_interval_opt) {
+                    // we do not deal with numbers in region domain
+                    m_registers -= dst_register;
+                }
+                else {
+                    // ptr -= ptr
+                    if (std::holds_alternative<mapfd_t>(*dst_ptr_or_mapfd_opt) &&
+                            std::holds_alternative<mapfd_t>(*src_ptr_or_mapfd_opt)) {
+                        m_errors.push_back("mapfd registers subtraction not defined");
+                    }
+                    else if (same_region(*dst_ptr_or_mapfd_opt, *src_ptr_or_mapfd_opt)) {
+                        if (std::holds_alternative<ptr_with_off_t>(*dst_ptr_or_mapfd_opt) &&
+                                std::holds_alternative<ptr_with_off_t>(*src_ptr_or_mapfd_opt)) {
+                            auto dst_ptr_with_off = std::get<ptr_with_off_t>(*dst_ptr_or_mapfd_opt);
+                            auto src_ptr_with_off = std::get<ptr_with_off_t>(*src_ptr_or_mapfd_opt);
+                            return (dst_ptr_with_off.get_offset().to_interval() -
+                                src_ptr_with_off.get_offset().to_interval());
+                        }
+                    }
+                    else {
+                        // Assertions should make sure we only perform this on
+                        // non-shared pointers, hence this should not happen
+                        m_errors.push_back("subtraction between pointers of different region");
+                    }
+                    m_registers -= dst_register;
+                }
+                break;
+            }
+            default: {
+                // no other operations supported for region domain
                 m_registers -= dst_register;
+                break;
             }
-            // b is a numerical register, or a constant
-            else if (dst_ptr_or_mapfd_opt && src_interval_opt) {
-                update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd), -std::move(src_interval),
-                        loc, dst_register);
-            }
-            break;
         }
-        default: break;
     }
-    return subtracted;
+    return interval_t::bottom();
 }
 
 void region_domain_t::do_load(const Mem& b, const register_t& target_register, bool unknown_ptr,
