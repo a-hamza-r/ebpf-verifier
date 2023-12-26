@@ -498,7 +498,7 @@ void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t&& shared_ptr, 
     if (imm == 0) {
         if (op == Condition::Op::EQ) {
             if (nullness == nullness_t::_NULL) {
-                m_registers.set_to_top();
+                //m_registers.set_to_top();
             }
             else if (nullness == nullness_t::NOT_NULL) {
                 m_registers.set_to_bottom();
@@ -510,7 +510,7 @@ void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t&& shared_ptr, 
         }
         else if (op == Condition::Op::NE) {
             if (nullness == nullness_t::NOT_NULL) {
-                m_registers.set_to_top();
+                //m_registers.set_to_top();
             }
             else if (nullness == nullness_t::_NULL) {
                 m_registers.set_to_bottom();
