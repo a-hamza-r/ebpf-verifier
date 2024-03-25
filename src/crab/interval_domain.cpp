@@ -116,11 +116,19 @@ void interval_domain_t::insert_in_registers(register_t reg, location_t loc, inte
 void interval_domain_t::insert_in_registers_signed(register_t reg, location_t loc,
         interval_t interval) {
     m_signed.insert_in_registers(reg, loc, interval);
+    auto v = m_unsigned.find_interval_at_loc(reg_with_loc_t{reg, loc});
+    if (!v) {
+        m_unsigned.insert_in_registers(reg, loc, interval_t::top());
+    }
 }
 
 void interval_domain_t::insert_in_registers_unsigned(register_t reg, location_t loc,
         interval_t interval) {
     m_unsigned.insert_in_registers(reg, loc, interval);
+    auto v = m_signed.find_interval_at_loc(reg_with_loc_t{reg, loc});
+    if (!v) {
+        m_signed.insert_in_registers(reg, loc, interval_t::top());
+    }
 }
 
 void interval_domain_t::store_in_stack(uint64_t key, mock_interval_t interval, int width) {
@@ -243,6 +251,7 @@ void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_sta
         //m_unsigned.store_in_stack(offset, interval_t::top(), width);
     }
     auto r0 = register_t{R0_RETURN_VALUE};
+    // TODO: Check if packet_reallocate() function call needs handling separately
     if (u.is_map_lookup) {
         operator-=(r0);
     }
@@ -434,11 +443,11 @@ void interval_domain_t::assume_unsigned_cst(Condition::Op op, bool is64,
     if (is_lt && (strict ? (lub < rlb) : (lub <= rlb))) {
         // Left unsigned interval is lower than right unsigned interval.
         // TODO: verify if setting to top is the correct equivalent of returning linear cst true
-        set_registers_to_top();
+        // set_registers_to_top();
         return;
     } else if (!is_lt && (strict ? (llb > rub) : (llb >= rub))) {
         // Left unsigned interval is higher than right unsigned interval.
-        set_registers_to_top();
+        // set_registers_to_top();
         return;
     }
 
@@ -788,11 +797,11 @@ void interval_domain_t::assume_signed_cst(Condition::Op op, bool is64,
     if (is_lt && (strict ? (lub < rlb) : (lub <= rlb))) {
         // Left unsigned interval is lower than right unsigned interval.
         // TODO: verify if setting to top is the correct equivalent of returning linear cst true
-        set_registers_to_top();
+        // set_registers_to_top();
         return;
     } else if (!is_lt && (strict ? (llb > rub) : (llb >= rub))) {
         // Left unsigned interval is higher than right unsigned interval.
-        set_registers_to_top();
+        // set_registers_to_top();
         return;
     }
 
