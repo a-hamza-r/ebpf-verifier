@@ -86,7 +86,7 @@ class type_domain_t final {
     void print_ctx() const;
     void print_stack() const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
-    std::optional<crab::dist_t> find_offset_at_loc(const crab::reg_with_loc_t&) const;
+    std::optional<crab::refinement_t> find_refinement_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::mock_interval_t> find_unsigned_interval_at_loc(const crab::reg_with_loc_t&) const;
     static type_domain_t from_predefined_types(const std::set<std::string>&, bool);
@@ -98,15 +98,14 @@ class type_domain_t final {
     void store_in_stack_in_interval_domain(uint64_t, mock_interval_t, int);
     void store_in_stack_in_signed_interval_domain(uint64_t, mock_interval_t, int);
     void store_in_stack_in_unsigned_interval_domain(uint64_t, mock_interval_t, int);
-    void insert_in_registers_in_offset_domain(register_t, location_t, dist_t);
-    void store_in_stack_in_offset_domain(uint64_t, dist_t, int);
+    void insert_in_registers_in_offset_domain(register_t, location_t, refinement_t);
+    void store_in_stack_in_offset_domain(uint64_t, refinement_t, int);
 
   private:
 
     void do_load(const Mem&, const Reg&, bool, std::optional<ptr_or_mapfd_t>,
             location_t);
-    void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>, std::optional<ptr_or_mapfd_t>&,
-            location_t);
+    void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>&, location_t);
     void report_type_error(std::string, location_t);
     void print_registers() const;
     void adjust_bb_for_types(location_t);

@@ -895,15 +895,20 @@ void region_domain_t::operator()(const Bin& b, location_t loc) {
     // nothing to do here
 }
 
-interval_t region_domain_t::do_bin(const Bin& bin,
+void region_domain_t::do_bin(const Bin& bin,
         const std::optional<interval_t>& src_signed_interval_opt,
         const std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
         const std::optional<interval_t>& dst_signed_interval_opt,
         const std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt, location_t loc) {
 
-    using Op = Bin::Op;
-
     auto dst_register = register_t{bin.dst.v};
+
+    if (!dst_ptr_or_mapfd_opt && !src_ptr_or_mapfd_opt) {
+        m_registers -= dst_register;
+        return;
+    }
+
+    using Op = Bin::Op;
 
     if (std::holds_alternative<Imm>(bin.v)) {
         int64_t imm;
@@ -988,11 +993,11 @@ interval_t region_domain_t::do_bin(const Bin& bin,
                     update_ptr_or_mapfd(std::move(src_ptr_or_mapfd),
                             std::move(dst_signed), loc, dst_register);
                 }
-                else if (dst_signed_interval_opt && src_signed_interval_opt) {
-                    // we do not deal with numbers in region domain
-                    m_registers -= dst_register;
-                }
-                else {
+                // else if (dst_signed_interval_opt && src_signed_interval_opt) {
+                //     // we do not deal with numbers in region domain
+                //     m_registers -= dst_register;
+                // }
+                else if (dst_ptr_or_mapfd_opt && src_ptr_or_mapfd_opt) {
                     // possibly adding two pointers
                     set_to_bottom();
                 }
@@ -1009,31 +1014,13 @@ interval_t region_domain_t::do_bin(const Bin& bin,
                 else if (src_ptr_or_mapfd_opt && dst_signed_interval_opt) {
                     m_registers -= dst_register;
                 }
-                else if (dst_signed_interval_opt && src_signed_interval_opt) {
-                    // we do not deal with numbers in region domain
-                    m_registers -= dst_register;
-                }
+                // else if (dst_signed_interval_opt && src_signed_interval_opt) {
+                //     // we do not deal with numbers in region domain
+                //     m_registers -= dst_register;
+                // }
                 else {
                     // ptr -= ptr
-                    if (std::holds_alternative<mapfd_t>(*dst_ptr_or_mapfd_opt) &&
-                            std::holds_alternative<mapfd_t>(*src_ptr_or_mapfd_opt)) {
-                        m_errors.push_back("mapfd registers subtraction not defined");
-                    }
-                    else if (same_region(*dst_ptr_or_mapfd_opt, *src_ptr_or_mapfd_opt)) {
-                        if (std::holds_alternative<ptr_with_off_t>(*dst_ptr_or_mapfd_opt) &&
-                                std::holds_alternative<ptr_with_off_t>(*src_ptr_or_mapfd_opt)) {
-                            auto dst_ptr_with_off = std::get<ptr_with_off_t>(*dst_ptr_or_mapfd_opt);
-                            auto src_ptr_with_off = std::get<ptr_with_off_t>(*src_ptr_or_mapfd_opt);
-                            return (dst_ptr_with_off.get_offset().to_interval() -
-                                src_ptr_with_off.get_offset().to_interval());
-                        }
-                    }
-                    else {
-                        // Assertions should make sure we only perform this on
-                        // non-shared pointers, hence this should not happen
-                        m_errors.push_back("subtraction between pointers of different region");
-                    }
-                    m_registers -= dst_register;
+                    // this case already handled in type domain
                 }
                 break;
             }
@@ -1044,7 +1031,7 @@ interval_t region_domain_t::do_bin(const Bin& bin,
             }
         }
     }
-    return interval_t::bottom();
+    return;
 }
 
 void region_domain_t::do_load(const Mem& b, const register_t& target_register, bool unknown_ptr,
