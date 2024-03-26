@@ -100,8 +100,7 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    auto region_env = std::make_shared<global_region_env_t>();
-    register_types_t joined_reg_types(region_env);
+    register_types_t joined_reg_types(m_region_env);
 
     // a hack to store region information at the start of a joined basic block
     // in join, we do not know the label of the bb, hence we store the information

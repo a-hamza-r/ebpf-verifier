@@ -53,8 +53,7 @@ registers_unsigned_state_t registers_unsigned_state_t::operator|(const registers
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    auto intervals_env = std::make_shared<global_interval_env_t>();
-    registers_unsigned_state_t intervals_joined(intervals_env);
+    registers_unsigned_state_t intervals_joined(m_interval_env);
     location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
