@@ -759,22 +759,30 @@ void offset_domain_t::operator()(const basic_block_t& bb, int print) {
 
 void offset_domain_t::do_mem_store(const Mem& b,
         std::optional<ptr_or_mapfd_t>& maybe_basereg_type) {
-    auto target_reg = std::get<Reg>(b.value);
-    auto rf_info = m_reg_state.find(target_reg.v);
+    std::optional<refinement_t> rf_info = std::nullopt;
+    if (!is_stack_ptr(maybe_basereg_type)) return;
+
+    if (std::holds_alternative<Reg>(b.value)) {
+        auto target_reg = std::get<Reg>(b.value);
+        rf_info = m_reg_state.find(target_reg.v);
+    }
+    else {
+        symbol_t s = symbol_t::make();
+        rf_info = refinement_t(data_type_t::NUM, expression_t(s));
+        auto mock_interval = mock_interval_t{bound_t{(uint64_t)std::get<Imm>(b.value).v}};
+        m_reg_state.insert_slack_value(s, std::move(mock_interval));
+    }
     if (!rf_info) return;
 
     int offset = b.access.offset;
     int width = b.access.width;
-    if (is_stack_ptr(maybe_basereg_type)) {
-        auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
-        auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
-        if (!basereg_off_singleton) return;
-        auto store_at = (uint64_t)(*basereg_off_singleton + offset);
-        auto overlapping_cells = m_stack_state.find_overlapping_cells(store_at, width);
-        m_stack_state -= overlapping_cells;
-
-        m_stack_state.store(store_at, *rf_info, width);
-    }
+    auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
+    auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
+    if (!basereg_off_singleton) return;
+    auto store_at = (uint64_t)(*basereg_off_singleton + offset);
+    auto overlapping_cells = m_stack_state.find_overlapping_cells(store_at, width);
+    m_stack_state -= overlapping_cells;
+    m_stack_state.store(store_at, *rf_info, width);
 }
 
 void offset_domain_t::do_load(const Mem& b, const register_t& target_register,

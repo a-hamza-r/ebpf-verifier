@@ -1130,7 +1130,7 @@ void region_domain_t::operator()(const Mem& m, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::do_mem_store(const Mem& b, location_t loc) {
+void region_domain_t::do_mem_store(const Mem& b) {
 
     std::optional<ptr_or_mapfd_t> targetreg_type = {};
     bool target_is_reg = std::holds_alternative<Reg>(b.value);

@@ -586,9 +586,8 @@ void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_pt
     m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, std::move(interval), loc);
 }
 
-void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt,
-        location_t loc) {
-    m_region.do_mem_store(b, loc);
+void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt) {
+    m_region.do_mem_store(b);
     m_interval.do_mem_store(b, basereg_opt);
     m_offset.do_mem_store(b, basereg_opt);
 }
@@ -605,10 +604,10 @@ void type_domain_t::operator()(const Mem& b, location_t loc) {
     if (std::holds_alternative<Reg>(b.value)) {
         auto targetreg = std::get<Reg>(b.value);
         if (b.is_load) do_load(b, targetreg, unknown_ptr, base_ptr_or_mapfd_opt, loc);
-        else if (!unknown_ptr) do_mem_store(b, base_ptr_or_mapfd_opt, loc);
+        else if (!unknown_ptr) do_mem_store(b, base_ptr_or_mapfd_opt);
     }
     else if (!unknown_ptr && !b.is_load) {
-        do_mem_store(b, base_ptr_or_mapfd_opt, loc);
+        do_mem_store(b, base_ptr_or_mapfd_opt);
     }
 }
 
