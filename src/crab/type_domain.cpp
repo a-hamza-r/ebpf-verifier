@@ -254,12 +254,12 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
     const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
     const auto& maybe_left_interval = m_interval.find_interval_value(cond.left.v);
-    //assert(!maybe_left_type.has_value() || !maybe_left_interval.has_value());
+    assert(!maybe_left_type.has_value() || !maybe_left_interval.has_value());
     if (std::holds_alternative<Reg>(cond.right)) {
         const auto& right_reg = std::get<Reg>(cond.right);
         const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
         const auto& maybe_right_interval = m_interval.find_interval_value(right_reg.v);
-        //assert(!maybe_right_type.has_value() || !maybe_right_interval.has_value());
+        assert(!maybe_right_type.has_value() || !maybe_right_interval.has_value());
         if (same_type(maybe_left_type, maybe_right_type,
                     maybe_left_interval, maybe_right_interval)) {
             if (maybe_left_interval) {
@@ -304,7 +304,7 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
 void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     auto maybe_ptr_or_mapfd_reg = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type_reg = m_interval.find_unsigned_interval_value(u.reg.v);
-    //assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
+    assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
 
     if (is_ptr_type(maybe_ptr_or_mapfd_reg)) {
         m_errors.push_back("Only numbers can be used as divisors");
@@ -361,9 +361,9 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
 }
 
 void type_domain_t::operator()(const TypeConstraint& s, location_t loc) {
-    //auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
-    //auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
-    //assert(!reg_type.has_value() || !mock_interval_type.has_value());
+    auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
+    auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
+    assert(!reg_type.has_value() || !mock_interval_type.has_value());
     m_region(s, loc);
 }
 
@@ -375,10 +375,10 @@ void type_domain_t::operator()(const Comparable& u, location_t loc) {
 
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
-    //auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);
-    //auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
-    //assert(!maybe_ptr_or_mapfd1.has_value() || !maybe_num_type1.has_value());
-    //assert(!maybe_ptr_or_mapfd2.has_value() || !maybe_num_type2.has_value());
+    auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);
+    auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
+    assert(!maybe_ptr_or_mapfd1.has_value() || !maybe_num_type1.has_value());
+    assert(!maybe_ptr_or_mapfd2.has_value() || !maybe_num_type2.has_value());
     if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
         if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
         if (!is_shared_ptr(maybe_ptr_or_mapfd1)
@@ -397,10 +397,10 @@ void type_domain_t::operator()(const Comparable& u, location_t loc) {
 void type_domain_t::operator()(const Addable& u, location_t loc) {
     auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
     auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
-    //auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
+    auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
     auto maybe_num_type_num = m_interval.find_interval_value(u.num.v);
-    //assert(!maybe_ptr_or_mapfd_ptr.has_value() || !maybe_num_type_ptr.has_value());
-    //assert(!maybe_ptr_or_mapfd_num.has_value() || !maybe_num_type_num.has_value());
+    assert(!maybe_ptr_or_mapfd_ptr.has_value() || !maybe_num_type_ptr.has_value());
+    assert(!maybe_ptr_or_mapfd_num.has_value() || !maybe_num_type_num.has_value());
 
     // a -> b <-> !a || b
     // is_ptr(ptr) -> is_num(num) <-> !is_ptr(ptr) || is_num(num)
@@ -414,10 +414,10 @@ void type_domain_t::operator()(const Addable& u, location_t loc) {
 void type_domain_t::operator()(const ValidStore& u, location_t loc) {
     auto maybe_ptr_or_mapfd_mem = m_region.find_ptr_or_mapfd_type(u.mem.v);
     auto maybe_ptr_or_mapfd_val = m_region.find_ptr_or_mapfd_type(u.val.v);
-    //auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
+    auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
     auto maybe_num_type_val = m_interval.find_interval_value(u.val.v);
-    //assert(!maybe_ptr_or_mapfd_mem.has_value() || !maybe_num_type_mem.has_value());
-    //assert(!maybe_ptr_or_mapfd_val.has_value() || !maybe_num_type_val.has_value());
+    assert(!maybe_ptr_or_mapfd_mem.has_value() || !maybe_num_type_mem.has_value());
+    assert(!maybe_ptr_or_mapfd_val.has_value() || !maybe_num_type_val.has_value());
 
     // a -> b <-> !a || b
     // !is_stack_ptr(mem) -> is_num(val) <-> is_stack_ptr(mem) || is_num(val)
@@ -431,7 +431,7 @@ void type_domain_t::operator()(const ValidStore& u, location_t loc) {
 void type_domain_t::operator()(const ValidSize& u, location_t loc) {
     auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type = m_interval.find_interval_value(u.reg.v);
-    //assert(!maybe_ptr_or_mapfd || !maybe_num_type);
+    assert(!maybe_ptr_or_mapfd || !maybe_num_type);
 
     if (maybe_num_type) {
         auto reg_value = maybe_num_type.value();
