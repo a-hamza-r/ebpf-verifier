@@ -547,7 +547,9 @@ void type_domain_t::operator()(const Bin& bin, location_t loc) {
                                 src_ptr_with_off.get_offset().to_interval();
                 }
                 else if (std::holds_alternative<packet_ptr_t>(dst_ptr)) {
-                    subtracted = interval_t::top();
+                    register_t src_reg = std::get<Reg>(bin.v).v;
+                    register_t dst_reg = bin.dst.v;
+                    subtracted = m_offset.compute_packet_subtraction(dst_reg, src_reg);
                 }
                 else {
                     // Assertions should make sure we only perform this on
@@ -562,12 +564,12 @@ void type_domain_t::operator()(const Bin& bin, location_t loc) {
 
     m_interval.do_bin(bin, src_signed_interval, src_unsigned_interval, src_ptr_or_mapfd,
             dst_signed_interval, dst_unsigned_interval, dst_ptr_or_mapfd, subtracted, loc);
-    // TODO: check if we need to get signed values in any case
-    auto mock_interval_result = m_interval.find_unsigned_interval_value(dst_register);
-    auto interval_result = std::move(mock_interval_result ? *mock_interval_result
-        : mock_interval_t::top());
     m_region.do_bin(bin, src_signed_interval, src_ptr_or_mapfd,
             dst_signed_interval, dst_ptr_or_mapfd, loc);
+
+    auto mock_interval_result = m_interval.find_signed_interval_value(dst_register);
+    auto interval_result = std::move(mock_interval_result ? *mock_interval_result
+        : mock_interval_t::top());
     m_offset.do_bin(bin, src_signed_interval, src_ptr_or_mapfd,
             dst_signed_interval, dst_ptr_or_mapfd, std::move(interval_result), loc);
 }

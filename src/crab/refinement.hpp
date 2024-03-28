@@ -40,6 +40,8 @@ class refinement_t {
     void add_constraint(const constraint_t&);
     void simplify();
     bool is_safe_with(refinement_t, std::shared_ptr<slacks_t>, bool) const;
+    interval_t simplify_for_subtraction(const symbol_t&, const symbol_t&,
+            const std::vector<constraint_t>&, std::shared_ptr<slacks_t>) const;
 
     static refinement_t begin() {
         return refinement_t(data_type_t::PACKET, expression_t::begin());

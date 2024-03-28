@@ -452,6 +452,29 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
     }
 }
 
+interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_t src) const {
+    auto dst_rf = m_reg_state.find(dst);
+    auto src_rf = m_reg_state.find(src);
+    if (!dst_rf || !src_rf) return interval_t::bottom();
+    expression_t dst_expr = dst_rf->get_value();
+    expression_t src_expr = src_rf->get_value();
+    refinement_t result_rf = *dst_rf - *src_rf;
+    expression_t result_expr = result_rf.get_value();
+    if (result_expr.is_constant()) {
+        return result_expr.get_interval();
+    }
+    // with non-singleton expressions, we might be able to compute subtraction,
+    // but it might be complicated
+    if (!dst_expr.is_singleton() || !src_expr.is_singleton()) return interval_t::top();
+    auto dst_symbol = dst_expr.get_singleton();
+    auto src_symbol = src_expr.get_singleton();
+    std::optional<refinement_t> begin_rf = m_reg_state.find(register_t{11});
+    if (!begin_rf) return interval_t::top();
+    interval_t result_interval = result_rf.simplify_for_subtraction(dst_symbol, src_symbol,
+            begin_rf->get_constraints(), m_reg_state.get_slacks());
+    return result_interval;
+}
+
 static void create_numeric_refinement(registers_state_t& reg_state, mock_interval_t&& interval,
         location_t loc, register_t reg) {
     symbol_t s = symbol_t::make();
@@ -488,7 +511,7 @@ void offset_domain_t::do_bin(const Bin& bin,
         auto imm_interval = interval_t{number_t{imm}};
         switch (bin.op) {
             case Op::MOV: {
-                // ra = imm, we forget the type in the offset domain
+                // ra = imm
                 create_numeric_refinement(m_reg_state, std::move(interval_result),
                         loc, dst_register);
                 break;
@@ -570,7 +593,6 @@ void offset_domain_t::do_bin(const Bin& bin,
             }
             case Op::SUB: {
                 // ra -= rb
-                // TODO: be precise with ptr -= ptr, and possibly assign a slack to the result
                 if (is_packet_ptr(src_ptr_or_mapfd_opt) && is_packet_ptr(dst_ptr_or_mapfd_opt)) {
                     create_numeric_refinement(m_reg_state, std::move(interval_result),
                             loc, dst_register);

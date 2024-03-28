@@ -32,6 +32,7 @@ class constraint_t {
     constraint_t operator<=(const constraint_t&) const;
     constraint_t operator>(const constraint_t&) const;
     bool is_equality() const;
+    bool contains(const symbol_t&) const;
     void simplify(std::shared_ptr<slacks_t>);
     [[nodiscard]] constraint_t negate() const;
     void write(std::ostream&) const;

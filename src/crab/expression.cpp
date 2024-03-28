@@ -42,6 +42,9 @@ symbol_t expression_t::get_singleton() const {
 static void insert(symbol_terms_t &terms, const std::pair<symbol_t, int8_t>& kv) {
     if (terms.find(kv.first) != terms.end()) {
         terms[kv.first] += kv.second;
+        if (terms[kv.first] == 0) {
+            terms.erase(kv.first);
+        }
     } else {
         terms[kv.first] = kv.second;
     }

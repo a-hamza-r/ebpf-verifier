@@ -133,8 +133,70 @@ refinement_t refinement_t::operator+(const refinement_t &other) const {
     return refinement_t(new_type, new_value, new_constraints);
 }
 
+interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const symbol_t& src,
+        const std::vector<constraint_t>& constraints, std::shared_ptr<slacks_t> slacks) const {
+    bound_t max_packet_size = bound_t{number_t{MAX_PACKET_SIZE}};
+    bound_t max_meta_size = bound_t{number_t{4098}};
+    bound_t zero = bound_t{number_t{0}};
+    symbol_t begin = symbol_t::begin();
+    symbol_t end = symbol_t::end();
+    symbol_t meta = symbol_t::meta();
+
+    if (src != begin && src != meta && src != end && dst != begin && dst != meta && dst != end) {
+        // We currently only support subtraction between begin, meta, and end
+        return interval_t::top();
+    }
+
+    // we can do better in case both end and meta are involved, but for now we should be okay
+    if (dst == end && src == meta) {
+        return interval_t{zero, max_meta_size + max_packet_size};
+    }
+    else if (dst == meta && src == end) {
+        return interval_t{-(max_meta_size + max_packet_size), zero};
+    }
+    // we only have cases (begin, meta), and (begin, end) left
+    bound_t max_size = (dst == meta || src == meta) ? max_meta_size : max_packet_size;
+
+    interval_t result = interval_t::top();
+    for (constraint_t c : constraints) {
+        c.simplify(slacks);
+        if (c.contains(dst) && c.contains(src)) {
+            expression_t lhs = c.get_lhs();
+            expression_t rhs = c.get_rhs();
+            lhs = lhs + rhs.negate();
+            rhs = expression_t{0};
+            if (lhs.contains(dst) && lhs.contains(src)) {
+                symbol_terms_t terms = lhs.get_symbol_terms();
+                if (terms.size() == 2) {
+                    if (terms[dst] == 1 && terms[src] == -1) {
+                        // dst - src + [lb, ub] <= 0 -> dst - src <= -lb
+                        interval_t lhs_interval = lhs.get_interval();
+                        result = result & interval_t{-max_size, -lhs_interval.lb()};
+                    }
+                    else if (terms[dst] == -1 && terms[src] == 1) {
+                        // src - dst + [lb, ub] <= 0 -> dst - src >= -lb
+                        interval_t lhs_interval = lhs.get_interval();
+                        result = result & interval_t{lhs_interval.lb(), max_size};
+                    }
+                }
+            }
+        }
+    }
+    // If no constraints were found, we can still infer some bounds
+    if (result == interval_t::top()) {
+        if (src == end)
+            result = interval_t{-max_packet_size, zero};
+        else if (dst == end)
+            result = interval_t{zero, max_packet_size};
+        else if (src == meta)
+            result = interval_t{zero, max_meta_size};
+        else if (dst == meta)
+            result = interval_t{-max_meta_size, zero};
+    }
+    return result;
+}
+
 refinement_t refinement_t::operator-(const refinement_t &other) const {
-    // TODO: Handle subtraction between packet pointers
     expression_t new_value = _value + other._value.negate();
     std::vector<crab::constraint_t> new_constraints;
     new_constraints.insert(new_constraints.end(), _constraints.begin(), _constraints.end());

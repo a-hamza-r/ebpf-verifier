@@ -8,6 +8,10 @@ std::ostream &operator<<(std::ostream &o, const constraint_t &c) {
     return o;
 }
 
+bool constraint_t::contains(const symbol_t &s) const {
+    return _expression_lhs.contains(s) || _expression_rhs.contains(s);
+}
+
 void constraint_t::simplify(std::shared_ptr<slacks_t> slacks) {
     auto neg = _expression_rhs.negate();
     _expression_lhs = _expression_lhs + _expression_rhs.negate();

@@ -174,6 +174,7 @@ class offset_domain_t final {
     void do_call(const Call&, const stack_cells_t&, location_t);
     bool check_packet_access(const Reg&, int, int, bool) const;
     void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&, int);
+    interval_t compute_packet_subtraction(register_t, register_t) const;
 
     std::optional<refinement_t> find_in_ctx(int) const;
     std::optional<refinement_cells_t> find_in_stack(int) const;
