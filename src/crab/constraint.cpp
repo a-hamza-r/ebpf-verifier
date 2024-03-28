@@ -33,6 +33,11 @@ void constraint_t::simplify(std::shared_ptr<slacks_t> slacks) {
 
 bool constraint_t::is_bottom(std::shared_ptr<slacks_t> slacks) {
     simplify(slacks);
+    symbol_terms_t terms = _expression_lhs.get_symbol_terms();
+    if (terms.size() == 1 && terms.begin()->first == symbol_t::begin()) {
+        // we can sometimes simplify if we have a single symbol begin, since it is always offset 0
+        _expression_lhs -= terms.begin()->first;
+    }
     if (!_expression_lhs.is_constant()) {
         return false;
     }
