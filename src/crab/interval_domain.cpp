@@ -401,6 +401,11 @@ void interval_domain_t::assume_unsigned_cst(Condition::Op op, bool is64,
         const interval_t& right_signed, const interval_t& right_unsigned,
         register_t left, Value right, location_t loc) {
 
+    if (left_unsigned.is_top() && right_unsigned.is_top()) {
+        // this is a drastic heuristic
+        return;
+    }
+
     auto left_interval = interval_t::bottom();
     auto right_interval = interval_t::bottom();
     get_unsigned_intervals(is64, left_signed, left_unsigned, right_unsigned,
@@ -772,6 +777,11 @@ void interval_domain_t::assume_signed_cst(Condition::Op op, bool is64,
         const interval_t& left_signed, const interval_t& left_unsigned,
         const interval_t& right_signed, const interval_t& right_unsigned,
         register_t left, Value right, location_t loc) {
+
+    if (left_unsigned.is_top() && right_unsigned.is_top()) {
+        // this is a drastic heuristic
+        return;
+    }
 
     auto left_interval = interval_t::bottom();
     auto right_interval = interval_t::bottom();
