@@ -822,6 +822,11 @@ region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
 }
 
 void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {
+    // nothing to do here
+}
+
+void region_domain_t::check_type(const TypeConstraint& s,
+        std::optional<mock_interval_t> interval_opt) {
     auto ptr_or_mapfd_opt = m_registers.find(s.reg.v);
     if (ptr_or_mapfd_opt) {
         // it is a pointer or mapfd
@@ -862,8 +867,7 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {
             }
         }
     }
-    else {
-        // if we don't know the type, we assume it is a number
+    else if (interval_opt) {
         if (s.types == TypeGroup::number || s.types == TypeGroup::ptr_or_num
                 || s.types == TypeGroup::non_map_fd || s.types == TypeGroup::mem_or_num)
             return;

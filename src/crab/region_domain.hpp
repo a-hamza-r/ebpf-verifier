@@ -162,6 +162,7 @@ class region_domain_t final {
     interval_t get_map_key_size(const Reg&) const;
     std::optional<uint32_t> get_map_type(const Reg&) const;
     std::optional<uint32_t> get_map_inner_map_fd(const Reg&) const;
+    void check_type(const TypeConstraint&, std::optional<mock_interval_t>);
     void do_load_mapfd(const register_t&, int, location_t);
     void do_load(const Mem&, const register_t&, bool, location_t);
     void do_mem_store(const Mem&);

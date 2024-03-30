@@ -364,7 +364,7 @@ void type_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
     assert(!reg_type.has_value() || !mock_interval_type.has_value());
-    m_region(s, loc);
+    m_region.check_type(s, mock_interval_type);
 }
 
 void type_domain_t::operator()(const Assert& u, location_t loc) {
@@ -486,6 +486,7 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
             }
             else {
                 m_errors.push_back("Only stack or packet can be used as a parameter");
+                return;
             }
         }
     }
