@@ -691,45 +691,6 @@ void offset_domain_t::operator()(const Packet& u, location_t loc) {
     m_reg_state.scratch_caller_saved_registers();
 }
 
-bool offset_domain_t::lower_bound_satisfied(const dist_t& dist, int offset) const {
-    auto meta_limit = m_extra_constraints.get_meta_limit();
-    auto end_limit = m_extra_constraints.get_end_limit();
-
-    dist_t dist1 = dist;
-    if (dist.is_meta_pointer()) {
-        dist1 = dist_t(dist.offset_from_reference() + (meta_limit ?
-                    weight_t{*meta_limit-number_t{PACKET_META}} : weight_t{number_t{0}}));
-    }
-    if (dist.is_backward_pointer()) {
-        dist1 = dist_t(dist.offset_from_reference()
-                + (end_limit ? weight_t{*end_limit} : weight_t{number_t{0}}));
-    }
-
-    bound_t lb = meta_limit ? *meta_limit-number_t{PACKET_META} : bound_t{number_t{0}};
-    return (dist1.m_dist.lb()+number_t{offset} >= lb);
-}
-
-bool offset_domain_t::upper_bound_satisfied(const dist_t& dist, int offset, int width,
-        bool is_comparison_check) const {
-    auto meta_limit = m_extra_constraints.get_meta_limit();
-    auto end_limit = m_extra_constraints.get_end_limit();
-
-    dist_t dist1 = dist;
-    if (dist.is_meta_pointer()) {
-        dist1 = dist_t(dist.offset_from_reference() + (meta_limit ?
-                    weight_t{*meta_limit-number_t{PACKET_META}} : weight_t{number_t{0}}));
-    }
-    if (dist.is_backward_pointer()) {
-        dist1 = dist_t(dist.offset_from_reference()
-                + (end_limit ? weight_t{*end_limit} :
-                    weight_t{number_t{is_comparison_check ? MAX_PACKET_SIZE : 0}}));
-    }
-
-    bound_t ub = is_comparison_check ? bound_t{MAX_PACKET_SIZE}
-        : (end_limit ? *end_limit : number_t{0});
-    return (dist1.m_dist.ub()+number_t{offset+width} <= ub);
-}
-
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
         bool is_comparison_check) const {
     auto begin = m_reg_state.find(register_t{11});
