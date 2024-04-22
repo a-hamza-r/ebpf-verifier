@@ -909,9 +909,13 @@ bool interval_domain_t::load_from_stack(register_t reg, interval_t load_at, int 
             }
         }
     }
-    if (all_numeric_in_stack(start_offset, width)) {
-        insert_in_registers(reg, loc, interval_t::top());
-        return true;
+    auto overlapping_cells = find_overlapping_cells_in_stack(start_offset, width);
+    if (overlapping_cells.size() == 1) {
+        // only allow loading from a single cell
+        if (all_numeric_in_stack(start_offset, width)) {
+            insert_in_registers(reg, loc, interval_t::top());
+            return true;
+        }
     }
     return false;
 }
