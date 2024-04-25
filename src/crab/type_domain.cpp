@@ -300,6 +300,8 @@ void type_domain_t::operator()(const Call& u, location_t loc) {
 
 void type_domain_t::operator()(const Callx &u, location_t loc) {
     // WARNING: Not implemented yet
+    // This operation is not needed for current benchmarks,
+    // TODO: implement this if needed
 }
 
 void type_domain_t::operator()(const Exit& u, location_t loc) {
@@ -365,6 +367,12 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
             m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v}, cond.right, loc);
         }
     }
+}
+
+void type_domain_t::operator()(const FuncConstraint& s, location_t loc) {
+    // WARNING: Not implemented yet
+    // This operation is not needed for current benchmarks,
+    // TODO: implement this if needed
 }
 
 void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {

@@ -729,10 +729,6 @@ void region_domain_t::operator()(const Call& u, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::operator()(const Callx &u, location_t loc) {
-    // WARNING: Not implemented yet.
-}
-
 void region_domain_t::operator()(const IncrementLoopCounter &u, location_t loc) {
     // WARNING: Not implemented yet.
 }
