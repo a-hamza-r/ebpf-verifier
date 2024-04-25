@@ -87,7 +87,7 @@ void register_types_t::scratch_caller_saved_registers() {
 }
 
 void register_types_t::forget_packet_ptrs() {
-    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS; r++) {
+    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-1; r++) {
         if (is_packet_ptr(find(register_t{r}))) {
             operator-=(register_t{r});
         }
@@ -108,7 +108,7 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     // the bb label, we can fix
     location_t loc = location_t{std::make_pair(label_t(-2, -2), 0)};
 
-    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto maybe_ptr1 = find(register_t{i});
         auto maybe_ptr2 = other.find(register_t{i});
@@ -184,7 +184,7 @@ std::optional<ptr_or_mapfd_t> register_types_t::find(register_t key) const {
 }
 
 void register_types_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, *it);
         }

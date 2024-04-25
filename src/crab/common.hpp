@@ -16,7 +16,9 @@
 namespace crab {
 
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
-constexpr uint8_t NUM_REGISTERS = 11;
+
+// 11 registers for the eBPF ISA, and 1 pseudo-register for the atomic operations
+constexpr uint8_t NUM_REGISTERS = 12;
 
 constexpr int STACK_BEGIN = 0;
 constexpr int CTX_BEGIN = 0;

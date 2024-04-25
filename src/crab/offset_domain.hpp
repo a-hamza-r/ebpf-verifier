@@ -30,13 +30,13 @@ class registers_state_t {
 
             auto loc = std::make_pair(label_t::entry, (unsigned int)0);
             if (desc->data >= 0) {
-                insert(register_t{11}, loc, refinement_t::begin());
+                insert(register_t{12}, loc, refinement_t::begin());
             }
             if (desc->end >= 0) {
-                insert(register_t{12}, loc, refinement_t::end());
+                insert(register_t{13}, loc, refinement_t::end());
             }
             if (desc->meta >= 0) {
-                insert(register_t{13}, loc, refinement_t::meta());
+                insert(register_t{14}, loc, refinement_t::meta());
             }
         }
 

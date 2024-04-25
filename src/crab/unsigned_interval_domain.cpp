@@ -55,7 +55,7 @@ registers_unsigned_state_t registers_unsigned_state_t::operator|(const registers
     }
     registers_unsigned_state_t intervals_joined(m_interval_env);
     location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
-    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
@@ -69,7 +69,7 @@ registers_unsigned_state_t registers_unsigned_state_t::operator|(const registers
 }
 
 void registers_unsigned_state_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, it->to_interval());
         }

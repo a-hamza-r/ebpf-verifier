@@ -105,7 +105,7 @@ crab::bound_t type_domain_t::get_loop_count_upper_bound() {
 string_invariant type_domain_t::to_set() const {
     if (is_top()) return string_invariant::top();
     std::set<std::string> result;
-    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(register_t{i});
         auto maybe_rf = m_offset.find_refinement_info(register_t{i});
         if (maybe_ptr_or_mapfd.has_value()) {
@@ -193,8 +193,74 @@ void type_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     m_interval(u, loc);
 }
 
+// Construct a Bin operation that does the main operation that a given Atomic operation does atomically.
+static Bin atomic_to_bin(const Atomic& a) {
+    Bin bin{
+        .dst = Reg{R11_ATOMIC_SCRATCH}, .v = a.valreg, .is64 = (a.access.width == sizeof(uint64_t)), .lddw = false};
+    switch (a.op) {
+    case Atomic::Op::ADD: bin.op = Bin::Op::ADD; break;
+    case Atomic::Op::OR: bin.op = Bin::Op::OR; break;
+    case Atomic::Op::AND: bin.op = Bin::Op::AND; break;
+    case Atomic::Op::XOR: bin.op = Bin::Op::XOR; break;
+    case Atomic::Op::XCHG:
+    case Atomic::Op::CMPXCHG: bin.op = Bin::Op::MOV; break;
+    default: throw std::exception();
+    }
+    return bin;
+}
+
 void type_domain_t::operator()(const Atomic &u, location_t loc) {
     // WARNING: Not implemented yet
+    if (is_bottom()) return;
+    std::optional<ptr_or_mapfd_t> base_reg_opt
+        = m_region.find_ptr_or_mapfd_type(u.access.basereg.v);
+    std::optional<mock_interval_t> value_reg_opt = m_interval.find_interval_value(u.valreg.v);
+    if (!base_reg_opt || !value_reg_opt) return;
+    if (is_stack_ptr(base_reg_opt)) {
+        if (u.op == Atomic::Op::CMPXCHG) {
+            m_region -= register_t{R0_RETURN_VALUE};
+            m_offset -= register_t{R0_RETURN_VALUE};
+            insert_in_registers_in_interval_domain(register_t{R0_RETURN_VALUE},
+                    loc, interval_t::top());
+        }
+        else if (u.fetch) {
+            insert_in_registers_in_interval_domain(u.valreg.v, loc, interval_t::top());
+        }
+        return;
+    }
+    // Fetch the current value into the R11 pseudo-register.
+    const Reg r11{11};
+    (*this)(Mem{.access = u.access, .value = r11, .is_load = true});
+
+    // Compute the new value in R11.
+    (*this)(atomic_to_bin(u));
+
+    if (u.op == Atomic::Op::CMPXCHG) {
+        // For CMPXCHG, store the original value in r0.
+        (*this)(Mem{.access = u.access, .value = Reg{R0_RETURN_VALUE}, .is_load = true});
+
+        // For the destination, there are 3 possibilities:
+        // 1) dst.value == r0.value : set R11 to valreg
+        // 2) dst.value != r0.value : don't modify R11
+        // 3) dst.value may or may not == r0.value : set R11 to the union of R11 and valreg
+        // For now we just havoc the value of R11.
+        m_region -= register_t{11};
+        m_offset -= register_t{11};
+        insert_in_registers_in_interval_domain(register_t{11}, loc, interval_t::top());
+    } else if (u.fetch) {
+        // For other FETCH operations, store the original value in the src register.
+        (*this)(Mem{.access = u.access, .value = u.valreg, .is_load = true});
+    }
+
+    // Store the new value back in the original shared memory location.
+    // Note that do_mem_store() currently doesn't track shared memory values,
+    // but stack memory values are tracked and are legal here.
+    (*this)(Mem{.access = u.access, .value = r11, .is_load = false});
+
+    // Clear the R11 pseudo-register.
+    m_region -= register_t{11};
+    m_offset -= register_t{11};
+    m_interval -= register_t{11};
 }
 
 void type_domain_t::operator()(const IncrementLoopCounter &u, location_t loc) {

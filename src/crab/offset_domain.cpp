@@ -94,7 +94,7 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
     registers_state_t joined_state(m_offset_env, m_slacks);
     location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
 
-    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
@@ -171,14 +171,14 @@ void registers_state_t::scratch_caller_saved_registers() {
 }
 
 void registers_state_t::forget_packet_pointers(location_t loc) {
-    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS; r++) {
+    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-1; r++) {
         if (auto it = find(register_t{r})) {
             if (it->get_type() == data_type_t::PACKET) {
                 operator-=(register_t{r});
             }
         }
     }
-    insert(register_t{11}, loc, refinement_t::begin());
+    insert(register_t{12}, loc, refinement_t::begin());
     // TODO: verify if this is all needed
 }
 
@@ -412,7 +412,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             return;
         }
         if (cond.op == Condition::Op::LE) {
-            auto b = m_reg_state.find(register_t{11});
+            auto b = m_reg_state.find(register_t{12});
             auto le_rf = *rf_left <= *rf_right;
             if (b) {
                 b->add_constraint(le_rf);
@@ -428,12 +428,12 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
                     set_to_bottom();
                 }
                 else {
-                    m_reg_state.insert(register_t{11}, loc, std::move(*b));
+                    m_reg_state.insert(register_t{12}, loc, std::move(*b));
                 }
             }
         }
         else if (cond.op == Condition::Op::GT) {
-            auto b = m_reg_state.find(register_t{11});
+            auto b = m_reg_state.find(register_t{12});
             auto gt_rf = *rf_left > *rf_right;
             if (b) {
                 b->add_constraint(gt_rf);
@@ -443,7 +443,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
                     set_to_bottom();
                 }
                 else {
-                    m_reg_state.insert(register_t{11}, loc, std::move(*b));
+                    m_reg_state.insert(register_t{12}, loc, std::move(*b));
                 }
             }
 
@@ -468,7 +468,7 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     if (!dst_expr.is_singleton() || !src_expr.is_singleton()) return interval_t::top();
     auto dst_symbol = dst_expr.get_singleton();
     auto src_symbol = src_expr.get_singleton();
-    std::optional<refinement_t> begin_rf = m_reg_state.find(register_t{11});
+    std::optional<refinement_t> begin_rf = m_reg_state.find(register_t{12});
     if (!begin_rf) return interval_t::top();
     interval_t result_interval = result_rf.simplify_for_subtraction(dst_symbol, src_symbol,
             begin_rf->get_constraints(), m_reg_state.get_slacks());
@@ -693,7 +693,7 @@ void offset_domain_t::operator()(const Packet& u, location_t loc) {
 
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
         bool is_comparison_check) const {
-    auto begin = m_reg_state.find(register_t{11});
+    auto begin = m_reg_state.find(register_t{12});
     if (!begin) return false;
     auto reg = m_reg_state.find(r.v);
     if (!reg) return false;
