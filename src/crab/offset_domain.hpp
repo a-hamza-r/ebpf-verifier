@@ -147,7 +147,6 @@ class offset_domain_t final {
     void operator()(const LoadMapFd&, location_t loc = boost::none);
     void operator()(const Atomic&, location_t loc = boost::none) {}
     void operator()(const Call&, location_t loc = boost::none);
-    void operator()(const Callx&, location_t loc = boost::none);
     void operator()(const Exit&, location_t loc = boost::none);
     void operator()(const Jmp&, location_t loc = boost::none);
     void operator()(const Mem&, location_t loc = boost::none);

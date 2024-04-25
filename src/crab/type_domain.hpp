@@ -73,7 +73,7 @@ class type_domain_t final {
     void operator()(const ValidMapKeyValue&, location_t loc = boost::none);
     void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
     void operator()(const ValidDivisor&, location_t loc = boost::none);
-    void operator()(const FuncConstraint& s, location_t loc = boost::none) {};
+    void operator()(const FuncConstraint& s, location_t loc = boost::none);
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& os) const;
