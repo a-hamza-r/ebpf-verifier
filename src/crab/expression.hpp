@@ -45,6 +45,7 @@ class expression_t {
     expression_t operator+(int n) const;
     expression_t operator-(const expression_t &other) const;
     expression_t operator|(const expression_t &other) const;
+    expression_t widen(const expression_t &other) const;
     void write(std::ostream &o) const;
     symbol_terms_t get_symbol_terms() const { return _symbol_terms; }
     int8_t get_coefficient(const symbol_t &s) const;

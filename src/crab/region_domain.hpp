@@ -34,6 +34,8 @@ class region_stack_t {
   public:
     region_stack_t() = default;
     region_stack_t operator|(const region_stack_t& other) const;
+    bool operator<=(const region_stack_t& other) const;
+    region_stack_t widen(const region_stack_t& other) const;
     void operator-=(uint64_t);
     void operator-=(const std::vector<uint64_t>&);
     void set_to_bottom();
@@ -79,6 +81,8 @@ class region_registers_t {
     }
     region_registers_t& operator=(region_registers_t&& other) noexcept = default;
     region_registers_t operator|(const region_registers_t& other) const;
+    region_registers_t widen(const region_registers_t& other) const;
+    bool operator<=(const region_registers_t& other) const;
     void operator-=(register_t var);
     void set_to_bottom();
     void set_to_top();

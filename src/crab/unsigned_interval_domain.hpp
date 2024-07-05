@@ -48,6 +48,8 @@ class unsigned_interval_registers_t {
     void operator-=(register_t);
     unsigned_interval_registers_t operator|(const unsigned_interval_registers_t& other) const;
     void adjust_bb_for_registers(location_t);
+    bool operator<=(const unsigned_interval_registers_t& other) const;
+    unsigned_interval_registers_t widen(const unsigned_interval_registers_t& other) const;
 };
 
 using unsigned_interval_stack_cell_t = std::pair<refinement_t, int>;    // intervals with width
@@ -74,6 +76,8 @@ class unsigned_interval_stack_t {
     size_t size() const;
     void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values(const std::vector<uint64_t>&, uint64_t, int);
+    bool operator<=(const unsigned_interval_stack_t& other) const;
+    unsigned_interval_stack_t widen(const unsigned_interval_stack_t& other) const;
 };
 
 class unsigned_interval_domain_t final {

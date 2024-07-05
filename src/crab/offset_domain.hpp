@@ -47,6 +47,8 @@ class offset_registers_t {
         offset_registers_t(offset_registers_t&& other) = default;
         offset_registers_t& operator=(offset_registers_t&& other) = default;
         offset_registers_t operator|(const offset_registers_t&) const;
+        bool operator<=(const offset_registers_t&) const;
+        offset_registers_t widen(const offset_registers_t&) const;
         void operator-=(register_t);
         void set_to_top();
         void set_to_bottom();
@@ -82,6 +84,8 @@ class offset_stack_t {
         bool is_top() const;
         static offset_stack_t top();
         offset_stack_t operator|(const offset_stack_t&) const;
+        bool operator<=(const offset_stack_t&) const;
+        offset_stack_t widen(const offset_stack_t&) const;
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
         std::vector<uint64_t> get_keys() const;
 };

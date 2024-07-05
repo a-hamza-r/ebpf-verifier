@@ -74,6 +74,23 @@ void offset_registers_t::operator-=(register_t to_forget) {
     m_cur_register_def[to_forget] = nullptr;
 }
 
+bool offset_registers_t::operator<=(const offset_registers_t& other) const {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_register_def[i] == nullptr) continue;
+        if (m_cur_register_def[i] == nullptr) return false;
+        auto it1 = find(*(m_cur_register_def[i]));
+        auto it2 = other.find(*(other.m_cur_register_def[i]));
+        if (it1 && it2) {
+            // currently being conservative and only checking if the types are the same
+            // refinement equal only checks for equality of type and value, but not constraints
+            // We need comparison of constraints as well
+            if (!(*it1 == *it2)) return false;
+        }
+    }
+    // need separate handling for the registers v_begin
+    return true;
+}
+
 offset_registers_t offset_registers_t::operator|(const offset_registers_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -92,6 +109,30 @@ offset_registers_t offset_registers_t::operator|(const offset_registers_t& other
             auto rf1 = *it1, rf2 = *it2;
             if (rf1.same_type(rf2)) {
                 joined_state.insert(register_t{i}, loc, rf1 | rf2);
+            }
+        }
+    }
+    return joined_state;
+}
+
+offset_registers_t offset_registers_t::widen(const offset_registers_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+
+    offset_registers_t joined_state;
+    location_t loc = location_t::top();
+
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
+        if (other.m_cur_register_def[i] == nullptr) continue;
+        auto it1 = find(*(m_cur_register_def[i]));
+        auto it2 = other.find(*(other.m_cur_register_def[i]));
+        if (it1 && it2) {
+            auto rf1 = *it1, rf2 = *it2;
+            if (rf1.same_type(rf2)) {
+                joined_state.insert(register_t{i}, loc, rf1.widen(rf2));
             }
         }
     }
@@ -180,6 +221,23 @@ void offset_stack_t::operator-=(const std::vector<uint64_t>& keys) {
     }
 }
 
+bool offset_stack_t::operator<=(const offset_stack_t& other) const {
+    size_t size1 = m_stack_cells.size();
+    size_t size2 = other.m_stack_cells.size();
+    if (size2 > size1) return false;
+    for (auto const &kv : other.m_stack_cells) {
+        auto it = m_stack_cells.find(kv.first);
+        if (it == m_stack_cells.end()) return false;
+        auto rf1 = it->second.first;
+        auto rf2 = kv.second.first;
+        auto width1 = it->second.second;
+        auto width2 = kv.second.second;
+        // being conservative and only checking if the types are the same
+        if (!(rf1 == rf2) || width1 != width2) return false;
+    }
+    return true;
+}
+
 offset_stack_t offset_stack_t::operator|(const offset_stack_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -202,6 +260,34 @@ offset_stack_t offset_stack_t::operator|(const offset_stack_t& other) const {
             // hence, handle accordingly
             if (rf1.same_type(rf2) && width1 == width2) {
                 out_stack_rfs.insert({kv.first, std::make_pair(rf1 | rf2, width1)});
+            }
+        }
+    }
+    return offset_stack_t(std::move(out_stack_rfs));
+}
+
+offset_stack_t offset_stack_t::widen(const offset_stack_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+
+    refinement_stack_cells_t out_stack_rfs;
+    // We do not join rf cells because different rf values different types of offsets
+    for (auto const&kv: m_stack_cells) {
+        auto maybe_rf_cells = other.find(kv.first);
+        if (maybe_rf_cells) {
+            auto rf_cells1 = kv.second;
+            auto rf_cells2 = *maybe_rf_cells;
+            auto rf1 = rf_cells1.first;
+            auto rf2 = rf_cells2.first;
+            int width1 = rf_cells1.second;
+            int width2 = rf_cells2.second;
+            // TODO: for numerical values, the width does not have to be the same
+            // hence, handle accordingly
+            if (rf1.same_type(rf2) && width1 == width2) {
+                out_stack_rfs.insert({kv.first, std::make_pair(rf1.widen(rf2), width1)});
             }
         }
     }
@@ -273,7 +359,9 @@ bool offset_domain_t::is_top() const {
 }
 
 // inclusion
-bool offset_domain_t::operator<=(const offset_domain_t& other) const { return true; }
+bool offset_domain_t::operator<=(const offset_domain_t& other) const {
+    return (m_registers <= other.m_registers && m_stack <= other.m_stack);
+}
 
 // join
 void offset_domain_t::operator|=(const offset_domain_t& abs) {
@@ -320,8 +408,14 @@ offset_domain_t offset_domain_t::operator&(const offset_domain_t& other) const {
 
 // widening
 offset_domain_t offset_domain_t::widen(const offset_domain_t& other, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return other;
+    if (is_bottom() || other.is_top()) {
+        return other;
+    }
+    else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    return offset_domain_t(m_registers.widen(other.m_registers),
+            m_stack.widen(other.m_stack), m_ctx, m_slacks);
 }
 
 // narrowing

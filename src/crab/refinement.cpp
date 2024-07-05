@@ -174,6 +174,12 @@ bool refinement_t::same_type(const refinement_t &other) const {
     return _type == other._type && _type != refinement_type_t::ANY;
 }
 
+refinement_t refinement_t::widen(const refinement_t &other) const {
+    assert(same_type(other));
+    auto widened_value = _value.widen(other._value);
+    return refinement_t(_type, widened_value);
+}
+
 refinement_t refinement_t::operator|(const refinement_t &other) const {
     if (!has_constraints) {
         return refinement_t(_type, _value | other._value);
@@ -226,6 +232,11 @@ bool refinement_t::safe_access(const expression_t& access_lb, const expression_t
     bool ub_satisfied = check_consistent(ub);
 
     return lb_satisfied && ub_satisfied;
+}
+
+bool refinement_t::operator==(const refinement_t &other) const {
+    // TODO: we need to compare constraints as well
+    return _type == other._type && _value == other._value;
 }
 
 } // namespace crab

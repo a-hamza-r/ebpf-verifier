@@ -227,6 +227,28 @@ expression_t expression_t::operator|(const expression_t &other) const {
     return expression_t(new_terms, interval_t{0}, slacks);
 }
 
+expression_t expression_t::widen(const expression_t &other) const {
+    // TODO: this needs more work
+    if (_symbol_terms.size() != other._symbol_terms.size()) {
+        return expression_t();
+    }
+    symbol_terms_t new_terms;
+    for (auto &term : _symbol_terms) {
+        auto it = other._symbol_terms.find(term.first);
+        if (it == other._symbol_terms.end()) {
+            // we need to know what is the other slack, but it's not accesible directly
+                auto new_slack = symbol_t::make();
+                new_terms[new_slack] = 1;
+        }
+        else {
+            // TODO: some complex logic is needed here
+            new_terms[term.first] = term.second;
+        }
+    }
+    interval_t new_interval = _constant_term.widen(other._constant_term);
+    return expression_t(new_terms, new_interval);
+}
+
 void expression_t::write(std::ostream &o) const {
     size_t i = 0;
     // print all symbol terms

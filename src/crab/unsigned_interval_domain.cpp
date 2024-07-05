@@ -48,6 +48,19 @@ std::optional<refinement_t> unsigned_interval_registers_t::find(register_t key) 
     return find(reg);
 }
 
+bool unsigned_interval_registers_t::operator<=(const unsigned_interval_registers_t& other) const {
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
+        if (other.m_cur_register_def[i] == nullptr) continue;
+        if (m_cur_register_def[i] == nullptr) return false;
+        auto it1 = find(*(m_cur_register_def[i]));
+        auto it2 = other.find(*(other.m_cur_register_def[i]));
+        if (it1 && it2) {
+            if (!(it1->to_interval() <= it2->to_interval())) return false;
+        }
+    }
+    return true;
+}
+
 unsigned_interval_registers_t unsigned_interval_registers_t::operator|(const unsigned_interval_registers_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -63,6 +76,26 @@ unsigned_interval_registers_t unsigned_interval_registers_t::operator|(const uns
         if (it1 && it2) {
             refinement_t rf1 = it1.value(), rf2 = it2.value();
             refinements_joined.insert(register_t{i}, loc, rf1 | rf2);
+        }
+    }
+    return refinements_joined;
+}
+
+unsigned_interval_registers_t unsigned_interval_registers_t::widen(const unsigned_interval_registers_t& other, bool to_constants) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    unsigned_interval_registers_t refinements_joined;
+    location_t loc = location_t::top();
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
+        if (other.m_cur_register_def[i] == nullptr) continue;
+        auto it1 = find(*(m_cur_register_def[i]));
+        auto it2 = other.find(*(other.m_cur_register_def[i]));
+        if (it1 && it2) {
+            refinement_t rf1 = it1.value(), rf2 = it2.value();
+            refinements_joined.insert(register_t{i}, loc, rf1.widen(rf2)));
         }
     }
     return refinements_joined;
@@ -168,9 +201,12 @@ void unsigned_interval_stack_t::remove_overlap(const std::vector<uint64_t>& keys
     }
 }
 
+using RefinementJoin = std::function<refinement_t(const refinement_t&, const refinement_t&)>;
+
 static inline void join_stack(const unsigned_interval_stack_t& stack1, uint64_t key1, int& loc1,
         const unsigned_interval_stack_t& stack2, uint64_t key2, int& loc2,
-        unsigned_interval_stack_cells_t& refinements_joined) {
+        unsigned_interval_stack_cells_t& refinements_joined, const IntervalFunction& joinFunc) {
+
     auto type1 = stack1.find(key1);    auto type2 = stack2.find(key2);
     auto& cells1 = type1.value();   auto& cells2 = type2.value();
     int width1 = cells1.second; int width2 = cells2.second;
@@ -180,7 +216,7 @@ static inline void join_stack(const unsigned_interval_stack_t& stack1, uint64_t 
     refinement_t top_rf = refinement_t::numeric_refinement_top();
     if (key1 == key2) {
         if (width1 == width2) {
-            refinements_joined[key1] = std::make_pair(rf1 | rf2, width1);
+            refinements_joined[key1] = std::make_pair(joinFunc(rf1, rf2), width1);
             loc1++; loc2++;
         }
         else if (width1 < width2) {
@@ -208,10 +244,27 @@ static inline void join_stack(const unsigned_interval_stack_t& stack1, uint64_t 
     }
 }
 
+bool unsigned_interval_stack_t::operator<=(const unsigned_interval_stack_t& other) const {
+    size_t size1 = size(), size2 = other.size();
+    if (size2 > size1) return false;
+    for (auto const &kv : other.m_cells) {
+        auto key = kv.first;
+        auto it = m_cells.find(key);
+        if (it == m_cells.end()) return false;
+        auto& cells1 = it->second; auto& cells2 = kv.second;
+        auto interval1 = cells1.first.to_interval();
+        auto interval2 = cells2.first.to_interval();
+        auto width1 = cells1.second; auto width2 = cells2.second;
+        if (width1 != width2) return false;
+        if (!(interval1 <= interval2)) return false;
+    }
+    return true;
+}
+
 unsigned_interval_stack_t unsigned_interval_stack_t::operator|(const unsigned_interval_stack_t& other) const {
-    if (is_bottom()) {
+    if (is_bottom() || other.is_top()) {
         return other;
-    } else if (other.is_bottom()) {
+    } else if (other.is_bottom() || is_top()) {
         return *this;
     }
     unsigned_interval_stack_cells_t refinements_joined;
@@ -220,7 +273,26 @@ unsigned_interval_stack_t unsigned_interval_stack_t::operator|(const unsigned_in
     int i = 0, j = 0;
     while (i < static_cast<int>(stack1_keys.size()) && j < static_cast<int>(stack2_keys.size())) {
         int key1 = stack1_keys[i], key2 = stack2_keys[j];
-        join_stack(*this, key1, i, other, key2, j, refinements_joined);
+        join_stack(*this, key1, i, other, key2, j, refinements_joined,
+                [](const refinement_t& a, const refinement_t& b) { return a | b; });
+    }
+    return unsigned_interval_stack_t(std::move(refinements_joined));
+}
+
+unsigned_interval_stack_t unsigned_interval_stack_t::widen(const unsigned_interval_stack_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    unsigned_interval_stack_cells_t refinements_joined;
+    auto stack1_keys = get_keys();
+    auto stack2_keys = other.get_keys();
+    int i = 0, j = 0;
+    while (i < static_cast<int>(stack1_keys.size()) && j < static_cast<int>(stack2_keys.size())) {
+        int key1 = stack1_keys[i], key2 = stack2_keys[j];
+        join_stack(*this, key1, i, other, key2, j, refinements_joined,
+                [](const refinement_t& a, const refinement_t& b) { return a.widen(b); });
     }
     return unsigned_interval_stack_t(std::move(refinements_joined));
 }
@@ -322,8 +394,8 @@ void unsigned_interval_domain_t::store_in_stack(uint64_t key, interval_t interva
 }
 
 bool unsigned_interval_domain_t::operator<=(const unsigned_interval_domain_t& abs) const {
-    /* WARNING: The operation is not implemented yet.*/
-    return true;
+    return (m_registers <= abs.m_registers) &&
+        (m_stack <= abs.m_stack);
 }
 
 void unsigned_interval_domain_t::operator|=(const unsigned_interval_domain_t& abs) {
@@ -340,10 +412,10 @@ void unsigned_interval_domain_t::operator|=(unsigned_interval_domain_t&& abs) {
 }
 
 unsigned_interval_domain_t unsigned_interval_domain_t::operator|(const unsigned_interval_domain_t& other) const {
-    if (is_bottom()) {
+    if (is_bottom() || other.is_top()) {
         return other;
     }
-    else if (other.is_bottom()) {
+    else if (other.is_bottom() || is_top()) {
         return *this;
     }
     return unsigned_interval_domain_t(
@@ -353,10 +425,10 @@ unsigned_interval_domain_t unsigned_interval_domain_t::operator|(const unsigned_
 }
 
 unsigned_interval_domain_t unsigned_interval_domain_t::operator|(unsigned_interval_domain_t&& other) const {
-    if (is_bottom()) {
+    if (is_bottom() || other.is_top()) {
         return std::move(other);
     }
-    else if (other.is_bottom()) {
+    else if (other.is_bottom() || is_top()) {
         return *this;
     }
     return unsigned_interval_domain_t(
@@ -370,9 +442,15 @@ unsigned_interval_domain_t unsigned_interval_domain_t::operator&(const unsigned_
     return abs;
 }
 
-unsigned_interval_domain_t unsigned_interval_domain_t::widen(const unsigned_interval_domain_t& abs, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return abs;
+unsigned_interval_domain_t unsigned_interval_domain_t::widen(const unsigned_interval_domain_t& other, bool to_constants) {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    }
+    else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    return unsigned_interval_domain_t(m_registers.widen(other.m_registers),
+            m_stack.widen(other.m_stack));
 }
 
 unsigned_interval_domain_t unsigned_interval_domain_t::narrow(const unsigned_interval_domain_t& other) const {

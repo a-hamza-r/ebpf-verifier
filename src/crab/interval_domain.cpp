@@ -145,8 +145,7 @@ void interval_domain_t::store_in_stack_unsigned(uint64_t key, refinement_t rf, i
 }
 
 bool interval_domain_t::operator<=(const interval_domain_t& abs) const {
-    /* WARNING: The operation is not implemented yet.*/
-    return true;
+    return (m_signed <= abs.m_signed && m_unsigned <= abs.m_unsigned);
 }
 
 void interval_domain_t::operator|=(const interval_domain_t& abs) {
@@ -177,8 +176,8 @@ interval_domain_t interval_domain_t::operator&(const interval_domain_t& abs) con
 }
 
 interval_domain_t interval_domain_t::widen(const interval_domain_t& abs, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return abs;
+    return interval_domain_t(m_signed.widen(abs.m_signed, to_constants),
+            m_unsigned.widen(abs.m_unsigned, to_constants), m_slacks);
 }
 
 interval_domain_t interval_domain_t::narrow(const interval_domain_t& other) const {
