@@ -138,6 +138,40 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     return joined_reg_types;
 }
 
+bool register_types_t::operator<=(const register_types_t& other) const {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        if (m_cur_def[i] == nullptr) return false;
+        auto maybe_ptr1 = find(register_t{i});
+        auto maybe_ptr2 = other.find(register_t{i});
+        if (maybe_ptr1 && maybe_ptr2) {
+            ptr_or_mapfd_t ptr_or_mapfd1 = *maybe_ptr1, ptr_or_mapfd2 = *maybe_ptr2;
+            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
+                ptr_with_off_t ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
+                ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
+                if (!(ptr_with_off1 <= ptr_with_off2)) return false;
+            }
+            else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
+                mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
+                mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
+                if (!(mapfd1 <= mapfd2)) return false;
+            }
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
+                continue;
+            }
+            else return false;
+        }
+    }
+    return true;
+}
+
+register_types_t register_types_t::widen(const register_types_t& other) const {
+    return other;
+}
+
 void register_types_t::operator-=(register_t var) {
     if (is_bottom()) {
         return;
@@ -189,6 +223,41 @@ void register_types_t::adjust_bb_for_registers(location_t loc) {
             insert(register_t{i}, loc, *it);
         }
     }
+}
+
+bool stack_t::operator<=(const stack_t& other) const {
+    size_t size1 = m_ptrs.size();
+    size_t size2 = other.m_ptrs.size();
+    if (size2 > size1) return false;
+    for (auto const &kv : other.m_ptrs) {
+        auto it = m_ptrs.find(kv.first);
+        if (it == m_ptrs.end()) return false;
+        auto ptr_or_mapfd_cells1 = it->second;
+        auto ptr_or_mapfd_cells2 = kv.second;
+        auto ptr_or_mapfd1 = ptr_or_mapfd_cells1.first;
+        auto ptr_or_mapfd2 = ptr_or_mapfd_cells2.first;
+        int width1 = ptr_or_mapfd_cells1.second;
+        int width2 = ptr_or_mapfd_cells2.second;
+        if (width1 != width2) return false;
+        if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
+                std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
+            auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
+            auto ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
+            if (!(ptr_with_off1 <= ptr_with_off2)) return false;
+        }
+        else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1) &&
+                std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
+            auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
+            auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
+            if (!(mapfd1 <= mapfd2)) return false;
+        }
+        else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1) &&
+                std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
+            continue;
+        }
+        else return false;
+    }
+    return true;
 }
 
 stack_t stack_t::operator|(const stack_t& other) const {
@@ -382,8 +451,8 @@ std::optional<ptr_or_mapfd_cells_t> region_domain_t::find_in_stack(uint64_t key)
 }
 
 bool region_domain_t::operator<=(const region_domain_t& abs) const {
-    /* WARNING: The operation is not implemented yet.*/
-    return true;
+    // TODO: check for shared_ptr_aliases
+    return (m_registers <= abs.m_registers && m_stack <= abs.m_stack);
 }
 
 void region_domain_t::operator|=(const region_domain_t& abs) {

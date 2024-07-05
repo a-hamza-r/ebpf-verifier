@@ -37,6 +37,7 @@ class stack_t {
     : m_ptrs(std::move(ptrs)) , m_is_bottom(is_bottom) {}
     
     stack_t operator|(const stack_t& other) const;
+    bool operator<=(const stack_t& other) const;
     void operator-=(uint64_t);
     void operator-=(const std::vector<uint64_t>&);
     void set_to_bottom();
@@ -73,6 +74,8 @@ class register_types_t {
         : m_region_env(reg_type_env), m_is_bottom(is_bottom) {}
 
     register_types_t operator|(const register_types_t& other) const;
+    register_types_t widen(const register_types_t& other) const;
+    bool operator<=(const register_types_t& other) const;
     void operator-=(register_t var);
     void set_to_bottom();
     void set_to_top();

@@ -26,6 +26,7 @@ class registers_signed_state_t {
         std::optional<mock_interval_t> find(register_t key) const;
         void insert(register_t, const location_t&, interval_t);
         void operator-=(register_t);
+        bool operator<=(const registers_signed_state_t& other) const;
         registers_signed_state_t operator|(const registers_signed_state_t& other) const;
         registers_signed_state_t(bool is_bottom = false) : m_interval_env(nullptr),
             m_is_bottom(is_bottom) {}
@@ -56,6 +57,7 @@ class stack_slots_signed_state_t {
         void store(uint64_t, mock_interval_t, int);
         void operator-=(uint64_t);
         bool all_numeric(uint64_t, int) const;
+        bool operator<=(const stack_slots_signed_state_t& other) const;
         stack_slots_signed_state_t operator|(const stack_slots_signed_state_t& other) const;
         stack_slots_signed_state_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
         explicit stack_slots_signed_state_t(interval_values_stack_t&& interval_values,

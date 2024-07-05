@@ -84,6 +84,23 @@ void registers_state_t::operator-=(register_t to_forget) {
     m_cur_def[to_forget] = nullptr;
 }
 
+bool registers_state_t::operator<=(const registers_state_t& other) const {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        if (m_cur_def[i] == nullptr) return false;
+        auto it1 = find(*(m_cur_def[i]));
+        auto it2 = other.find(*(other.m_cur_def[i]));
+        if (it1 && it2) {
+            // currently being conservative and only checking if the types are the same
+            // refinement equal only checks for equality of type and value, but not constraints
+            // We need comparison of constraints as well
+            if (!(*it1 == *it2)) return false;
+        }
+    }
+    // need separate handling for the registers v_begin
+    return true;
+}
+
 registers_state_t registers_state_t::operator|(const registers_state_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -228,6 +245,23 @@ void stack_state_t::operator-=(const std::vector<uint64_t>& keys) {
     }
 }
 
+bool stack_state_t::operator<=(const stack_state_t& other) const {
+    size_t size1 = m_slot_rfs.size();
+    size_t size2 = other.m_slot_rfs.size();
+    if (size2 > size1) return false;
+    for (auto const &kv : other.m_slot_rfs) {
+        auto it = m_slot_rfs.find(kv.first);
+        if (it == m_slot_rfs.end()) return false;
+        auto rf1 = it->second.first;
+        auto rf2 = kv.second.first;
+        auto width1 = it->second.second;
+        auto width2 = kv.second.second;
+        // being conservative and only checking if the types are the same
+        if (!(rf1 == rf2) || width1 != width2) return false;
+    }
+    return true;
+}
+
 stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -320,7 +354,9 @@ bool offset_domain_t::is_top() const {
 }
 
 // inclusion
-bool offset_domain_t::operator<=(const offset_domain_t& other) const { return true; }
+bool offset_domain_t::operator<=(const offset_domain_t& other) const {
+    return (m_reg_state <= other.m_reg_state && m_stack_state <= other.m_stack_state);
+}
 
 // join
 void offset_domain_t::operator|=(const offset_domain_t& abs) {

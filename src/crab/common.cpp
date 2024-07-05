@@ -58,6 +58,12 @@ bool mapfd_t::operator==(const mapfd_t& other) const {
     return (m_mapfd == other.m_mapfd);
 }
 
+bool mapfd_t::operator<=(const mapfd_t& other) const {
+    bool map_type = m_value_type == other.m_value_type
+        || other.m_value_type == EbpfMapValueType::ANY;
+    return (m_mapfd.to_interval() <= other.m_mapfd.to_interval() && map_type);
+}
+
 mapfd_t mapfd_t::operator|(const mapfd_t& other) const {
     auto value_type = m_value_type == other.m_value_type ? m_value_type : EbpfMapValueType::ANY;
     const auto& mock_i = mock_interval_t(m_mapfd.to_interval() | other.m_mapfd.to_interval());
@@ -73,6 +79,12 @@ void ptr_with_off_t::set_offset(mock_interval_t off) { m_offset = off; }
 void ptr_with_off_t::set_region_size(mock_interval_t region_sz) { m_region_size = region_sz; }
 
 void ptr_with_off_t::set_region(region_t r) { m_r = r; }
+
+bool ptr_with_off_t::operator<=(const ptr_with_off_t& other) const {
+    bool nullness = m_nullness == other.m_nullness || other.m_nullness == nullness_t::MAYBE_NULL;
+    return (m_r == other.m_r && m_offset.to_interval() <= other.m_offset.to_interval()
+            && m_region_size.to_interval() <= other.m_region_size.to_interval() && nullness);
+}
 
 ptr_with_off_t ptr_with_off_t::operator|(const ptr_with_off_t& other) const {
     auto&& mock_o = mock_interval_t(m_offset.to_interval() | other.m_offset.to_interval());

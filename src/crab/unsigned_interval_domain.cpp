@@ -47,6 +47,19 @@ std::optional<mock_interval_t> registers_unsigned_state_t::find(register_t key) 
     return find(reg);
 }
 
+bool registers_unsigned_state_t::operator<=(const registers_unsigned_state_t& other) const {
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        if (m_cur_def[i] == nullptr) return false;
+        auto it1 = find(*(m_cur_def[i]));
+        auto it2 = other.find(*(other.m_cur_def[i]));
+        if (it1 && it2) {
+            if (!(it1->to_interval() <= it2->to_interval())) return false;
+        }
+    }
+    return true;
+}
+
 registers_unsigned_state_t registers_unsigned_state_t::operator|(const registers_unsigned_state_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -203,6 +216,23 @@ static inline void join_stack(const stack_slots_unsigned_state_t& stack1, uint64
     }
 }
 
+bool stack_slots_unsigned_state_t::operator<=(const stack_slots_unsigned_state_t& other) const {
+    size_t size1 = size(), size2 = other.size();
+    if (size2 > size1) return false;
+    for (auto const &kv : other.m_interval_values) {
+        auto key = kv.first;
+        auto it = m_interval_values.find(key);
+        if (it == m_interval_values.end()) return false;
+        auto& cells1 = it->second; auto& cells2 = kv.second;
+        auto interval1 = cells1.first.to_interval();
+        auto interval2 = cells2.first.to_interval();
+        auto width1 = cells1.second; auto width2 = cells2.second;
+        if (width1 != width2) return false;
+        if (!(interval1 <= interval2)) return false;
+    }
+    return true;
+}
+
 stack_slots_unsigned_state_t stack_slots_unsigned_state_t::operator|(const stack_slots_unsigned_state_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
@@ -306,8 +336,8 @@ void unsigned_interval_domain_t::store_in_stack(uint64_t key, mock_interval_t in
 }
 
 bool unsigned_interval_domain_t::operator<=(const unsigned_interval_domain_t& abs) const {
-    /* WARNING: The operation is not implemented yet.*/
-    return true;
+    return (m_registers_values <= abs.m_registers_values) &&
+        (m_stack_slots_values <= abs.m_stack_slots_values);
 }
 
 void unsigned_interval_domain_t::operator|=(const unsigned_interval_domain_t& abs) {

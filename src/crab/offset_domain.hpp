@@ -47,6 +47,7 @@ class registers_state_t {
             m_is_bottom(is_bottom) {}
 
         registers_state_t operator|(const registers_state_t&) const;
+        bool operator<=(const registers_state_t&) const;
         void operator-=(register_t);
         void set_to_top();
         void set_to_bottom();
@@ -83,6 +84,7 @@ class stack_state_t {
         bool is_top() const;
         static stack_state_t top();
         stack_state_t operator|(const stack_state_t&) const;
+        bool operator<=(const stack_state_t&) const;
         explicit stack_state_t(stack_slot_refinements_t&& stack_rfs, bool is_bottom = false)
             : m_slot_rfs(std::move(stack_rfs)), m_is_bottom(is_bottom) {}
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;

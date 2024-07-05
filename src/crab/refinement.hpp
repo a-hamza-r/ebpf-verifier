@@ -34,6 +34,7 @@ class refinement_t {
     refinement_t operator|(const refinement_t &other) const;
     constraint_t operator<=(const refinement_t &other) const;
     constraint_t operator>(const refinement_t &other) const;
+    bool operator==(const refinement_t &other) const;
     bool has_value(refinement_t&&) const;
     void write(std::ostream &o) const;
     bool same_type(const refinement_t &other) const;

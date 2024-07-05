@@ -145,8 +145,7 @@ void interval_domain_t::store_in_stack_unsigned(uint64_t key, mock_interval_t in
 }
 
 bool interval_domain_t::operator<=(const interval_domain_t& abs) const {
-    /* WARNING: The operation is not implemented yet.*/
-    return true;
+    return (m_signed <= abs.m_signed && m_unsigned <= abs.m_unsigned);
 }
 
 void interval_domain_t::operator|=(const interval_domain_t& abs) {

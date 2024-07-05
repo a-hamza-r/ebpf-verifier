@@ -255,6 +255,11 @@ constraint_t refinement_t::operator>(const refinement_t &other) const {
     return constraint_t(other._value, _value + (-1));
 }
 
+bool refinement_t::operator==(const refinement_t &other) const {
+    // TODO: we need to compare constraints as well
+    return _type == other._type && _value == other._value;
+}
+
 void refinement_t::add_constraint(const constraint_t& c) {
     _constraints.push_back(c);
 }
