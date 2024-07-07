@@ -7,7 +7,8 @@
 
 namespace crab {
 
-using live_refinements_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS+3>;
+// +1 for v_begin
+using live_refinements_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS+1>;
 using global_offset_env_t = std::unordered_map<reg_with_loc_t, refinement_t>;
 
 class registers_state_t {
@@ -31,12 +32,6 @@ class registers_state_t {
             auto loc = std::make_pair(label_t::entry, (unsigned int)0);
             if (desc->data >= 0) {
                 insert(register_t{12}, loc, refinement_t::begin());
-            }
-            if (desc->end >= 0) {
-                insert(register_t{13}, loc, refinement_t::end());
-            }
-            if (desc->meta >= 0) {
-                insert(register_t{14}, loc, refinement_t::meta());
             }
         }
 

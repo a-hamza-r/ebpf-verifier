@@ -142,22 +142,21 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
             }
         }
     }
-    // need special handling for the registers v_begin, v_end, and v_meta
-    for (uint8_t i = NUM_REGISTERS; i < NUM_REGISTERS+3; i++) {
-        if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
-        auto it1 = find(*(m_cur_def[i]));
-        auto it2 = other.find(*(other.m_cur_def[i]));
+    // need special handling for the registers v_begin
+    if (m_cur_def[NUM_REGISTERS] != nullptr && other.m_cur_def[NUM_REGISTERS] != nullptr) {
+        auto it1 = find(*(m_cur_def[NUM_REGISTERS]));
+        auto it2 = other.find(*(other.m_cur_def[NUM_REGISTERS]));
         if (it1 && it2) {
             auto rf1 = *it1, rf2 = *it2;
             auto rf_joined = rf1 | rf2;
-            joined_state.insert(register_t{i}, loc, std::move(rf_joined));
+            joined_state.insert(register_t{NUM_REGISTERS}, loc, std::move(rf_joined));
         }
     }
     return joined_state;
 }
 
 void registers_state_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS+3; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS+1; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, std::move(*it));
         }
