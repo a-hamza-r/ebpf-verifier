@@ -113,8 +113,8 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
                     bool added = false;
                     auto symbol_terms1 = rf1_value.get_symbol_terms();
                     auto symbol_terms2 = rf2_value.get_symbol_terms();
-                    auto interval_rf1_value = rf1_value.get_interval();
-                    auto interval_rf2_value = rf2_value.get_interval();
+                    auto interval_rf1_value = rf1_value.get_constant_term();
+                    auto interval_rf2_value = rf2_value.get_constant_term();
                     for (auto it = symbol_terms1.begin(); it != symbol_terms1.end(); it++) {
                         // assuming slack variables are at same position in both states
                         if (!added && it->first.is_slack()) {
@@ -460,7 +460,7 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     refinement_t result_rf = *dst_rf - *src_rf;
     expression_t result_expr = result_rf.get_value();
     if (result_expr.is_constant()) {
-        return result_expr.get_interval();
+        return result_expr.get_constant_term();
     }
     // with non-singleton expressions, we might be able to compute subtraction,
     // but it might be complicated

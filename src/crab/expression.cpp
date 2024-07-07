@@ -9,23 +9,23 @@ std::ostream& operator<<(std::ostream& o, const expression_t& e) {
 }
 
 bool expression_t::operator==(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _interval == other._interval;
+    return _symbol_terms == other._symbol_terms && _constant_term == other._constant_term;
 }
 
 bool expression_t::operator<(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _interval.ub() < other._interval.lb();
+    return _symbol_terms == other._symbol_terms && _constant_term.ub() < other._constant_term.lb();
 }
 
 bool expression_t::operator<=(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _interval.ub() <= other._interval.lb();
+    return _symbol_terms == other._symbol_terms && _constant_term.ub() <= other._constant_term.lb();
 }
 
 bool expression_t::operator>(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _interval.lb() > other._interval.ub();
+    return _symbol_terms == other._symbol_terms && _constant_term.lb() > other._constant_term.ub();
 }
 
 bool expression_t::is_singleton() const {
-    return _symbol_terms.size() == 1 && _interval == interval_t{0};
+    return _symbol_terms.size() == 1 && _constant_term == interval_t{0};
 }
 
 bool expression_t::contains(const symbol_t &s) const {
@@ -65,7 +65,7 @@ expression_t expression_t::negate() const {
     for (const auto &term : _symbol_terms) {
         new_terms[term.first] = -term.second;
     }
-    return expression_t(new_terms, -_interval);
+    return expression_t(new_terms, -_constant_term);
 }
 
 expression_t expression_t::operator+(const expression_t &other) const {
@@ -73,11 +73,11 @@ expression_t expression_t::operator+(const expression_t &other) const {
     for (const auto &term : other._symbol_terms) {
         insert(new_terms, term);
     }
-    return expression_t(new_terms, _interval + other._interval);
+    return expression_t(new_terms, _constant_term + other._constant_term);
 }
 
-expression_t expression_t::operator+(interval_t interval) const {
-    return expression_t(_symbol_terms, _interval + interval);
+expression_t expression_t::operator+(interval_t constant) const {
+    return expression_t(_symbol_terms, _constant_term + constant);
 }
 
 expression_t expression_t::operator+(int n) const {
@@ -106,8 +106,8 @@ expression_t expression_t::operator|(const expression_t &other) const {
             new_terms[term.first] = term.second;
         }
     }
-    interval_t new_interval = _interval | other._interval;
-    return expression_t(new_terms, new_interval);
+    interval_t new_constant_term = _constant_term | other._constant_term;
+    return expression_t(new_terms, new_constant_term);
 }
 
 void expression_t::write(std::ostream &o) const {
@@ -122,13 +122,13 @@ void expression_t::write(std::ostream &o) const {
         }
         i++;
     }
-    if (auto s = _interval.singleton()) {
+    if (auto s = _constant_term.singleton()) {
         if ((int)*s != 0 || _symbol_terms.empty()) {
             if (!_symbol_terms.empty()) o << " + ";
             o <<  *s;
         }
     } else {
-        o << " + " << _interval;
+        o << " + " << _constant_term;
     }
 }
 

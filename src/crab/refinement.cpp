@@ -170,12 +170,12 @@ interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const sym
                 if (terms.size() == 2) {
                     if (terms[dst] == 1 && terms[src] == -1) {
                         // dst - src + [lb, ub] <= 0 -> dst - src <= -lb
-                        interval_t lhs_interval = lhs.get_interval();
+                        interval_t lhs_interval = lhs.get_constant_term();
                         result = result & interval_t{-max_size, -lhs_interval.lb()};
                     }
                     else if (terms[dst] == -1 && terms[src] == 1) {
                         // src - dst + [lb, ub] <= 0 -> dst - src >= -lb
-                        interval_t lhs_interval = lhs.get_interval();
+                        interval_t lhs_interval = lhs.get_constant_term();
                         result = result & interval_t{lhs_interval.lb(), max_size};
                     }
                 }
