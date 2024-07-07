@@ -43,7 +43,6 @@ bool type_domain_t::operator<=(const type_domain_t& abs) const {
 }
 
 type_domain_t type_domain_t::widen(const type_domain_t& other, bool to_constants) {
-    std::cout << "performing widen\n";
     return type_domain_t(m_region.widen(other.m_region, to_constants),
             m_offset.widen(other.m_offset, to_constants),
             m_interval.widen(other.m_interval, to_constants));
