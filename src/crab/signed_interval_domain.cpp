@@ -81,6 +81,27 @@ registers_signed_state_t registers_signed_state_t::operator|(const registers_sig
     return intervals_joined;
 }
 
+registers_signed_state_t registers_signed_state_t::widen(const registers_signed_state_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    registers_signed_state_t intervals_joined(m_interval_env);
+    location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        auto it1 = find(*(m_cur_def[i]));
+        auto it2 = other.find(*(other.m_cur_def[i]));
+        if (it1 && it2) {
+            auto interval1 = it1->to_interval(), interval2 = it2->to_interval();
+            intervals_joined.insert(register_t{i}, loc,
+                    std::move(interval1.widen(interval2)));
+        }
+    }
+    return intervals_joined;
+}
+
 void registers_signed_state_t::adjust_bb_for_registers(location_t loc) {
     for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
         if (auto it = find(register_t{i})) {
@@ -208,9 +229,11 @@ std::vector<uint64_t> stack_slots_signed_state_t::find_overlapping_cells(uint64_
     return overlapping_cells;
 }
 
+using IntervalFunction = std::function<interval_t(const interval_t&, const interval_t&)>;
+
 static inline void join_stack(const stack_slots_signed_state_t& stack1, uint64_t key1, int& loc1,
         const stack_slots_signed_state_t& stack2, uint64_t key2, int& loc2,
-        interval_values_stack_t& interval_values_joined) {
+        interval_values_stack_t& interval_values_joined, const IntervalFunction& joinFunc) {
     auto type1 = stack1.find(key1);    auto type2 = stack2.find(key2);
     auto& cells1 = type1.value();   auto& cells2 = type2.value();
     int width1 = cells1.second; int width2 = cells2.second;
@@ -220,7 +243,7 @@ static inline void join_stack(const stack_slots_signed_state_t& stack1, uint64_t
     if (key1 == key2) {
         if (width1 == width2) {
             interval_values_joined[key1] = std::make_pair(
-                    mock_interval_t(interval1 | interval2), width1);
+                    mock_interval_t(joinFunc(interval1, interval2)), width1);
             loc1++; loc2++;
         }
         else if (width1 < width2) {
@@ -244,7 +267,15 @@ static inline void join_stack(const stack_slots_signed_state_t& stack1, uint64_t
         else loc2++;
     }
     else {
-        join_stack(stack2, key2, loc2, stack1, key1, loc1, interval_values_joined);
+        if (key1+width1 > key2+width2) {
+            interval_values_joined[key2] = std::make_pair(top_interval_mock, width2);
+            loc2++;
+        }
+        else if (key1+width1 > key2) {
+            interval_values_joined[key2] = std::make_pair(top_interval_mock, key1+width1-key2);
+            loc1++;
+        }
+        else loc1++;
     }
 }
 
@@ -277,7 +308,26 @@ stack_slots_signed_state_t stack_slots_signed_state_t::operator|(const stack_slo
     int i = 0, j = 0;
     while (i < static_cast<int>(stack1_keys.size()) && j < static_cast<int>(stack2_keys.size())) {
         int key1 = stack1_keys[i], key2 = stack2_keys[j];
-        join_stack(*this, key1, i, other, key2, j, interval_values_joined);
+        join_stack(*this, key1, i, other, key2, j, interval_values_joined,
+                [](const interval_t& a, const interval_t& b) { return a | b; });
+    }
+    return stack_slots_signed_state_t(std::move(interval_values_joined));
+}
+
+stack_slots_signed_state_t stack_slots_signed_state_t::widen(const stack_slots_signed_state_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    interval_values_stack_t interval_values_joined;
+    auto stack1_keys = get_keys();
+    auto stack2_keys = other.get_keys();
+    int i = 0, j = 0;
+    while (i < static_cast<int>(stack1_keys.size()) && j < static_cast<int>(stack2_keys.size())) {
+        int key1 = stack1_keys[i], key2 = stack2_keys[j];
+        join_stack(*this, key1, i, other, key2, j, interval_values_joined,
+                [](const interval_t& a, const interval_t& b) { return a.widen(b); });
     }
     return stack_slots_signed_state_t(std::move(interval_values_joined));
 }
@@ -427,9 +477,15 @@ signed_interval_domain_t signed_interval_domain_t::operator&(const signed_interv
     return abs;
 }
 
-signed_interval_domain_t signed_interval_domain_t::widen(const signed_interval_domain_t& abs, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return abs;
+signed_interval_domain_t signed_interval_domain_t::widen(const signed_interval_domain_t& other, bool to_constants) {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    }
+    else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    return signed_interval_domain_t(m_registers_values.widen(other.m_registers_values),
+            m_stack_slots_values.widen(other.m_stack_slots_values));
 }
 
 signed_interval_domain_t signed_interval_domain_t::narrow(const signed_interval_domain_t& other) const {

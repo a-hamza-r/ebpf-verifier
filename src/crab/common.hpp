@@ -90,6 +90,7 @@ class ptr_with_off_t {
             mock_interval_t _region_sz = mock_interval_t::top())
         : m_r(_r), m_id(_id), m_offset(_off), m_nullness(_nullness), m_region_size(_region_sz) {}
     ptr_with_off_t operator|(const ptr_with_off_t&) const;
+    ptr_with_off_t widen(const ptr_with_off_t&) const;
     bool operator<=(const ptr_with_off_t&) const;
     [[nodiscard]] nullness_t get_nullness() const { return m_nullness; }
     void set_nullness(nullness_t);
@@ -117,6 +118,7 @@ class mapfd_t {
     mapfd_t &operator=(const mapfd_t&) = default;
     mapfd_t &operator=(mapfd_t&&) = default;
     mapfd_t operator|(const mapfd_t&) const;
+    mapfd_t widen(const mapfd_t&) const;
     bool operator<=(const mapfd_t&) const;
     mapfd_t(mock_interval_t mapfd, EbpfMapValueType val_type)
         : m_mapfd(mapfd), m_value_type(val_type) {}

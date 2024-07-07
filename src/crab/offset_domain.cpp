@@ -120,6 +120,7 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
             if (rf1.same_type(rf2)) {
                 expression_t rf1_value = rf1.get_value();
                 expression_t rf2_value = rf2.get_value();
+                // TODO: Check if we need to handle constraints as well
                 if (rf1_value == rf2_value) {
                     joined_state.insert(register_t{i}, loc, std::move(rf1));
                 }
@@ -167,6 +168,78 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
         if (it1 && it2) {
             auto rf1 = *it1, rf2 = *it2;
             auto rf_joined = rf1 | rf2;
+            joined_state.insert(register_t{i}, loc, std::move(rf_joined));
+        }
+    }
+    return joined_state;
+}
+
+registers_state_t registers_state_t::widen(const registers_state_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+
+    registers_state_t joined_state(m_offset_env, m_slacks);
+    location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
+
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        auto it1 = find(*(m_cur_def[i]));
+        auto it2 = other.find(*(other.m_cur_def[i]));
+        if (it1 && it2) {
+            auto rf1 = *it1, rf2 = *it2;
+            if (rf1.same_type(rf2)) {
+                expression_t rf1_value = rf1.get_value();
+                expression_t rf2_value = rf2.get_value();
+                if (rf1_value == rf2_value) {
+                    joined_state.insert(register_t{i}, loc, std::move(rf1));
+                }
+                else {
+                    //joined_state.insert(register_t{i}, loc, std::move(rf1 | rf2));
+                    symbol_t s = symbol_t::make();
+                    symbol_terms_t terms;
+                    bool added = false;
+                    auto symbol_terms1 = rf1_value.get_symbol_terms();
+                    auto symbol_terms2 = rf2_value.get_symbol_terms();
+                    auto interval_rf1_value = rf1_value.get_interval();
+                    auto interval_rf2_value = rf2_value.get_interval();
+                    for (auto it = symbol_terms1.begin(); it != symbol_terms1.end(); it++) {
+                        // assuming slack variables are at same position in both states
+                        if (!added && it->first.is_slack()) {
+                            auto slack1 = it->first;
+                            auto dist = std::distance(symbol_terms1.begin(), it);
+                            auto it2 = std::next(symbol_terms2.begin(), dist);
+                            auto slack2 = it2->first;
+                            auto slack1_value = find_slack_value(slack1);
+                            auto slack2_value = other.find_slack_value(slack2);
+                            if (slack1_value && slack2_value) {
+                                auto interval1 = slack1_value->to_interval() + interval_rf1_value;
+                                auto interval2 = slack2_value->to_interval() + interval_rf2_value;
+                                auto interval = interval1.widen(interval2);
+                                terms[s] = 1;
+                                (*m_slacks)[s] = mock_interval_t{interval};
+                                added = true;
+                                continue;
+                            }
+                        }
+                        terms[it->first] = it->second;
+                    }
+                    auto rf = refinement_t(rf1.get_type(), expression_t(terms));
+                    joined_state.insert(register_t{i}, loc, std::move(rf));
+                }
+            }
+        }
+    }
+    // need special handling for the registers v_begin, v_end, and v_meta
+    for (uint8_t i = NUM_REGISTERS; i < NUM_REGISTERS+3; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        auto it1 = find(*(m_cur_def[i]));
+        auto it2 = other.find(*(other.m_cur_def[i]));
+        if (it1 && it2) {
+            auto rf1 = *it1, rf2 = *it2;
+            auto rf_joined = rf1.widen(rf2);
             joined_state.insert(register_t{i}, loc, std::move(rf_joined));
         }
     }
@@ -284,6 +357,34 @@ stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
             // hence, handle accordingly
             if (rf1.same_type(rf2) && width1 == width2) {
                 out_stack_rfs.insert({kv.first, std::make_pair(rf1 | rf2, width1)});
+            }
+        }
+    }
+    return stack_state_t(std::move(out_stack_rfs));
+}
+
+stack_state_t stack_state_t::widen(const stack_state_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+
+    stack_slot_refinements_t out_stack_rfs;
+    // We do not join rf cells because different rf values different types of offsets
+    for (auto const&kv: m_slot_rfs) {
+        auto maybe_rf_cells = other.find(kv.first);
+        if (maybe_rf_cells) {
+            auto rf_cells1 = kv.second;
+            auto rf_cells2 = *maybe_rf_cells;
+            auto rf1 = rf_cells1.first;
+            auto rf2 = rf_cells2.first;
+            int width1 = rf_cells1.second;
+            int width2 = rf_cells2.second;
+            // TODO: for numerical values, the width does not have to be the same
+            // hence, handle accordingly
+            if (rf1.same_type(rf2) && width1 == width2) {
+                out_stack_rfs.insert({kv.first, std::make_pair(rf1.widen(rf2), width1)});
             }
         }
     }
@@ -408,8 +509,14 @@ offset_domain_t offset_domain_t::operator&(const offset_domain_t& other) const {
 
 // widening
 offset_domain_t offset_domain_t::widen(const offset_domain_t& other, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return other;
+    if (is_bottom() || other.is_top()) {
+        return other;
+    }
+    else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    return offset_domain_t(m_reg_state.widen(other.m_reg_state),
+            m_stack_state.widen(other.m_stack_state), m_ctx_rfs);
 }
 
 // narrowing

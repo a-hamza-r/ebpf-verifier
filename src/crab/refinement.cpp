@@ -212,6 +212,13 @@ bool refinement_t::same_type(const refinement_t &other) const {
     return _type == other._type;
 }
 
+refinement_t refinement_t::widen(const refinement_t &other) const {
+    assert(same_type(other));
+    auto widened_value = _value.widen(other._value);
+    // TODO: we need to merge constraints as well
+    return refinement_t(_type, widened_value, std::vector<crab::constraint_t>());
+}
+
 refinement_t refinement_t::operator|(const refinement_t &other) const {
     assert(same_type(other));
     auto joined_value = _value | other._value;

@@ -37,6 +37,7 @@ class stack_t {
     : m_ptrs(std::move(ptrs)) , m_is_bottom(is_bottom) {}
     
     stack_t operator|(const stack_t& other) const;
+    stack_t widen(const stack_t& other) const;
     bool operator<=(const stack_t& other) const;
     void operator-=(uint64_t);
     void operator-=(const std::vector<uint64_t>&);

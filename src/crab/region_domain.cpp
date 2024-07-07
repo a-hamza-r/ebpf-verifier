@@ -169,7 +169,43 @@ bool register_types_t::operator<=(const register_types_t& other) const {
 }
 
 register_types_t register_types_t::widen(const register_types_t& other) const {
-    return other;
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    register_types_t joined_reg_types(m_region_env);
+
+    location_t loc = location_t{std::make_pair(label_t(-2, -2), 0)};
+    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+        if (other.m_cur_def[i] == nullptr) continue;
+        auto maybe_ptr1 = find(register_t{i});
+        auto maybe_ptr2 = other.find(register_t{i});
+        if (maybe_ptr1 && maybe_ptr2) {
+            ptr_or_mapfd_t ptr_or_mapfd1 = *maybe_ptr1, ptr_or_mapfd2 = *maybe_ptr2;
+            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1)
+                        && std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
+                ptr_with_off_t ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
+                ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
+                if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
+                    auto ptr_with_off = ptr_with_off1.widen(ptr_with_off2);
+                    joined_reg_types.insert(register_t{i}, loc, std::move(ptr_with_off));
+                }
+            }
+            else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
+                mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
+                mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
+                auto map_fd = mapfd1.widen(mapfd2);
+                joined_reg_types.insert(register_t{i}, loc, std::move(map_fd));
+            }
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1)
+                    && std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
+                joined_reg_types.insert(register_t{i}, loc, std::move(packet_ptr_t()));
+            }
+        }
+    }
+    return joined_reg_types;
 }
 
 void register_types_t::operator-=(register_t var) {
@@ -276,6 +312,7 @@ stack_t stack_t::operator|(const stack_t& other) const {
             auto ptr_or_mapfd2 = ptr_or_mapfd_cells2.first;
             int width1 = ptr_or_mapfd_cells1.second;
             int width2 = ptr_or_mapfd_cells2.second;
+            // this should be fixed in the future
             int width_joined = std::min(width1, width2);
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
@@ -291,6 +328,49 @@ stack_t stack_t::operator|(const stack_t& other) const {
                 auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
                 joined_stack.store(kv.first, std::move(mapfd1 | mapfd2), width_joined);
+            }
+            else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1) &&
+                    std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
+                joined_stack.store(kv.first, std::move(packet_ptr_t()), width_joined);
+            }
+        }
+    }
+    return joined_stack;
+}
+
+stack_t stack_t::widen(const stack_t& other) const {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    } else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    stack_t joined_stack;
+    for (auto const&kv: m_ptrs) {
+        auto maybe_ptr_or_mapfd_cells = other.find(kv.first);
+        if (maybe_ptr_or_mapfd_cells) {
+            auto ptr_or_mapfd_cells1 = kv.second;
+            auto ptr_or_mapfd_cells2 = *maybe_ptr_or_mapfd_cells;
+            auto ptr_or_mapfd1 = ptr_or_mapfd_cells1.first;
+            auto ptr_or_mapfd2 = ptr_or_mapfd_cells2.first;
+            int width1 = ptr_or_mapfd_cells1.second;
+            int width2 = ptr_or_mapfd_cells2.second;
+            // this should be fixed in the future
+            int width_joined = std::min(width1, width2);
+            if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
+                    std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
+                auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
+                auto ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
+                if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
+                    auto ptr_with_off = ptr_with_off1.widen(ptr_with_off2);
+                    joined_stack.store(kv.first, std::move(ptr_with_off), width_joined);
+                }
+            }
+            else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1) &&
+                    std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
+                auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
+                auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
+                auto mapfd = mapfd1.widen(mapfd2);
+                joined_stack.store(kv.first, std::move(mapfd), width_joined);
             }
             else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
@@ -497,9 +577,16 @@ region_domain_t region_domain_t::operator&(const region_domain_t& abs) const {
     return abs;
 }
 
-region_domain_t region_domain_t::widen(const region_domain_t& abs, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return abs;
+region_domain_t region_domain_t::widen(const region_domain_t& other, bool to_constants) {
+    if (is_bottom() || other.is_top()) {
+        return other;
+    }
+    else if (other.is_bottom() || is_top()) {
+        return *this;
+    }
+    auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
+    return region_domain_t(m_registers.widen(other.m_registers), m_stack.widen(other.m_stack),
+            other.m_ctx, std::move(aliases));
 }
 
 region_domain_t region_domain_t::narrow(const region_domain_t& other) const {

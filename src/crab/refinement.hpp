@@ -32,6 +32,7 @@ class refinement_t {
     refinement_t operator+(const refinement_t &other) const;
     refinement_t operator-(const refinement_t &other) const;
     refinement_t operator|(const refinement_t &other) const;
+    refinement_t widen(const refinement_t &other) const;
     constraint_t operator<=(const refinement_t &other) const;
     constraint_t operator>(const refinement_t &other) const;
     bool operator==(const refinement_t &other) const;

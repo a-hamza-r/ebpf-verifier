@@ -188,8 +188,8 @@ interval_domain_t interval_domain_t::operator&(const interval_domain_t& abs) con
 }
 
 interval_domain_t interval_domain_t::widen(const interval_domain_t& abs, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    return abs;
+    return interval_domain_t(m_signed.widen(abs.m_signed, to_constants),
+            m_unsigned.widen(abs.m_unsigned, to_constants));
 }
 
 interval_domain_t interval_domain_t::narrow(const interval_domain_t& other) const {

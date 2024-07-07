@@ -37,14 +37,16 @@ void type_domain_t::set_to_top() {
 }
 
 bool type_domain_t::operator<=(const type_domain_t& abs) const {
-    /* WARNING: The operation is not implemented yet.*/
-    return true;
+    if (abs.is_top() || is_bottom()) return true;
+    if (is_top() || abs.is_bottom()) return false;
+    return (m_region <= abs.m_region && m_offset <= abs.m_offset && m_interval <= abs.m_interval);
 }
 
 type_domain_t type_domain_t::widen(const type_domain_t& other, bool to_constants) {
-    /* WARNING: The operation is not implemented yet.*/
-    type_domain_t res{};
-    return res;
+    std::cout << "performing widen\n";
+    return type_domain_t(m_region.widen(other.m_region, to_constants),
+            m_offset.widen(other.m_offset, to_constants),
+            m_interval.widen(other.m_interval, to_constants));
 }
 
 void type_domain_t::operator|=(const type_domain_t& abs) {

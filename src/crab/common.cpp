@@ -70,6 +70,12 @@ mapfd_t mapfd_t::operator|(const mapfd_t& other) const {
     return mapfd_t(std::move(mock_i), value_type);
 }
 
+mapfd_t mapfd_t::widen(const mapfd_t& other) const {
+    auto value_type = m_value_type == other.m_value_type ? m_value_type : EbpfMapValueType::ANY;
+    const auto& mock_i = mock_interval_t(m_mapfd.to_interval().widen(other.m_mapfd.to_interval()));
+    return mapfd_t(std::move(mock_i), value_type);
+}
+
 void ptr_with_off_t::set_nullness(nullness_t n) { m_nullness = n; }
 
 void ptr_with_off_t::set_id(int id) { m_id = id; }
@@ -90,6 +96,14 @@ ptr_with_off_t ptr_with_off_t::operator|(const ptr_with_off_t& other) const {
     auto&& mock_o = mock_interval_t(m_offset.to_interval() | other.m_offset.to_interval());
     auto&& mock_r_s = mock_interval_t(
             m_region_size.to_interval() | other.m_region_size.to_interval());
+    auto&& nullness = m_nullness == other.m_nullness ? m_nullness : nullness_t::MAYBE_NULL;
+    return ptr_with_off_t(m_r, -1, std::move(mock_o), std::move(nullness), std::move(mock_r_s));
+}
+
+ptr_with_off_t ptr_with_off_t::widen(const ptr_with_off_t& other) const {
+    auto&& mock_o = mock_interval_t(m_offset.to_interval().widen(other.m_offset.to_interval()));
+    auto&& mock_r_s = mock_interval_t(
+            m_region_size.to_interval().widen(other.m_region_size.to_interval()));
     auto&& nullness = m_nullness == other.m_nullness ? m_nullness : nullness_t::MAYBE_NULL;
     return ptr_with_off_t(m_r, -1, std::move(mock_o), std::move(nullness), std::move(mock_r_s));
 }

@@ -28,6 +28,7 @@ class registers_signed_state_t {
         void operator-=(register_t);
         bool operator<=(const registers_signed_state_t& other) const;
         registers_signed_state_t operator|(const registers_signed_state_t& other) const;
+        registers_signed_state_t widen(const registers_signed_state_t& other) const;
         registers_signed_state_t(bool is_bottom = false) : m_interval_env(nullptr),
             m_is_bottom(is_bottom) {}
         explicit registers_signed_state_t(live_registers_t&& vars,
@@ -59,6 +60,7 @@ class stack_slots_signed_state_t {
         bool all_numeric(uint64_t, int) const;
         bool operator<=(const stack_slots_signed_state_t& other) const;
         stack_slots_signed_state_t operator|(const stack_slots_signed_state_t& other) const;
+        stack_slots_signed_state_t widen(const stack_slots_signed_state_t& other) const;
         stack_slots_signed_state_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
         explicit stack_slots_signed_state_t(interval_values_stack_t&& interval_values,
                 bool is_bottom = false)
