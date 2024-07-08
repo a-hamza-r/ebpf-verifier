@@ -230,14 +230,14 @@ void type_domain_t::operator()(const Atomic &u, location_t loc) {
     }
     // Fetch the current value into the R11 pseudo-register.
     const Reg r11{11};
-    (*this)(Mem{.access = u.access, .value = r11, .is_load = true});
+    (*this)(Mem{.access = u.access, .value = r11, .is_load = true}, loc);
 
     // Compute the new value in R11.
-    (*this)(atomic_to_bin(u));
+    (*this)(atomic_to_bin(u), loc);
 
     if (u.op == Atomic::Op::CMPXCHG) {
         // For CMPXCHG, store the original value in r0.
-        (*this)(Mem{.access = u.access, .value = Reg{R0_RETURN_VALUE}, .is_load = true});
+        (*this)(Mem{.access = u.access, .value = Reg{R0_RETURN_VALUE}, .is_load = true}, loc);
 
         // For the destination, there are 3 possibilities:
         // 1) dst.value == r0.value : set R11 to valreg
@@ -249,13 +249,13 @@ void type_domain_t::operator()(const Atomic &u, location_t loc) {
         insert_in_registers_in_interval_domain(register_t{11}, loc, interval_t::top());
     } else if (u.fetch) {
         // For other FETCH operations, store the original value in the src register.
-        (*this)(Mem{.access = u.access, .value = u.valreg, .is_load = true});
+        (*this)(Mem{.access = u.access, .value = u.valreg, .is_load = true}, loc);
     }
 
     // Store the new value back in the original shared memory location.
     // Note that do_mem_store() currently doesn't track shared memory values,
     // but stack memory values are tracked and are legal here.
-    (*this)(Mem{.access = u.access, .value = r11, .is_load = false});
+    (*this)(Mem{.access = u.access, .value = r11, .is_load = false}, loc);
 
     // Clear the R11 pseudo-register.
     m_region -= register_t{11};
