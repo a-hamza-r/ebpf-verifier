@@ -8,6 +8,35 @@ std::ostream& operator<<(std::ostream& o, const expression_t& e) {
     return o;
 }
 
+expression_t expression_t::get_equivalent_expression() const {
+    interval_t value = _constant_term;
+    symbol_terms_t symbol_terms;
+    for (const auto &term : _symbol_terms) {
+        if (term.first.is_slack()) {
+            value = value + ((*_slacks)[term.first]).to_interval() * interval_t{(int)term.second};
+        } else {
+            symbol_terms[term.first] = term.second;
+        }
+    }
+    return expression_t(symbol_terms, value, _slacks);
+}
+
+bool expression_t::is_equal(const expression_t &other) const {
+    return get_equivalent_expression() == other.get_equivalent_expression();
+}
+
+bool expression_t::is_less_than(const expression_t &other) const {
+    return get_equivalent_expression() < other.get_equivalent_expression();
+}
+
+bool expression_t::is_less_or_equal(const expression_t &other) const {
+    return get_equivalent_expression() <= other.get_equivalent_expression();
+}
+
+bool expression_t::is_greater_than(const expression_t &other) const {
+    return get_equivalent_expression() > other.get_equivalent_expression();
+}
+
 bool expression_t::operator==(const expression_t &other) const {
     return _symbol_terms == other._symbol_terms && _constant_term == other._constant_term;
 }
@@ -65,7 +94,7 @@ expression_t expression_t::negate() const {
     for (const auto &term : _symbol_terms) {
         new_terms[term.first] = -term.second;
     }
-    return expression_t(new_terms, -_constant_term);
+    return expression_t(new_terms, -_constant_term, _slacks);
 }
 
 expression_t expression_t::operator+(const expression_t &other) const {
@@ -73,11 +102,12 @@ expression_t expression_t::operator+(const expression_t &other) const {
     for (const auto &term : other._symbol_terms) {
         insert(new_terms, term);
     }
-    return expression_t(new_terms, _constant_term + other._constant_term);
+    auto slacks = _slacks == nullptr ? other._slacks : _slacks;
+    return expression_t(new_terms, _constant_term + other._constant_term, slacks);
 }
 
 expression_t expression_t::operator+(interval_t constant) const {
-    return expression_t(_symbol_terms, _constant_term + constant);
+    return expression_t(_symbol_terms, _constant_term + constant, _slacks);
 }
 
 expression_t expression_t::operator+(int n) const {
@@ -85,29 +115,31 @@ expression_t expression_t::operator+(int n) const {
 }
 
 expression_t expression_t::operator|(const expression_t &other) const {
-    if (_symbol_terms.size() != other._symbol_terms.size()) {
-        return expression_t();
+    auto slacks = _slacks == nullptr ? other._slacks : _slacks;
+    if (_symbol_terms == other._symbol_terms) {
+        return expression_t(_symbol_terms, _constant_term | other._constant_term, slacks);
     }
+    interval_t constant_term = _constant_term;
+    interval_t other_constant_term = other._constant_term;
     symbol_terms_t new_terms;
-    for (auto &term : _symbol_terms) {
-        auto it = other._symbol_terms.find(term.first);
-        if (it == other._symbol_terms.end()) {
-            // we need to know what is the other slack, but it's not accesible directly
-            //if (term.first.is_slack() && it->first.is_slack()) {
-                auto new_slack = symbol_t::make();
-                new_terms[new_slack] = 1;
-            //}
-            //else {
-            //    return expression_t();
-            //}
-        }
-        else {
-            // TODO: some complex logic is needed here
+    for (const auto &term : _symbol_terms) {
+        if (other._symbol_terms.find(term.first) != other._symbol_terms.end()) {
             new_terms[term.first] = term.second;
+        } else {
+            constant_term = constant_term +
+                interval_t{(int)term.second} * (*slacks)[term.first].to_interval();
         }
     }
-    interval_t new_constant_term = _constant_term | other._constant_term;
-    return expression_t(new_terms, new_constant_term);
+    for (const auto &term : other._symbol_terms) {
+        if (_symbol_terms.find(term.first) == _symbol_terms.end()) {
+            other_constant_term = other_constant_term +
+                interval_t{(int)term.second} * (*slacks)[term.first].to_interval();
+        }
+    }
+    symbol_t new_slack = symbol_t::make();
+    new_terms[new_slack] = 1;
+    (*slacks)[new_slack] = constant_term | other_constant_term;
+    return expression_t(new_terms, interval_t{0}, slacks);
 }
 
 void expression_t::write(std::ostream &o) const {

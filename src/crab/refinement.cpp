@@ -40,12 +40,12 @@ std::ostream& operator<<(std::ostream& o, const refinement_t& r) {
     return o;
 }
 
-bool refinement_t::is_bottom(std::shared_ptr<slacks_t> slacks) {
+bool refinement_t::is_bottom() {
     std::vector<constraint_t> constraints_to_check = _constraints;
     int i = 0;
     while (i <= PROPAGATE_INEQUALITIES) {
         for (constraint_t c : constraints_to_check) {
-            if (c.is_bottom(slacks)) {
+            if (c.is_bottom()) {
                 return true;
             }
         }
@@ -134,7 +134,7 @@ refinement_t refinement_t::operator+(const refinement_t &other) const {
 }
 
 interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const symbol_t& src,
-        const std::vector<constraint_t>& constraints, std::shared_ptr<slacks_t> slacks) const {
+        const std::vector<constraint_t>& constraints) const {
     bound_t max_packet_size = bound_t{number_t{MAX_PACKET_SIZE}};
     bound_t max_meta_size = bound_t{number_t{4098}};
     bound_t zero = bound_t{number_t{0}};
@@ -159,25 +159,20 @@ interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const sym
 
     interval_t result = interval_t::top();
     for (constraint_t c : constraints) {
-        c.simplify(slacks);
-        if (c.contains(dst) && c.contains(src)) {
-            expression_t lhs = c.get_lhs();
-            expression_t rhs = c.get_rhs();
-            lhs = lhs + rhs.negate();
-            rhs = expression_t{0};
-            if (lhs.contains(dst) && lhs.contains(src)) {
-                symbol_terms_t terms = lhs.get_symbol_terms();
-                if (terms.size() == 2) {
-                    if (terms[dst] == 1 && terms[src] == -1) {
-                        // dst - src + [lb, ub] <= 0 -> dst - src <= -lb
-                        interval_t lhs_interval = lhs.get_constant_term();
-                        result = result & interval_t{-max_size, -lhs_interval.lb()};
-                    }
-                    else if (terms[dst] == -1 && terms[src] == 1) {
-                        // src - dst + [lb, ub] <= 0 -> dst - src >= -lb
-                        interval_t lhs_interval = lhs.get_constant_term();
-                        result = result & interval_t{lhs_interval.lb(), max_size};
-                    }
+        c.simplify();
+        expression_t lhs = c.get_lhs();
+        if (lhs.contains(dst) && lhs.contains(src)) {
+            symbol_terms_t terms = lhs.get_symbol_terms();
+            if (terms.size() == 2) {
+                if (terms[dst] == 1 && terms[src] == -1) {
+                    // dst - src + [lb, ub] <= 0 -> dst - src <= -lb
+                    interval_t lhs_interval = lhs.get_constant_term();
+                    result = result & interval_t{-max_size, -lhs_interval.lb()};
+                }
+                else if (terms[dst] == -1 && terms[src] == 1) {
+                    // src - dst + [lb, ub] <= 0 -> dst - src >= lb
+                    interval_t lhs_interval = lhs.get_constant_term();
+                    result = result & interval_t{lhs_interval.lb(), max_size};
                 }
             }
         }
@@ -221,13 +216,15 @@ refinement_t refinement_t::operator|(const refinement_t &other) const {
         for (size_t j = 0; j < other._constraints.size(); j++) {
             auto c = _constraints[i];
             auto c1 = other._constraints[j];
-            if (c.get_lhs() == c1.get_lhs() && c.get_rhs() == c1.get_rhs()) {
+            auto lhs = c.get_lhs();
+            auto lhs1 = c1.get_lhs();
+            if (lhs.is_equal(lhs1)) {
                 to_keep.insert(i);
             }
-            else if (c.get_rhs() == c1.get_rhs() && c.get_lhs() < c1.get_lhs()) {
+            else if (lhs.is_less_than(lhs1)) {
                 to_keep.insert(i);
             }
-            else if (c.get_rhs() == c1.get_rhs() && c1.get_lhs() < c.get_lhs()) {
+            else if (lhs1.is_less_than(lhs)) {
                 to_keep1.insert(j);
             }
         }
@@ -259,20 +256,19 @@ void refinement_t::add_constraint(const constraint_t& c) {
     _constraints.push_back(c);
 }
 
-bool refinement_t::is_safe_with(refinement_t begin, std::shared_ptr<slacks_t> slacks,
-        bool is_comparison_check) const {
+bool refinement_t::is_safe_with(refinement_t begin, bool is_comparison_check) const {
     refinement_t check_lb = begin;
     auto lb = constraint_t(expression_t::meta(), _value);
     constraint_t neg_lb = lb.negate();
     check_lb.add_constraint(neg_lb);
-    bool lb_satisfied = check_lb.is_bottom(slacks);
+    bool lb_satisfied = check_lb.is_bottom();
 
     refinement_t check_ub = std::move(begin);
     auto ub = is_comparison_check ? constraint_t(_value, expression_t(interval_t{MAX_PACKET_SIZE}))
         : constraint_t(_value, expression_t::end());
     constraint_t neg_ub = ub.negate();
     check_ub.add_constraint(neg_ub);
-    bool ub_satisfied = check_ub.is_bottom(slacks);
+    bool ub_satisfied = check_ub.is_bottom();
 
     return lb_satisfied && ub_satisfied;
 }

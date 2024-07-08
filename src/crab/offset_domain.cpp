@@ -94,62 +94,15 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
     registers_state_t joined_state(m_offset_env, m_slacks);
     location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
 
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS+1; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
         if (it1 && it2) {
             auto rf1 = *it1, rf2 = *it2;
             if (rf1.same_type(rf2)) {
-                expression_t rf1_value = rf1.get_value();
-                expression_t rf2_value = rf2.get_value();
-                if (rf1_value == rf2_value) {
-                    joined_state.insert(register_t{i}, loc, std::move(rf1));
-                }
-                else {
-                    //joined_state.insert(register_t{i}, loc, std::move(rf1 | rf2));
-                    symbol_t s = symbol_t::make();
-                    symbol_terms_t terms;
-                    bool added = false;
-                    auto symbol_terms1 = rf1_value.get_symbol_terms();
-                    auto symbol_terms2 = rf2_value.get_symbol_terms();
-                    auto interval_rf1_value = rf1_value.get_constant_term();
-                    auto interval_rf2_value = rf2_value.get_constant_term();
-                    for (auto it = symbol_terms1.begin(); it != symbol_terms1.end(); it++) {
-                        // assuming slack variables are at same position in both states
-                        if (!added && it->first.is_slack()) {
-                            auto slack1 = it->first;
-                            auto dist = std::distance(symbol_terms1.begin(), it);
-                            auto it2 = std::next(symbol_terms2.begin(), dist);
-                            auto slack2 = it2->first;
-                            auto slack1_value = find_slack_value(slack1);
-                            auto slack2_value = other.find_slack_value(slack2);
-                            if (slack1_value && slack2_value) {
-                                auto interval1 = slack1_value->to_interval() + interval_rf1_value;
-                                auto interval2 = slack2_value->to_interval() + interval_rf2_value;
-                                auto interval = interval1 | interval2;
-                                terms[s] = 1;
-                                (*m_slacks)[s] = mock_interval_t{interval};
-                                added = true;
-                                continue;
-                            }
-                        }
-                        terms[it->first] = it->second;
-                    }
-                    auto rf = refinement_t(rf1.get_type(), expression_t(terms));
-                    joined_state.insert(register_t{i}, loc, std::move(rf));
-                }
+                joined_state.insert(register_t{i}, loc, std::move(rf1 | rf2));
             }
-        }
-    }
-    // need special handling for the registers v_begin
-    if (m_cur_def[NUM_REGISTERS] != nullptr && other.m_cur_def[NUM_REGISTERS] != nullptr) {
-        auto it1 = find(*(m_cur_def[NUM_REGISTERS]));
-        auto it2 = other.find(*(other.m_cur_def[NUM_REGISTERS]));
-        if (it1 && it2) {
-            auto rf1 = *it1, rf2 = *it2;
-            auto rf_joined = rf1 | rf2;
-            joined_state.insert(register_t{NUM_REGISTERS}, loc, std::move(rf_joined));
         }
     }
     return joined_state;
@@ -414,16 +367,17 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             auto b = m_reg_state.find(register_t{12});
             auto le_rf = *rf_left <= *rf_right;
             if (b) {
+                bool no_constraints = b->get_constraints().empty();
                 b->add_constraint(le_rf);
-                if (rf_right->has_value(refinement_t::end())) {
+                if (rf_right->has_value(refinement_t::end()) && no_constraints) {
                     b->add_constraint(refinement_t::meta() <= refinement_t::begin());
                 }
-                else if (rf_right->has_value(refinement_t::begin())) {
+                else if (rf_right->has_value(refinement_t::begin()) && no_constraints) {
                     b->add_constraint(refinement_t::begin() <= refinement_t::end());
                 }
                 b->simplify();
                 auto b_copy = *b;
-                if (b_copy.is_bottom(m_reg_state.get_slacks())) {
+                if (b_copy.is_bottom()) {
                     set_to_bottom();
                 }
                 else {
@@ -438,7 +392,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
                 b->add_constraint(gt_rf);
                 b->simplify();
                 auto b_copy = *b;
-                if (b_copy.is_bottom(m_reg_state.get_slacks())) {
+                if (b_copy.is_bottom()) {
                     set_to_bottom();
                 }
                 else {
@@ -470,14 +424,14 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     std::optional<refinement_t> begin_rf = m_reg_state.find(register_t{12});
     if (!begin_rf) return interval_t::top();
     interval_t result_interval = result_rf.simplify_for_subtraction(dst_symbol, src_symbol,
-            begin_rf->get_constraints(), m_reg_state.get_slacks());
+            begin_rf->get_constraints());
     return result_interval;
 }
 
 static void create_numeric_refinement(registers_state_t& reg_state, mock_interval_t&& interval,
         location_t loc, register_t reg) {
     symbol_t s = symbol_t::make();
-    refinement_t rf = refinement_t(data_type_t::NUM, expression_t(s));
+    refinement_t rf = refinement_t(data_type_t::NUM, expression_t(s, reg_state.get_slacks()));
     reg_state.insert(reg, loc, std::move(rf));
     reg_state.insert_slack_value(s, std::move(interval));
 }
@@ -492,11 +446,6 @@ void offset_domain_t::do_bin(const Bin& bin,
     using Op = Bin::Op;
 
     auto dst_register = register_t{bin.dst.v};
-
-    //if (!is_packet_ptr(src_ptr_or_mapfd_opt) && !is_packet_ptr(dst_ptr_or_mapfd_opt) &&
-    //        (!src_signed_interval_opt && bin.op != Op::MOV) && !dst_signed_interval_opt) {
-    //    return interval_t::bottom();
-    //}
 
     if (std::holds_alternative<Imm>(bin.v)) {
         int64_t imm;
@@ -542,7 +491,8 @@ void offset_domain_t::do_bin(const Bin& bin,
             default: {
                 if (dst_signed_interval_opt) {
                     symbol_t s = symbol_t::make();
-                    refinement_t rf = refinement_t(data_type_t::NUM, expression_t(s));
+                    refinement_t rf = refinement_t(data_type_t::NUM,
+                            expression_t(s, m_reg_state.get_slacks()));
                     m_reg_state.insert(dst_register, loc, std::move(rf));
                     m_reg_state.insert_slack_value(s, interval_result);
                 }
@@ -697,7 +647,7 @@ bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
     auto reg = m_reg_state.find(r.v);
     if (!reg) return false;
     auto toCheck = *reg + (offset+width);
-    return toCheck.is_safe_with(*begin, m_reg_state.get_slacks(), is_comparison_check);
+    return toCheck.is_safe_with(*begin, is_comparison_check);
 }
 
 void offset_domain_t::check_valid_access(const ValidAccess& s,
@@ -728,7 +678,7 @@ void offset_domain_t::do_mem_store(const Mem& b,
     }
     else {
         symbol_t s = symbol_t::make();
-        rf_info = refinement_t(data_type_t::NUM, expression_t(s));
+        rf_info = refinement_t(data_type_t::NUM, expression_t(s, m_reg_state.get_slacks()));
         auto mock_interval = mock_interval_t{bound_t{(uint64_t)std::get<Imm>(b.value).v}};
         m_reg_state.insert_slack_value(s, std::move(mock_interval));
     }
