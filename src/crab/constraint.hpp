@@ -16,8 +16,6 @@ class constraint_t {
     constraint_t(expression_t lhs, expression_t rhs)
         : _lhs(lhs), _rhs(rhs) {}
 
-    bool is_bottom();
-
     expression_t get_lhs() const { return _lhs; }
     expression_t get_rhs() const { return _rhs; }
 

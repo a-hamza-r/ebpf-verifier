@@ -25,17 +25,6 @@ std::vector<std::pair<symbol_t, interval_t>> constraint_t::get_slack_intervals()
     return result;
 }
 
-bool constraint_t::is_bottom() {
-    normalize();
-    symbol_terms_t terms = _lhs.get_symbol_terms();
-    if (terms.size() == 1 && terms.begin()->first == symbol_t::begin()) {
-        // we can sometimes simplify if we have a single symbol begin, since it is always offset 0
-        _lhs -= terms.begin()->first;
-    }
-
-    return _lhs.is_greater_than(expression_t(0));
-}
-
 constraint_t constraint_t::negate() const {
     // neg(x <= y) -> x > y -> y < x -> y <= x - 1
     return constraint_t(_rhs, _lhs + (-1));

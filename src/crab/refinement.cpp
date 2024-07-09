@@ -45,8 +45,16 @@ bool refinement_t::is_bottom() {
     int i = 0;
     while (i <= PROPAGATE_INEQUALITIES) {
         for (constraint_t c : constraints_to_check) {
-            if (c.is_bottom()) {
-                return true;
+            for (constraint_t c1 : constraints_to_check) {
+                c.normalize();  c1.normalize();
+                auto lhs = c.get_lhs();
+                auto lhs1 = c1.get_lhs();
+                auto add = lhs + lhs1;
+                // if we can derive a contradiction, then the refinement is bottom
+                // e.g., 5 <= 0
+                if (add.is_greater_than(expression_t(0))) {
+                    return true;
+                }
             }
         }
         if (i < PROPAGATE_INEQUALITIES) {
@@ -104,32 +112,6 @@ void refinement_t::write(std::ostream& o) const {
         }
     }
     o << "}";
-}
-
-void refinement_t::simplify() {
-    // remove redundant constraints, when found a stronger constraint
-    // e.g., begin + 14 <= end & begin + 34 <= end -> begin + 34 <= end
-    std::set<int> to_remove;
-    std::vector<crab::constraint_t> constraints;
-    for (int i = 0; i < (int)_constraints.size()-1; i++) {
-        for (int j = i+1; j < (int)_constraints.size(); j++) {
-            auto c = _constraints[i];
-            auto c1 = _constraints[j];
-            c.normalize();   c1.normalize();
-            if (c.get_lhs().is_less_than(c1.get_lhs())) {
-                to_remove.insert(i);
-            }
-            else if (c1.get_lhs().is_less_than(c.get_lhs())) {
-                to_remove.insert(j);
-            }
-        }
-    }
-    for (size_t i = 0; i < _constraints.size(); i++) {
-        if (to_remove.find(i) == to_remove.end()) {
-            constraints.push_back(_constraints[i]);
-        }
-    }
-    _constraints = constraints;
 }
 
 refinement_t refinement_t::operator+(interval_t i) const {
@@ -259,17 +241,6 @@ refinement_t refinement_t::operator|(const refinement_t &other) const {
             new_constraints.push_back(other._constraints[i]);
         }
     }
-    // remove duplicates
-    for (int i = 0; i < (int)new_constraints.size()-1; i++) {
-        for (int j = i+1; j < (int)new_constraints.size(); j++) {
-            auto c = new_constraints[i];
-            auto c1 = new_constraints[j];
-            c.normalize();   c1.normalize();
-            if (c.get_lhs().is_equal(c1.get_lhs())) {
-                new_constraints.erase(new_constraints.begin() + j);
-            }
-        }
-    }
     return refinement_t(_type, joined_value, new_constraints);
 }
 
@@ -283,22 +254,47 @@ constraint_t refinement_t::operator>(const refinement_t &other) const {
     return constraint_t(other._value, _value + (-1));
 }
 
-void refinement_t::add_constraint(const constraint_t& c) {
-    _constraints.push_back(c);
+void refinement_t::add_constraint(constraint_t&& c, bool remove_redundant) {
+    auto c_copy = c;
+    c_copy.normalize();
+    if (remove_redundant) {
+        // remove redundant constraints
+        for (auto it = _constraints.begin(); it != _constraints.end();) {
+            auto c1 = *it;
+            c1.normalize();
+            // already contains the same constraint
+            if (c1.get_lhs().is_equal(c_copy.get_lhs())) {
+                return;
+            }
+            // found a stronger constraint
+            // e.g., begin + 14 <= end & begin + 34 <= end -> begin + 34 <= end
+            if (c1.get_lhs().is_less_than(c_copy.get_lhs())) {
+                it = _constraints.erase(it);
+            }
+            // found a weaker constraint
+            else if (c_copy.get_lhs().is_less_than(c1.get_lhs())) {
+                return;
+            }
+            else {
+                it++;
+            }
+        }
+    }
+    _constraints.push_back(std::move(c));
 }
 
 bool refinement_t::is_safe_with(refinement_t begin, bool is_comparison_check) const {
     refinement_t check_lb = begin;
     auto lb = constraint_t(expression_t::meta(), _value);
     constraint_t neg_lb = lb.negate();
-    check_lb.add_constraint(neg_lb);
+    check_lb.add_constraint(std::move(neg_lb), false);
     bool lb_satisfied = check_lb.is_bottom();
 
     refinement_t check_ub = std::move(begin);
     auto ub = is_comparison_check ? constraint_t(_value, expression_t(interval_t{MAX_PACKET_SIZE}))
         : constraint_t(_value, expression_t::end());
     constraint_t neg_ub = ub.negate();
-    check_ub.add_constraint(neg_ub);
+    check_ub.add_constraint(std::move(neg_ub), false);
     bool ub_satisfied = check_ub.is_bottom();
 
     return lb_satisfied && ub_satisfied;

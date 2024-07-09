@@ -375,15 +375,9 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             auto b = m_reg_state.find(register_t{12});
             auto le_rf = *rf_left <= *rf_right;
             if (b) {
-                bool no_constraints = b->get_constraints().empty();
-                b->add_constraint(le_rf);
-                if (rf_right->has_value(refinement_t::end()) && no_constraints) {
-                    b->add_constraint(refinement_t::meta() <= refinement_t::begin());
-                }
-                else if (rf_right->has_value(refinement_t::begin()) && no_constraints) {
-                    b->add_constraint(refinement_t::begin() <= refinement_t::end());
-                }
-                b->simplify();
+                b->add_constraint(std::move(le_rf));
+                b->add_constraint(refinement_t::meta() <= refinement_t::begin());
+                b->add_constraint(refinement_t::begin() <= refinement_t::end());
                 auto b_copy = *b;
                 if (b_copy.is_bottom()) {
                     set_to_bottom();
@@ -397,8 +391,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             auto b = m_reg_state.find(register_t{12});
             auto gt_rf = *rf_left > *rf_right;
             if (b) {
-                b->add_constraint(gt_rf);
-                b->simplify();
+                b->add_constraint(std::move(gt_rf));
                 auto b_copy = *b;
                 if (b_copy.is_bottom()) {
                     set_to_bottom();
