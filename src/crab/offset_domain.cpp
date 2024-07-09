@@ -7,6 +7,7 @@ namespace crab {
 
 void registers_state_t::insert(register_t reg, const location_t& loc, refinement_t&& rf) {
     reg_with_loc_t reg_with_loc{reg, loc};
+    rf.get_value().set_slacks(m_slacks);
     (*m_offset_env)[reg_with_loc] = std::move(rf);
     m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
 }
@@ -208,15 +209,21 @@ stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
     return stack_state_t(std::move(out_stack_rfs));
 }
 
-ctx_offsets_t::ctx_offsets_t(const ebpf_context_descriptor_t* desc) {
+ctx_offsets_t::ctx_offsets_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t> slacks) {
     if (desc->data >= 0) {
-        m_rfs[desc->data] = refinement_t::begin();
+        refinement_t rf = refinement_t(data_type_t::PACKET,
+                expression_t(symbol_t::begin(), slacks));
+        m_rfs[desc->data] = std::move(rf);
     }
     if (desc->end >= 0) {
-        m_rfs[desc->end] = refinement_t::end();
+        refinement_t rf = refinement_t(data_type_t::PACKET,
+                expression_t(symbol_t::end(), slacks));
+        m_rfs[desc->end] = std::move(rf);
     }
     if (desc->meta >= 0) {
-        m_rfs[desc->meta] = refinement_t::meta();
+        refinement_t rf = refinement_t(data_type_t::PACKET,
+                expression_t(symbol_t::meta(), slacks));
+        m_rfs[desc->meta] = std::move(rf);
     }
     if (desc->size >= 0) {
         m_size = desc->size;
@@ -234,10 +241,11 @@ std::optional<refinement_t> ctx_offsets_t::find(int key) const {
 }
 
 offset_domain_t&& offset_domain_t::setup_entry() {
+    auto slacks = std::make_shared<slacks_t>();
     std::shared_ptr<ctx_offsets_t> ctx
-        = std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor);
+        = std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor, slacks);
     registers_state_t regs(std::make_shared<global_offset_env_t>(),
-            std::make_shared<slacks_t>(), global_program_info->type.context_descriptor);
+            slacks, global_program_info->type.context_descriptor);
 
     static offset_domain_t off_d(std::move(regs), stack_state_t::top(), ctx);
     return std::move(off_d);

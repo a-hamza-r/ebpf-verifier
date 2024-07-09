@@ -89,7 +89,7 @@ class ctx_offsets_t {
     int m_size;
 
     public:
-        ctx_offsets_t(const ebpf_context_descriptor_t* desc);
+        ctx_offsets_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t>);
         std::optional<refinement_t> find(int) const;
         int get_size() const;
 };

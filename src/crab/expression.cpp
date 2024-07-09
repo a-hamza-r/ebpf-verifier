@@ -116,8 +116,8 @@ expression_t expression_t::operator+(int n) const {
 
 expression_t expression_t::operator|(const expression_t &other) const {
     auto slacks = _slacks == nullptr ? other._slacks : _slacks;
-    if (_symbol_terms == other._symbol_terms) {
-        return expression_t(_symbol_terms, _constant_term | other._constant_term, slacks);
+    if (*this == other) {
+        return expression_t(_symbol_terms, _constant_term, slacks);
     }
     interval_t constant_term = _constant_term;
     interval_t other_constant_term = other._constant_term;

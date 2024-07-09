@@ -62,6 +62,7 @@ class expression_t {
     symbol_t get_singleton() const;
     interval_t get_constant_term() const { return _constant_term; }
     std::shared_ptr<slacks_t> get_slacks() const { return _slacks; }
+    void set_slacks(std::shared_ptr<slacks_t> slacks) { _slacks = slacks; }
 
     static expression_t begin() {
         return expression_t({std::make_pair(symbol_t::begin(), 1)});
