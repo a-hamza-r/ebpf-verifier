@@ -239,6 +239,17 @@ refinement_t refinement_t::operator|(const refinement_t &other) const {
             new_constraints.push_back(other._constraints[i]);
         }
     }
+    // remove duplicates
+    for (int i = 0; i < (int)new_constraints.size()-1; i++) {
+        for (int j = i+1; j < (int)new_constraints.size(); j++) {
+            auto c = new_constraints[i];
+            auto c1 = new_constraints[j];
+            c.simplify();   c1.simplify();
+            if (c.get_lhs().is_equal(c1.get_lhs())) {
+                new_constraints.erase(new_constraints.begin() + j);
+            }
+        }
+    }
     return refinement_t(_type, joined_value, new_constraints);
 }
 
