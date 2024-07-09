@@ -83,7 +83,7 @@ void refinement_t::write(std::ostream& o) const {
         o << "_";
     }
     o << _value;
-    std::vector<std::pair<symbol_t, interval_t>> slack_intervals;
+    std::vector<std::pair<symbol_t, interval_t>> slack_intervals = get_value().get_slack_intervals();
     if (_constraints.size() > 0) {
         o << " & ";
         for (size_t i = 0; i < _constraints.size(); i++) {
