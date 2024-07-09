@@ -75,11 +75,30 @@ void refinement_t::write(std::ostream& o) const {
         o << "_";
     }
     o << _value;
+    std::vector<std::pair<symbol_t, interval_t>> slack_intervals;
     if (_constraints.size() > 0) {
         o << " & ";
         for (size_t i = 0; i < _constraints.size(); i++) {
+            auto c = _constraints[i];
+            auto c_slack_intervals = c.get_slack_intervals();
+            slack_intervals.insert(slack_intervals.end(), c_slack_intervals.begin(),
+                    c_slack_intervals.end());
             o << _constraints[i];
             if (i < _constraints.size() - 1) {
+                o << " & ";
+            }
+        }
+    }
+    std::set<symbol_t> seen;
+    if (slack_intervals.size() > 0) {
+        o << " & ";
+        for (auto [s, i] : slack_intervals) {
+            if (seen.find(s) != seen.end()) {
+                continue;
+            }
+            o << s << " = " << i;
+            seen.insert(s);
+            if (s != slack_intervals.back().first) {
                 o << " & ";
             }
         }
@@ -88,19 +107,20 @@ void refinement_t::write(std::ostream& o) const {
 }
 
 void refinement_t::simplify() {
+    // remove redundant constraints, when found a stronger constraint
+    // e.g., begin + 14 <= end & begin + 34 <= end -> begin + 34 <= end
     std::set<int> to_remove;
     std::vector<crab::constraint_t> constraints;
     for (int i = 0; i < (int)_constraints.size()-1; i++) {
         for (int j = i+1; j < (int)_constraints.size(); j++) {
             auto c = _constraints[i];
             auto c1 = _constraints[j];
-            if (c.get_rhs() == c1.get_rhs()) {
-                if (c.get_lhs() < c1.get_lhs()) {
-                    to_remove.insert(i);
-                }
-                else if (c1.get_lhs() < c.get_lhs()) {
-                    to_remove.insert(j);
-                }
+            c.normalize();   c1.normalize();
+            if (c.get_lhs().is_less_than(c1.get_lhs())) {
+                to_remove.insert(i);
+            }
+            else if (c1.get_lhs().is_less_than(c.get_lhs())) {
+                to_remove.insert(j);
             }
         }
     }
@@ -159,7 +179,7 @@ interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const sym
 
     interval_t result = interval_t::top();
     for (constraint_t c : constraints) {
-        c.simplify();
+        c.normalize();
         expression_t lhs = c.get_lhs();
         if (lhs.contains(dst) && lhs.contains(src)) {
             symbol_terms_t terms = lhs.get_symbol_terms();
@@ -244,7 +264,7 @@ refinement_t refinement_t::operator|(const refinement_t &other) const {
         for (int j = i+1; j < (int)new_constraints.size(); j++) {
             auto c = new_constraints[i];
             auto c1 = new_constraints[j];
-            c.simplify();   c1.simplify();
+            c.normalize();   c1.normalize();
             if (c.get_lhs().is_equal(c1.get_lhs())) {
                 new_constraints.erase(new_constraints.begin() + j);
             }

@@ -12,13 +12,14 @@ bool constraint_t::contains(const symbol_t &s) const {
     return _lhs.contains(s) || _rhs.contains(s);
 }
 
-void constraint_t::simplify() {
+// move all terms to the left side
+void constraint_t::normalize() {
     _lhs = _lhs + _rhs.negate();
     _rhs = expression_t(0);
 }
 
 bool constraint_t::is_bottom() {
-    simplify();
+    normalize();
     symbol_terms_t terms = _lhs.get_symbol_terms();
     if (terms.size() == 1 && terms.begin()->first == symbol_t::begin()) {
         // we can sometimes simplify if we have a single symbol begin, since it is always offset 0
