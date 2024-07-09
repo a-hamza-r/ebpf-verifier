@@ -18,6 +18,13 @@ void constraint_t::normalize() {
     _rhs = expression_t(0);
 }
 
+std::vector<std::pair<symbol_t, interval_t>> constraint_t::get_slack_intervals() const {
+    std::vector<std::pair<symbol_t, interval_t>> result = _lhs.get_slack_intervals();
+    auto rhs_intervals = _rhs.get_slack_intervals();
+    result.insert(result.end(), rhs_intervals.begin(), rhs_intervals.end());
+    return result;
+}
+
 bool constraint_t::is_bottom() {
     normalize();
     symbol_terms_t terms = _lhs.get_symbol_terms();

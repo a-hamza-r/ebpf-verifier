@@ -28,6 +28,7 @@ class constraint_t {
     constraint_t operator|(const constraint_t&) const;
     constraint_t operator<=(const constraint_t&) const;
     constraint_t operator>(const constraint_t&) const;
+    std::vector<std::pair<symbol_t, interval_t>> get_slack_intervals() const;
     bool is_equality() const;
     bool contains(const symbol_t&) const;
     void normalize();

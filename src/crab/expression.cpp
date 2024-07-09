@@ -8,6 +8,16 @@ std::ostream& operator<<(std::ostream& o, const expression_t& e) {
     return o;
 }
 
+std::vector<std::pair<symbol_t, interval_t>> expression_t::get_slack_intervals() const {
+    std::vector<std::pair<symbol_t, interval_t>> slack_intervals;
+    for (const auto &term : _symbol_terms) {
+        if (term.first.is_slack()) {
+            slack_intervals.push_back({term.first, (*_slacks)[term.first].to_interval()});
+        }
+    }
+    return slack_intervals;
+}
+
 expression_t expression_t::get_equivalent_expression() const {
     interval_t value = _constant_term;
     symbol_terms_t symbol_terms;
