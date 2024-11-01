@@ -1,16 +1,16 @@
 // Copyright (c) Prevail Verifier contributors.
 // SPDX-License-Identifier: MIT
-#include <thread>
-#include <catch2/catch_all.hpp>
 #include "ebpf_verifier.hpp"
+#include <catch2/catch_all.hpp>
+#include <thread>
 
-#define FAIL_LOAD_ELF(dirname, filename, sectionname) \
-    TEST_CASE("Try loading nonexisting program: " dirname "/" filename, "[elf]") { \
-        try { \
+#define FAIL_LOAD_ELF(dirname, filename, sectionname)                                                     \
+    TEST_CASE("Try loading nonexisting program: " dirname "/" filename, "[elf]") {                        \
+        try {                                                                                             \
             read_elf("ebpf-samples/" dirname "/" filename, sectionname, nullptr, &g_ebpf_platform_linux); \
-            REQUIRE(false); \
-        } catch (const std::runtime_error&) { \
-        }\
+            REQUIRE(false);                                                                               \
+        } catch (const std::runtime_error&) {                                                             \
+        }                                                                                                 \
     }
 
 // Some intentional failures
@@ -19,102 +19,141 @@ FAIL_LOAD_ELF("cilium", "bpf_lxc.o", "not-found")
 FAIL_LOAD_ELF("build", "badrelo.o", ".text")
 FAIL_LOAD_ELF("invalid", "badsymsize.o", "xdp_redirect_map")
 
-#define FAIL_UNMARSHAL(dirname, filename, sectionname) \
-    TEST_CASE("Try unmarshalling bad program: " dirname "/" filename " " sectionname, "[unmarshal]") { \
+#define FAIL_UNMARSHAL(dirname, filename, sectionname)                                                                 \
+    TEST_CASE("Try unmarshalling bad program: " dirname "/" filename " " sectionname, "[unmarshal]") {                 \
         auto raw_progs = read_elf("ebpf-samples/" dirname "/" filename, sectionname, nullptr, &g_ebpf_platform_linux); \
-        REQUIRE(raw_progs.size() == 1); \
-        raw_program raw_prog = raw_progs.back(); \
-        std::variant<InstructionSeq, std::string> prog_or_error = unmarshal(raw_prog); \
-        REQUIRE(std::holds_alternative<std::string>(prog_or_error)); \
+        REQUIRE(raw_progs.size() == 1);                                                                                \
+        raw_program raw_prog = raw_progs.back();                                                                       \
+        std::variant<InstructionSeq, std::string> prog_or_error = unmarshal(raw_prog);                                 \
+        REQUIRE(std::holds_alternative<std::string>(prog_or_error));                                                   \
     }
 
 // Some intentional unmarshal failures
 FAIL_UNMARSHAL("build", "wronghelper.o", "xdp")
 FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
 
-#define VERIFY_SECTION(dirname, filename, sectionname, options, platform, pass) \
-    do { \
+// Verify a section with only one program in it.
+#define VERIFY_SECTION(dirname, filename, sectionname, options, platform, pass)                          \
+    do {                                                                                                 \
         auto raw_progs = read_elf("ebpf-samples/" dirname "/" filename, sectionname, nullptr, platform); \
-        REQUIRE(raw_progs.size() == 1); \
-        raw_program raw_prog = raw_progs.back(); \
-        std::variant<InstructionSeq, std::string> prog_or_error = unmarshal(raw_prog); \
-        REQUIRE(std::holds_alternative<InstructionSeq>(prog_or_error)); \
-        auto& prog = std::get<InstructionSeq>(prog_or_error); \
-        crab_results res = ebpf_verify_program(std::cout, prog, raw_prog.info, options, nullptr); \
-        if (pass)                                            \
-	  REQUIRE(res.pass_verify());			     \
-        else                                                 \
-	  REQUIRE(!res.pass_verify());			     \
+        REQUIRE(raw_progs.size() == 1);                                                                  \
+        raw_program raw_prog = raw_progs.back();                                                         \
+        auto prog_or_error = unmarshal(raw_prog);                                                        \
+        auto prog = std::get_if<InstructionSeq>(&prog_or_error);                                         \
+        REQUIRE(prog != nullptr);                                                                        \
+        crab_results res = ebpf_verify_program(std::cout, *prog, raw_prog.info, options, nullptr);       \
+        if (pass)                                                                                        \
+            REQUIRE(res.pass_verify());                                                                  \
+        else                                                                                             \
+            REQUIRE(!res.pass_verify());                                                                 \
     } while (0)
 
-#define TEST_SECTION(project, filename, section) \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
-        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true); \
-    } \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") { \
-        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
+// Verify a program in a section that may have multiple programs in it.
+#define VERIFY_PROGRAM(dirname, filename, section_name, program_name, options, platform, pass)            \
+    do {                                                                                                  \
+        auto raw_progs = read_elf("ebpf-samples/" dirname "/" filename, section_name, nullptr, platform); \
+        for (auto& raw_prog : raw_progs) {                                                                \
+            if (raw_prog.function_name == program_name) {                                                 \
+                auto prog_or_error = unmarshal(raw_prog);                                                 \
+                auto prog = std::get_if<InstructionSeq>(&prog_or_error);                                  \
+                REQUIRE(prog != nullptr);                                                                 \
+                crab_results res = ebpf_verify_program(std::cout, *prog, raw_prog.info, options, nullptr);\
+                if (pass)                                                                                 \
+                    REQUIRE(res.pass_verify());                                                           \
+                else                                                                                      \
+                    REQUIRE(!res.pass_verify());                                                          \
+            }                                                                                             \
+        }                                                                                                 \
+    } while (0)
+
+#define TEST_SECTION(project, filename, section)                                                                \
+    TEST_CASE(project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") {  \
+        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true);                      \
+    }                                                                                                           \
+    TEST_CASE(project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") {      \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                            \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                     \
     }
 
-#define TEST_SECTION_REJECT(project, filename, section) \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
-        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false); \
-    } \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") { \
-        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
+#define TEST_PROGRAM(project, filename, section_name, program_name)                                                 \
+    TEST_CASE(project "/" filename " " program_name " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
+        VERIFY_PROGRAM(project, filename, section_name, program_name, nullptr, &g_ebpf_platform_linux, true);       \
+    }                                                                                                               \
+    TEST_CASE(project "/" filename " " program_name " --domain=type", "[verify][samples][" project "][type]") {     \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                            \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                \
+        VERIFY_PROGRAM(project, filename, section_name, program_name, &options, &g_ebpf_platform_linux, true);      \
     }
 
-#define TEST_SECTION_REJECT_IF_STRICT(project, filename, section) \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
-        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
-        options.strict = true; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
-    } \
-    TEST_CASE("./check ebpf-samples/" project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") { \
-        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
-        options.strict = true; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
+#define TEST_PROGRAM_REJECT(project, filename, section_name, program_name)                                          \
+    TEST_CASE(project "/" filename " " program_name " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
+        VERIFY_PROGRAM(project, filename, section_name, program_name, nullptr, &g_ebpf_platform_linux, false);      \
+    }                                                                                                               \
+    TEST_CASE(project "/" filename " " program_name " --domain=type", "[verify][samples][" project "][type]") {     \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                            \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                \
+        VERIFY_PROGRAM(project, filename, section_name, program_name, &options, &g_ebpf_platform_linux, false);     \
     }
 
-#define TEST_SECTION_FAIL(project, filename, section) \
-    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
-        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true); \
-    } \
-    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") { \
-        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true); \
+#define TEST_SECTION_REJECT(project, filename, section)                                                         \
+    TEST_CASE(project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") {  \
+        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false);                     \
+    }                                                                                                           \
+    TEST_CASE(project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") {      \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                            \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                    \
     }
 
-#define TEST_SECTION_REJECT_FAIL(project, filename, section) \
-    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
-        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false); \
-    } \
-    TEST_CASE("expect failure ebpf-samples/" project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") { \
-        ebpf_verifier_options_t options = ebpf_verifier_default_options; \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN; \
-        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false); \
+#define TEST_SECTION_REJECT_IF_STRICT(project, filename, section)                                               \
+    TEST_CASE(project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") {  \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                     \
+        options.strict = true;                                                                                  \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                    \
+    }                                                                                                           \
+    TEST_CASE(project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") {      \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                            \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                     \
+        options.strict = true;                                                                                  \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                    \
+    }
+
+#define TEST_SECTION_FAIL(project, filename, section)                                                                                         \
+    TEST_CASE("expect failure " project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
+        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true);                                                    \
+    }                                                                                                                                         \
+    TEST_CASE("expect failure " project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") {     \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                                                      \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                                          \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                                                   \
+    }
+
+#define TEST_SECTION_REJECT_FAIL(project, filename, section)                                                                                  \
+    TEST_CASE("expect failure " project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
+        VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false);                                                   \
+    }                                                                                                                                         \
+    TEST_CASE("expect failure " project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") {     \
+        ebpf_verifier_options_t options = ebpf_verifier_default_options;                                                                      \
+        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                                          \
+        VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                                                  \
     }
 
 // need these defined for type domain as well
-#define TEST_SECTION_LEGACY(dirname, filename, sectionname) \
-    TEST_SECTION(dirname, filename, sectionname) \
-    TEST_CASE("Try unmarshalling bad program: " dirname "/" filename " " sectionname, "[unmarshal]") { \
-        ebpf_platform_t platform = g_ebpf_platform_linux; \
-        platform.legacy = false; \
+#define TEST_SECTION_LEGACY(dirname, filename, sectionname)                                               \
+    TEST_SECTION(dirname, filename, sectionname)                                                          \
+    TEST_CASE("Fail unmarshalling: " dirname "/" filename " " sectionname, "[unmarshal]") {               \
+        ebpf_platform_t platform = g_ebpf_platform_linux;                                                 \
+        platform.supported_conformance_groups &= ~bpf_conformance_groups_t::packet;                       \
         auto raw_progs = read_elf("ebpf-samples/" dirname "/" filename, sectionname, nullptr, &platform); \
-        REQUIRE(raw_progs.size() == 1); \
-        raw_program raw_prog = raw_progs.back(); \
-        std::variant<InstructionSeq, std::string> prog_or_error = unmarshal(raw_prog); \
-        REQUIRE(std::holds_alternative<std::string>(prog_or_error)); \
+        REQUIRE(raw_progs.size() == 1);                                                                   \
+        raw_program raw_prog = raw_progs.back();                                                          \
+        std::variant<InstructionSeq, std::string> prog_or_error = unmarshal(raw_prog);                    \
+        REQUIRE(std::holds_alternative<std::string>(prog_or_error));                                      \
     }
 
-// Tests for zoneCrab domain
 TEST_SECTION("bpf_cilium_test", "bpf_lxc_jit.o", "1/0xdc06")
 TEST_SECTION("bpf_cilium_test", "bpf_lxc_jit.o", "2/1")
 TEST_SECTION("bpf_cilium_test", "bpf_lxc_jit.o", "2/3")
@@ -499,6 +538,8 @@ TEST_SECTION("raw_tracepoint/filler/sys_sendmsg_x")
 TEST_SECTION("raw_tracepoint/filler/proc_startupdate_2")
 TEST_SECTION("raw_tracepoint/filler/sys_recvfrom_x")
 */
+TEST_PROGRAM_REJECT("build", "bpf2bpf.o", ".text", "plus1"); // Subprogram will fail verification.
+TEST_PROGRAM("build", "bpf2bpf.o", "test", "func");         // Subprogram can be called from main program.
 TEST_SECTION("build", "byteswap.o", ".text")
 TEST_SECTION("build", "stackok.o", ".text")
 TEST_SECTION("build", "packet_start_ok.o", "xdp")
@@ -507,10 +548,15 @@ TEST_SECTION("build", "tail_call.o", "xdp_prog")
 TEST_SECTION("build", "map_in_map.o", ".text")
 TEST_SECTION("build", "map_in_map_anonymous.o", ".text")
 TEST_SECTION("build", "map_in_map_legacy.o", ".text")
+TEST_SECTION("build", "store_map_value_in_map.o", ".text")
 TEST_SECTION("build", "twomaps.o", ".text");
 TEST_SECTION("build", "twostackvars.o", ".text");
 TEST_SECTION("build", "twotypes.o", ".text");
-TEST_SECTION("build", "prog_array.o", ".text");
+TEST_PROGRAM("build", "prog_array.o", ".text", "func");
+TEST_PROGRAM("build", "prog_array.o", ".text", "func0");
+TEST_PROGRAM("build", "prog_array.o", ".text", "func1");
+TEST_PROGRAM("build", "prog_array.o", ".text", "func2");
+TEST_PROGRAM("build", "prog_array.o", ".text", "func3");
 
 // Test some programs that ought to fail verification.
 TEST_SECTION_REJECT("build", "badhelpercall.o", ".text")
@@ -587,18 +633,18 @@ TEST_CASE("multithreading", "[verify][multithreading]") {
     auto raw_progs1 = read_elf("ebpf-samples/bpf_cilium_test/bpf_netdev.o", "2/1", nullptr, &g_ebpf_platform_linux);
     REQUIRE(raw_progs1.size() == 1);
     raw_program raw_prog1 = raw_progs1.back();
-    std::variant<InstructionSeq, std::string> prog_or_error1 = unmarshal(raw_prog1);
-    REQUIRE(std::holds_alternative<InstructionSeq>(prog_or_error1));
-    auto& prog1 = std::get<InstructionSeq>(prog_or_error1);
-    cfg_t cfg1 = prepare_cfg(prog1, raw_prog1.info, true);
+    auto prog_or_error1 = unmarshal(raw_prog1);
+    auto prog1 = std::get_if<InstructionSeq>(&prog_or_error1);
+    REQUIRE(prog1 != nullptr);
+    cfg_t cfg1 = prepare_cfg(*prog1, raw_prog1.info, true);
 
     auto raw_progs2 = read_elf("ebpf-samples/bpf_cilium_test/bpf_netdev.o", "2/2", nullptr, &g_ebpf_platform_linux);
     REQUIRE(raw_progs2.size() == 1);
     raw_program raw_prog2 = raw_progs2.back();
-    std::variant<InstructionSeq, std::string> prog_or_error2 = unmarshal(raw_prog2);
-    REQUIRE(std::holds_alternative<InstructionSeq>(prog_or_error2));
-    auto& prog2 = std::get<InstructionSeq>(prog_or_error2);
-    cfg_t cfg2 = prepare_cfg(prog2, raw_prog2.info, true);
+    auto prog_or_error2 = unmarshal(raw_prog2);
+    auto prog2 = std::get_if<InstructionSeq>(&prog_or_error2);
+    REQUIRE(prog2 != nullptr);
+    cfg_t cfg2 = prepare_cfg(*prog2, raw_prog2.info, true);
 
     bool res1, res2;
     std::thread a(test_analyze_thread, &cfg1, &raw_prog1.info, &res1);

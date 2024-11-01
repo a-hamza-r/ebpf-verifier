@@ -17,7 +17,7 @@ struct checks_db final {
     std::map<label_t, std::vector<std::string>> m_db{};
     int total_warnings{};
     int total_unreachable{};
-    crab::bound_t max_loop_count{crab::number_t{0}};
+    crab::extended_number max_loop_count{crab::number_t{0}};
 
     void add(const label_t& label, const std::string& msg) { m_db[label].emplace_back(msg); }
 
@@ -31,12 +31,13 @@ struct checks_db final {
         total_unreachable++;
     }
 
-    [[nodiscard]] int get_max_loop_count() const {
-        auto m = this->max_loop_count.number();
-        if (m && m->fits_sint32())
-            return m->cast_to_sint32();
-        else
-            return std::numeric_limits<int>::max();
+    [[nodiscard]]
+    int get_max_loop_count() const {
+        const auto m = this->max_loop_count.number();
+        if (m && m->fits<int32_t>()) {
+            return m->cast_to<int32_t>();
+        }
+        return std::numeric_limits<int>::max();
     }
     checks_db() = default;
 };
@@ -61,16 +62,12 @@ struct crab_results {
 };
 
 bool run_ebpf_analysis(std::ostream& s, cfg_t& cfg, const program_info& info, const ebpf_verifier_options_t* options,
-    ebpf_verifier_stats_t* stats);
+                       ebpf_verifier_stats_t* stats);
 
-crab_results ebpf_verify_program(
-    std::ostream& s,
-    const InstructionSeq& prog,
-    const program_info& info,
-    const ebpf_verifier_options_t* options,
-    ebpf_verifier_stats_t* stats);
+crab_results ebpf_verify_program(std::ostream& s, const InstructionSeq& prog, const program_info& info,
+                         const ebpf_verifier_options_t* options, ebpf_verifier_stats_t* stats);
 
-using string_invariant_map = std::map<crab::label_t, string_invariant>;
+using string_invariant_map = std::map<label_t, string_invariant>;
 
 std::tuple<string_invariant, bool> ebpf_analyze_program_for_test(abstract_domain_kind domain,
                                                                  std::ostream& os, const InstructionSeq& prog,
@@ -78,7 +75,8 @@ std::tuple<string_invariant, bool> ebpf_analyze_program_for_test(abstract_domain
                                                                  const program_info& info,
                                                                  const ebpf_verifier_options_t& options);
 
-int create_map_crab(const EbpfMapType& map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries, ebpf_verifier_options_t options);
+int create_map_crab(const EbpfMapType& map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries,
+                    ebpf_verifier_options_t options);
 
 EbpfMapDescriptor* find_map_descriptor(int map_fd);
 

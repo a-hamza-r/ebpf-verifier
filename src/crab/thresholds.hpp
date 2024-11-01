@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <map>
-#include <algorithm>
 #include <climits>
+#include <map>
 
 #include <boost/range/iterator_range.hpp>
 
@@ -25,19 +24,22 @@ inline namespace iterators {
 class thresholds_t final {
 
   private:
-    std::vector<bound_t> m_thresholds;
+    std::vector<extended_number> m_thresholds;
     size_t m_size;
 
   public:
     explicit thresholds_t(size_t size = UINT_MAX) : m_size(size) {
-        m_thresholds.push_back(bound_t::minus_infinity());
-        m_thresholds.emplace_back(0);
-        m_thresholds.push_back(bound_t::plus_infinity());
+        m_thresholds.push_back(extended_number::minus_infinity());
+        m_thresholds.emplace_back(number_t{0});
+        m_thresholds.push_back(extended_number::plus_infinity());
     }
 
-    size_t size() const { return m_thresholds.size(); }
+    [[nodiscard]]
+    size_t size() const {
+        return m_thresholds.size();
+    }
 
-    void add(bound_t v1);
+    void add(extended_number v1);
 
     friend std::ostream& operator<<(std::ostream& o, const thresholds_t& t);
 };
@@ -63,7 +65,7 @@ class wto_thresholds_t final {
 
     void operator()(const label_t& vertex);
 
-    void operator()(std::shared_ptr<wto_cycle_t>& cycle);
+    void operator()(const std::shared_ptr<wto_cycle_t>& cycle);
 
     friend std::ostream& operator<<(std::ostream& o, const wto_thresholds_t& t);
 

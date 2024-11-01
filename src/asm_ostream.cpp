@@ -10,8 +10,13 @@
 #include "asm_syntax.hpp"
 #include "crab/cfg.hpp"
 #include "crab/interval.hpp"
+#include "crab/type_encoding.hpp"
 #include "crab/variable.hpp"
+#include "helpers.hpp"
+#include "platform.hpp"
+#include "spec_type_descriptors.hpp"
 
+using crab::TypeGroup;
 using std::optional;
 using std::string;
 using std::vector;
@@ -46,8 +51,9 @@ std::ostream& operator<<(std::ostream& os, ArgSingle arg) {
 
 std::ostream& operator<<(std::ostream& os, ArgPair arg) {
     os << arg.kind << " " << arg.mem << "[" << arg.size;
-    if (arg.can_be_zero)
+    if (arg.can_be_zero) {
         os << "?";
+    }
     os << "], uint64_t " << arg.size;
     return os;
 }
@@ -84,10 +90,10 @@ std::ostream& operator<<(std::ostream& os, Condition::Op op) {
     case Op::NE: return os << "!=";
     case Op::SET: return os << "&==";
     case Op::NSET: return os << "&!="; // not in ebpf
-    case Op::LT: return os << "<"; // TODO: os << "u<";
-    case Op::LE: return os << "<="; // TODO: os << "u<=";
-    case Op::GT: return os << ">"; // TODO: os << "u>";
-    case Op::GE: return os << ">="; // TODO: os << "u>=";
+    case Op::LT: return os << "<";     // TODO: os << "u<";
+    case Op::LE: return os << "<=";    // TODO: os << "u<=";
+    case Op::GT: return os << ">";     // TODO: os << "u>";
+    case Op::GE: return os << ">=";    // TODO: os << "u>=";
     case Op::SLT: return os << "s<";
     case Op::SLE: return os << "s<=";
     case Op::SGT: return os << "s>";
@@ -99,69 +105,51 @@ std::ostream& operator<<(std::ostream& os, Condition::Op op) {
 
 static string size(int w) { return string("u") + std::to_string(w * 8); }
 
-static std::string to_string(TypeGroup ts) {
-    switch (ts) {
-    case TypeGroup::number: return "number";
-    case TypeGroup::map_fd: return "map_fd";
-    case TypeGroup::map_fd_programs: return "map_fd_programs";
-    case TypeGroup::ctx: return "ctx";
-    case TypeGroup::packet: return "packet";
-    case TypeGroup::stack: return "stack";
-    case TypeGroup::shared: return "shared";
-    case TypeGroup::mem: return "{stack, packet, shared}";
-    case TypeGroup::pointer: return "{ctx, stack, packet, shared}";
-    case TypeGroup::non_map_fd: return "non_map_fd";
-    case TypeGroup::ptr_or_num: return "{number, ctx, stack, packet, shared}";
-    case TypeGroup::stack_or_packet: return "{stack, packet}";
-    case TypeGroup::singleton_ptr: return "{ctx, stack, packet}";
-    case TypeGroup::mem_or_num: return "{number, stack, packet, shared}";
-    default: assert(false);
-    }
-    return {};
-}
-
-std::ostream& operator<<(std::ostream& os, TypeGroup ts) {
-    return os << to_string(ts);
-}
-
 std::ostream& operator<<(std::ostream& os, ValidStore const& a) {
     return os << a.mem << ".type != stack -> " << TypeConstraint{a.val, TypeGroup::number};
 }
 
 std::ostream& operator<<(std::ostream& os, ValidAccess const& a) {
-    if (a.or_null)
+    if (a.or_null) {
         os << "(" << TypeConstraint{a.reg, TypeGroup::number} << " and " << a.reg << ".value == 0) or ";
+    }
     os << "valid_access(" << a.reg << ".offset";
-    if (a.offset > 0)
+    if (a.offset > 0) {
         os << "+" << a.offset;
-    else if (a.offset < 0)
+    } else if (a.offset < 0) {
         os << a.offset;
+    }
 
-    if (a.width == (Value)Imm{0}) {
+    if (a.width == Value{Imm{0}}) {
         // a.width == 0, meaning we only care it's an in-bound pointer,
         // so it can be compared with another pointer to the same region.
         os << ") for comparison/subtraction";
     } else {
         os << ", width=" << a.width << ") for ";
-        if (a.access_type == AccessType::read)
+        if (a.access_type == AccessType::read) {
             os << "read";
-        else
+        } else {
             os << "write";
+        }
     }
     return os;
 }
 
-static crab::variable_t typereg(const Reg& r) {
-    return crab::variable_t::reg(crab::data_kind_t::types, r.v);
-}
+static crab::variable_t typereg(const Reg& r) { return crab::variable_t::reg(crab::data_kind_t::types, r.v); }
 
 std::ostream& operator<<(std::ostream& os, ValidSize const& a) {
-    auto op = a.can_be_zero ? " >= " : " > ";
+    const auto op = a.can_be_zero ? " >= " : " > ";
     return os << a.reg << ".value" << op << 0;
 }
 
+std::ostream& operator<<(std::ostream& os, ValidCall const& a) {
+    const EbpfHelperPrototype proto = global_program_info->platform->get_helper_prototype(a.func);
+    return os << "valid call(" << proto.name << ")";
+}
+
 std::ostream& operator<<(std::ostream& os, ValidMapKeyValue const& a) {
-    return os << "within stack(" << a.access_reg << ":" << (a.key ? "key_size" : "value_size") << "(" << a.map_fd_reg << "))";
+    return os << "within stack(" << a.access_reg << ":" << (a.key ? "key_size" : "value_size") << "(" << a.map_fd_reg
+              << "))";
 }
 
 std::ostream& operator<<(std::ostream& os, ZeroCtxOffset const& a) {
@@ -169,29 +157,24 @@ std::ostream& operator<<(std::ostream& os, ZeroCtxOffset const& a) {
 }
 
 std::ostream& operator<<(std::ostream& os, Comparable const& a) {
-    if (a.or_r2_is_number)
+    if (a.or_r2_is_number) {
         os << TypeConstraint{a.r2, TypeGroup::number} << " or ";
-    return os << typereg(a.r1) << " == "
-              << typereg(a.r2) << " in " << to_string(TypeGroup::singleton_ptr);
+    }
+    return os << typereg(a.r1) << " == " << typereg(a.r2) << " in " << TypeGroup::singleton_ptr;
 }
 
 std::ostream& operator<<(std::ostream& os, Addable const& a) {
     return os << TypeConstraint{a.ptr, TypeGroup::pointer} << " -> " << TypeConstraint{a.num, TypeGroup::number};
 }
 
-std::ostream& operator<<(std::ostream& os, ValidDivisor const& a) {
-    return os << a.reg << " != 0";
-}
+std::ostream& operator<<(std::ostream& os, ValidDivisor const& a) { return os << a.reg << " != 0"; }
 
 std::ostream& operator<<(std::ostream& os, TypeConstraint const& tc) {
-    string types = to_string(tc.types);
-    string cmp_op = types[0] == '{' ? "in" : "==";
+    const string cmp_op = is_singleton_type(tc.types) ? "==" : "in";
     return os << typereg(tc.reg) << " " << cmp_op << " " << tc.types;
 }
 
-std::ostream& operator<<(std::ostream& os, FuncConstraint const& fc) {
-    return os << typereg(fc.reg) << " is helper";
-}
+std::ostream& operator<<(std::ostream& os, FuncConstraint const& fc) { return os << typereg(fc.reg) << " is helper"; }
 
 std::ostream& operator<<(std::ostream& os, AssertionConstraint const& a) {
     return std::visit([&](const auto& a) -> std::ostream& { return os << a; }, a);
@@ -215,8 +198,9 @@ struct InstructionPrinterVisitor {
 
     void operator()(Bin const& b) {
         os_ << reg_name(b.dst, b.is64) << " " << b.op << "= " << b.v;
-        if (b.lddw)
+        if (b.lddw) {
             os_ << " ll";
+        }
     }
 
     void operator()(Un const& b) {
@@ -240,21 +224,21 @@ struct InstructionPrinterVisitor {
         os_ << "r0 = " << call.name << ":" << call.func << "(";
         for (uint8_t r = 1; r <= 5; r++) {
             // Look for a singleton.
-            std::vector<ArgSingle>::const_iterator single =
-                std::find_if(call.singles.begin(), call.singles.end(), [r](ArgSingle arg) { return arg.reg.v == r; });
+            auto single = std::ranges::find_if(call.singles, [r](ArgSingle arg) { return arg.reg.v == r; });
             if (single != call.singles.end()) {
-                if (r > 1)
+                if (r > 1) {
                     os_ << ", ";
+                }
                 os_ << *single;
                 continue;
             }
 
             // Look for the start of a pair.
-            std::vector<ArgPair>::const_iterator pair =
-                std::find_if(call.pairs.begin(), call.pairs.end(), [r](ArgPair arg) { return arg.mem.v == r; });
+            auto pair = std::ranges::find_if(call.pairs, [r](ArgPair arg) { return arg.mem.v == r; });
             if (pair != call.pairs.end()) {
-                if (r > 1)
+                if (r > 1) {
                     os_ << ", ";
+                }
                 os_ << *pair;
                 r++;
                 continue;
@@ -265,6 +249,8 @@ struct InstructionPrinterVisitor {
         }
         os_ << ")";
     }
+
+    void operator()(CallLocal const& call) { os_ << "call <" << to_string(call.target) << ">"; }
 
     void operator()(Callx const& callx) { os_ << "callx " << callx.func; }
 
@@ -282,8 +268,8 @@ struct InstructionPrinterVisitor {
     }
 
     void operator()(Jmp const& b, int offset) {
-        string sign = offset > 0 ? "+" : "";
-        string target = sign + std::to_string(offset) + " <" + to_string(b.target) + ">";
+        const string sign = offset > 0 ? "+" : "";
+        const string target = sign + std::to_string(offset) + " <" + to_string(b.target) + ">";
 
         if (b.cond) {
             os_ << "if ";
@@ -296,27 +282,31 @@ struct InstructionPrinterVisitor {
     void operator()(Packet const& b) {
         /* Direct packet access, R0 = *(uint *) (skb->data + imm32) */
         /* Indirect packet access, R0 = *(uint *) (skb->data + src_reg + imm32) */
-        string s = size(b.width);
+        const string s = size(b.width);
         os_ << "r0 = ";
         os_ << "*(" << s << " *)skb[";
-        if (b.regoffset)
+        if (b.regoffset) {
             os_ << *b.regoffset;
+        }
         if (b.offset != 0) {
-            if (b.regoffset)
+            if (b.regoffset) {
                 os_ << " + ";
+            }
             os_ << b.offset;
         }
         os_ << "]";
     }
 
     void print(Deref const& access) {
-        string sign = access.offset < 0 ? " - " : " + ";
+        const string sign = access.offset < 0 ? " - " : " + ";
         int offset = std::abs(access.offset); // what about INT_MIN?
         os_ << "*(" << size(access.width) << " *)";
         os_ << "(" << access.basereg << sign << offset << ")";
     }
 
-    void print(Condition const& cond) { os_ << cond.left << " " << ((!cond.is64) ? "w" : "") << cond.op << " " << cond.right; }
+    void print(Condition const& cond) {
+        os_ << cond.left << " " << ((!cond.is64) ? "w" : "") << cond.op << " " << cond.right;
+    }
 
     void operator()(Mem const& b) {
         if (b.is_load) {
@@ -335,11 +325,17 @@ struct InstructionPrinterVisitor {
         bool showfetch = true;
         switch (b.op) {
         case Atomic::Op::ADD: os_ << "+"; break;
-        case Atomic::Op::OR : os_ << "|"; break;
+        case Atomic::Op::OR: os_ << "|"; break;
         case Atomic::Op::AND: os_ << "&"; break;
         case Atomic::Op::XOR: os_ << "^"; break;
-        case Atomic::Op::XCHG: os_ << "x"; showfetch = false; break;
-        case Atomic::Op::CMPXCHG: os_ << "cx"; showfetch = false; break;
+        case Atomic::Op::XCHG:
+            os_ << "x";
+            showfetch = false;
+            break;
+        case Atomic::Op::CMPXCHG:
+            os_ << "cx";
+            showfetch = false;
+            break;
         }
         os_ << "= " << b.valreg;
 
@@ -353,13 +349,9 @@ struct InstructionPrinterVisitor {
         print(b.cond);
     }
 
-    void operator()(Assert const& a) {
-        os_ << "assert " << a.cst;
-    }
+    void operator()(Assert const& a) { os_ << "assert " << a.cst; }
 
-    void operator()(IncrementLoopCounter const& a) {
-        os_ << crab::variable_t::loop_counter(to_string(a.name)) << "++";
-    }
+    void operator()(IncrementLoopCounter const& a) { os_ << crab::variable_t::loop_counter(to_string(a.name)) << "++"; }
 };
 
 string to_string(label_t const& label) {
@@ -385,10 +377,11 @@ string to_string(AssertionConstraint const& constraint) {
     return str.str();
 }
 
-int size(Instruction inst) {
-    if (std::holds_alternative<Bin>(inst)) {
-        if (std::get<Bin>(inst).lddw)
+int size(const Instruction& inst) {
+    if (const auto bin = std::get_if<Bin>(&inst)) {
+        if (bin->lddw) {
             return 2;
+        }
     }
     if (std::holds_alternative<LoadMapFd>(inst)) {
         return 2;
@@ -399,16 +392,16 @@ int size(Instruction inst) {
 auto get_labels(const InstructionSeq& insts) {
     pc_t pc = 0;
     std::map<label_t, pc_t> pc_of_label;
-    for (auto [label, inst, _] : insts) {
+    for (const auto& [label, inst, _] : insts) {
         pc_of_label[label] = pc;
         pc += size(inst);
     }
     return pc_of_label;
 }
 
-void print(const InstructionSeq& insts, std::ostream& out, std::optional<const label_t> label_to_print,
+void print(const InstructionSeq& insts, std::ostream& out, const std::optional<const label_t>& label_to_print,
            bool print_line_info) {
-    auto pc_of_label = get_labels(insts);
+    const auto pc_of_label = get_labels(insts);
     pc_t pc = 0;
     std::string previous_source;
     InstructionPrinterVisitor visitor{out};
@@ -432,12 +425,12 @@ void print(const InstructionSeq& insts, std::ostream& out, std::optional<const l
             } else {
                 out << std::setw(8) << pc << ":\t";
             }
-            if (std::holds_alternative<Jmp>(ins)) {
-                auto const& jmp = std::get<Jmp>(ins);
-                if (pc_of_label.count(jmp.target) == 0)
-                    throw std::runtime_error(string("Cannot find label ") + to_string(jmp.target));
-                pc_t target_pc = pc_of_label.at(jmp.target);
-                visitor(jmp, target_pc - (int)pc - 1);
+            if (const auto jmp = std::get_if<Jmp>(&ins)) {
+                if (!pc_of_label.contains(jmp->target)) {
+                    throw std::runtime_error(string("Cannot find label ") + to_string(jmp->target));
+                }
+                const pc_t target_pc = pc_of_label.at(jmp->target);
+                visitor(*jmp, target_pc - static_cast<int>(pc) - 1);
             } else {
                 std::visit(visitor, ins);
             }
@@ -449,13 +442,12 @@ void print(const InstructionSeq& insts, std::ostream& out, std::optional<const l
 
 std::ostream& operator<<(std::ostream& o, const EbpfMapDescriptor& desc) {
     return o << "("
-    << "original_fd = " << desc.original_fd << ", "
-    << "inner_map_fd = " << desc.inner_map_fd << ", "
-    << "type = " << desc.type << ", "
-    << "max_entries = " << desc.max_entries << ", "
-    << "value_size = " << desc.value_size << ", "
-    << "key_size = " << desc.key_size <<
-    ")";
+             << "original_fd = " << desc.original_fd << ", "
+             << "inner_map_fd = " << desc.inner_map_fd << ", "
+             << "type = " << desc.type << ", "
+             << "max_entries = " << desc.max_entries << ", "
+             << "value_size = " << desc.value_size << ", "
+             << "key_size = " << desc.key_size << ")";
 }
 
 void print_map_descriptors(const std::vector<EbpfMapDescriptor>& descriptors, std::ostream& o) {
@@ -478,8 +470,9 @@ void print_dot(const cfg_t& cfg, std::ostream& out) {
         }
 
         out << "\"];\n";
-        for (const label_t& next : bb.next_blocks_set())
+        for (const label_t& next : bb.next_blocks_set()) {
             out << "    \"" << label << "\" -> \"" << next << "\";\n";
+        }
         out << "\n";
     }
     out << "}\n";
@@ -487,8 +480,9 @@ void print_dot(const cfg_t& cfg, std::ostream& out) {
 
 void print_dot(const cfg_t& cfg, const std::string& outfile) {
     std::ofstream out{outfile};
-    if (out.fail())
+    if (out.fail()) {
         throw std::runtime_error(std::string("Could not open file ") + outfile);
+    }
     print_dot(cfg, out);
 }
 
@@ -501,7 +495,7 @@ std::ostream& operator<<(std::ostream& o, const basic_block_t& bb) {
     if (it != et) {
         o << "  "
           << "goto ";
-        for (; it != et;) {
+        while (it != et) {
             o << *it;
             ++it;
             if (it == et) {
@@ -531,6 +525,11 @@ std::ostream& operator<<(std::ostream& o, const crab::basic_block_rev_t& bb) {
 std::ostream& operator<<(std::ostream& o, const cfg_t& cfg) {
     for (const label_t& label : cfg.sorted_labels()) {
         o << cfg.get_node(label);
+        o << "edges to:";
+        for (const label_t& next_label : cfg.next_nodes(label)) {
+            o << " " << next_label;
+        }
+        o << "\n";
     }
     return o;
 }
@@ -541,8 +540,7 @@ std::ostream& operator<<(std::ostream& os, const btf_line_info_t& line_info) {
     return os;
 }
 
-
-std::string crab::z_number::to_string() const { return _n.str(); }
+std::string crab::number_t::to_string() const { return _n.str(); }
 
 std::string crab::interval_t::to_string() const {
     std::ostringstream s;

@@ -198,7 +198,7 @@ interval_domain_t interval_domain_t::narrow(const interval_domain_t& other) cons
     return other;
 }
 
-crab::bound_t interval_domain_t::get_loop_count_upper_bound() {
+crab::bound_t interval_domain_t::get_loop_count_upper_bound() const {
     /* WARNING: The operation is not implemented yet.*/
     return crab::bound_t{crab::number_t{0}};
 }
@@ -277,8 +277,8 @@ static void get_unsigned_intervals(bool is64, const interval_t& dst_signed,
     right_interval = src_unsigned;
     if (!is64) {
         for (interval_t* interval : {&left_interval, &right_interval}) {
-            if (!(*interval <= interval_t::unsigned_int(false))) {
-                *interval = interval->truncate_to_uint(false);
+            if (!(*interval <= interval_t::unsigned_int(32))) {
+                *interval = interval->truncate_to_uint(32);
             }
         }
     }
@@ -286,20 +286,20 @@ static void get_unsigned_intervals(bool is64, const interval_t& dst_signed,
     if (left_interval.is_top()) {
         left_interval = dst_signed;
         if (left_interval.is_top()) {
-            left_interval = interval_t::unsigned_int(is64);
+            left_interval = interval_t::unsigned_int(64);
         }
         else {
             // make left interval as union of two intervals:
                 // [0, left_interval.ub()] truncated to uint
                 // [left_interval.lb(), -1] truncated to uint, as negative_int <=> unsigned_high
-            left_interval = interval_t{number_t{0}, left_interval.ub()}.truncate_to_uint(true) |
-                    interval_t{left_interval.lb(), number_t{-1}}.truncate_to_uint(true);
+            left_interval = interval_t{number_t{0}, left_interval.ub()}.truncate_to_uint(64) |
+                    interval_t{left_interval.lb(), number_t{-1}}.truncate_to_uint(64);
         }
     }
 
     for (interval_t* interval : {&left_interval, &right_interval}) {
-        if (!(*interval <= interval_t::unsigned_int(true))) {
-            *interval = interval->truncate_to_uint(true);
+        if (!(*interval <= interval_t::unsigned_int(64))) {
+            *interval = interval->truncate_to_uint(64);
         }
     }
 }
@@ -311,20 +311,20 @@ void interval_domain_t::assume_unsigned_lt(bool is64, bool strict,
         register_t left, Value right, location_t loc) {
 
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
-    if (right_interval <= interval_t::nonnegative_int(is64)) {
+    if (right_interval <= interval_t::nonnegative(64)) {
         // Both left_interval and right_interval fit in [0, INT_MAX],
         // and can be treated as both signed and unsigned values
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, std::move(positive), std::move(positive), true, true, false, false);
     }
-    else if (left_interval <= interval_t::unsigned_int(is64) &&
-            right_interval <= interval_t::unsigned_int(is64)) {
+    else if (left_interval <= interval_t::unsigned_int(64) &&
+            right_interval <= interval_t::unsigned_int(64)) {
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), std::move(positive), true, true, false, false);
     }
-    else if (left_interval <= interval_t::unsigned_int(is64)) {
+    else if (left_interval <= interval_t::unsigned_int(64)) {
         // interval can only be represented as uvalue
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
@@ -338,14 +338,14 @@ void interval_domain_t::assume_unsigned_lt(bool is64, bool strict,
     // possibly redundant case, since when left interval is negative, it is converted to
     // unsigned high representation, while right interval likely is not negative
     /*
-    else if (left_signed <= interval_t::negative_int(is64) &&
-            right_signed <= interval_t::negative_int(is64)) {
+    else if (left_signed <= interval_t::negative(64) &&
+            right_signed <= interval_t::negative(64)) {
         // right_signed and left_signed fit in [INT_MIN, -1], and can be treated as
         // both signed and unsigned, since [INT_MIN, -1] <=> [INT_MAX+1, UINT_MAX]
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
-                left, right, loc, interval_t::negative_int(is64),
-                interval_t::unsigned_high(is64), true, true);
+                left, right, loc, interval_t::negative(64),
+                interval_t::unsigned_high(64), true, true);
     }
     */
     else {
@@ -367,22 +367,22 @@ void interval_domain_t::assume_unsigned_gt(bool is64, bool strict,
         register_t left, Value right, location_t loc) {
 
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
-    if (left_interval <= interval_t::unsigned_int(is64) &&
-            right_interval <= interval_t::unsigned_int(is64)) {
+    if (left_interval <= interval_t::unsigned_int(64) &&
+            right_interval <= interval_t::unsigned_int(64)) {
         update_gt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), std::move(positive), true, true, false, false);
     }
     // possibly redundant analysis, see unsigned_lt
     /*
-    else if (right_signed <= interval_t::negative_int(is64)
-            && left_signed <= interval_t::negative_int(is64)) {
+    else if (right_signed <= interval_t::negative(64)
+            && left_signed <= interval_t::negative(64)) {
         // Both left_signed and right_signed fit in [INT_MIN, -1], and can be treated as both
         // signed and unsigned values since [INT_MIN, -1] <=> [INT_MAX+1, UINT_MAX]
         update_gt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
-                left, right, loc, interval_t::negative_int(is64),
-                interval_t::unsigned_high(is64), true, true);
+                left, right, loc, interval_t::negative(64),
+                interval_t::unsigned_high(64), true, true);
     }
     */
     else {
@@ -414,7 +414,7 @@ void interval_domain_t::assume_unsigned_cst(Condition::Op op, bool is64,
     // Handle uvalue != right.
     if (op == Condition::Op::NE) {
         if (auto rn = right_interval.singleton()) {
-            if (rn == left_interval.truncate_to_uint(is64).lb().number()) {
+            if (rn == left_interval.truncate_to_uint(64).lb().number()) {
                 // "NE lower bound" is equivalent to "GT lower bound".
                 op = Condition::Op::GT;
                 right_interval = interval_t{left_interval.lb()};
@@ -476,8 +476,8 @@ static void get_signed_intervals(bool is64, const interval_t& dst_signed,
     right_interval = src_signed;
     if (!is64) {
         for (interval_t* interval : {&left_interval, &right_interval}) {
-            if (!(*interval <= interval_t::signed_int(false))) {
-                *interval = interval->truncate_to_sint(false);
+            if (!(*interval <= interval_t::signed_int(32))) {
+                *interval = interval->truncate_to_sint(32);
             }
         }
     }
@@ -485,18 +485,18 @@ static void get_signed_intervals(bool is64, const interval_t& dst_signed,
     if (left_interval.is_top()) {
         left_interval = dst_unsigned;
         if (left_interval.is_top()) {
-            left_interval = interval_t::signed_int(is64);
+            left_interval = interval_t::signed_int(64);
         }
         else {
-            auto low = (left_interval & interval_t::unsigned_high(is64)).truncate_to_sint(true);
-            auto high = (left_interval & interval_t::nonnegative_int(is64)).truncate_to_sint(true);
+            auto low = (left_interval & interval_t::unsigned_high(64)).truncate_to_sint(64);
+            auto high = (left_interval & interval_t::nonnegative(64)).truncate_to_sint(64);
             left_interval = low | high;
         }
     }
 
     for (interval_t* interval : {&left_interval, &right_interval}) {
-        if (!(*interval <= interval_t::signed_int(true))) {
-            *interval = interval->truncate_to_sint(true);
+        if (!(*interval <= interval_t::signed_int(64))) {
+            *interval = interval->truncate_to_sint(64);
         }
     }
 }
@@ -608,16 +608,16 @@ void interval_domain_t::assume_signed_lt(bool is64, bool strict,
         register_t left, Value right, location_t loc) {
 
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
-    if (right_interval <= interval_t::negative_int(is64)) {
+    if (right_interval <= interval_t::negative(64)) {
         // right_interval fits in [INT_MIN, -1], and can be treated as both signed and unsigned
         // since [INT_MIN, -1] <=> [INT_MAX+1, UINT_MAX]
         // likewise for left_interval, as it is not > right_interval, and truncated to signed int
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
-                left, right, loc, interval_t::top(), interval_t::unsigned_high(is64), true, true, false, true);
+                left, right, loc, interval_t::top(), interval_t::unsigned_high(64), true, true, false, true);
     }
-    else if (left_interval <= interval_t::nonnegative_int(is64) &&
-            right_interval <= interval_t::nonnegative_int(is64)) {
+    else if (left_interval <= interval_t::nonnegative(64) &&
+            right_interval <= interval_t::nonnegative(64)) {
         // Both left_interval and right_interval fit in [0, INT_MAX],
         // and can be treated as both signed and unsigned values
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
@@ -744,7 +744,7 @@ void interval_domain_t::assume_signed_gt(bool is64, bool strict,
         register_t left, Value right, location_t loc) {
 
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
-    if (right_interval <= interval_t::nonnegative_int(is64)) {
+    if (right_interval <= interval_t::nonnegative(64)) {
         // right_interval fits in [0, INT_MAX], and can be treated as both signed and unsigned
         // likewise fits in [0, UINT_MAX], as it is not < right_interval,
         // and truncated to signed int
@@ -752,13 +752,13 @@ void interval_domain_t::assume_signed_gt(bool is64, bool strict,
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, std::move(positive), std::move(positive), true, false, true, true);
     }
-    else if (right_interval <= interval_t::negative_int(is64)
-            && left_interval <= interval_t::negative_int(is64)) {
+    else if (right_interval <= interval_t::negative(64)
+            && left_interval <= interval_t::negative(64)) {
         // Both left_interval and right_interval fit in [INT_MIN, -1], and can be treated as both
         // signed and unsigned values since [INT_MIN, -1] <=> [INT_MAX+1, UINT_MAX]
         update_gt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
-                left, right, loc, interval_t::top(), interval_t::unsigned_high(is64),
+                left, right, loc, interval_t::top(), interval_t::unsigned_high(64),
                 true, true, false, true);
     }
     else {
@@ -892,9 +892,9 @@ void interval_domain_t::operator-=(register_t reg) {
 
 bool interval_domain_t::load_from_stack(register_t reg, interval_t load_at, int width,
         location_t loc) {
-    uint64_t start_offset = 0;
+    uint start_offset = 0;
     if (auto load_at_singleton = load_at.singleton()) {
-        start_offset = (uint64_t)(*load_at_singleton);
+        start_offset = load_at_singleton->cast_to<uint>();
         bool loaded_signed = m_signed.load_from_stack(reg, start_offset, loc);
         bool loaded_unsigned = m_unsigned.load_from_stack(reg, start_offset, loc);
         if (loaded_signed && loaded_unsigned) return true;
@@ -904,8 +904,8 @@ bool interval_domain_t::load_from_stack(register_t reg, interval_t load_at, int 
         auto load_at_ub = load_at.ub();
         if (auto finite_size = load_at.finite_size()) {
             if (auto load_at_lb = load_at.lb().number()) {
-                start_offset = (uint64_t)(*load_at_lb);
-                width = (int)(*finite_size + number_t{width});
+                start_offset = load_at_lb->cast_to<uint>();
+                width = (*finite_size + number_t{width}).cast_to<int>();
             }
         }
     }
@@ -986,7 +986,7 @@ void interval_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>
         m_errors.push_back("doing a store with unknown offset");
         return;
     }
-    auto store_at = (uint64_t)(*offset_singleton + offset);
+    auto store_at = (*offset_singleton + offset).cast_to<uint64_t>();
     auto overlapping_cells = find_overlapping_cells_in_stack(store_at, width);
     remove_overlap_in_stack(overlapping_cells, store_at, width);
     store_in_stack(b, store_at, width);
@@ -1016,11 +1016,11 @@ static void overflow_bounds(interval_t& interval, number_t span, int finite_widt
     // For a signed result, we need to ensure the signed and unsigned results match
     // so for a 32-bit operation, 0x80000000 should be a positive 64-bit number not
     // a sign extended negative one.
-    number_t lb = lb_value.truncate_to_unsigned_finite_width(finite_width);
-    number_t ub = ub_value.truncate_to_unsigned_finite_width(finite_width);
+    number_t lb = lb_value.truncate_to_uint(finite_width);
+    number_t ub = ub_value.truncate_to_uint(finite_width);
     if (issigned) {
-        lb = lb.truncate_to_sint64();
-        ub = ub.truncate_to_sint64();
+        lb = lb.truncate_to_sint(64);
+        ub = ub.truncate_to_sint(64);
     }
     if (lb > ub) {
         // Range wraps in the middle, so we cannot represent as an unsigned interval.
@@ -1031,15 +1031,15 @@ static void overflow_bounds(interval_t& interval, number_t span, int finite_widt
 }
 
 static void overflow_unsigned(interval_t& interval, int finite_width) {
-    auto span{finite_width == 64   ? crab::z_number{std::numeric_limits<uint64_t>::max()}
-        : finite_width == 32 ? crab::z_number{std::numeric_limits<uint32_t>::max()}
+    auto span{finite_width == 64   ? number_t{std::numeric_limits<uint64_t>::max()}
+        : finite_width == 32 ? number_t{std::numeric_limits<uint32_t>::max()}
                                    : throw std::exception()};
     overflow_bounds(interval, span, finite_width, false);
 }
 
 static void overflow_signed(interval_t& interval, int finite_width) {
-    auto span{finite_width == 64   ? crab::z_number{std::numeric_limits<int64_t>::max()}
-        : finite_width == 32 ? crab::z_number{std::numeric_limits<int32_t>::max()}
+    auto span{finite_width == 64   ? number_t{std::numeric_limits<int64_t>::max()}
+        : finite_width == 32 ? number_t{std::numeric_limits<int32_t>::max()}
                                    : throw std::exception()};
     overflow_bounds(interval, span, finite_width, true);
 }
@@ -1135,8 +1135,8 @@ static void shl(register_t reg, int imm, int finite_width,
     if (dst_unsigned.finite_size()) {
         number_t lb = dst_unsigned.lb().number().value();
         number_t ub = dst_unsigned.ub().number().value();
-        uint64_t lb_n = lb.cast_to_uint64();
-        uint64_t ub_n = ub.cast_to_uint64();
+        uint64_t lb_n = lb.cast_to_uint(64).cast_to<uint>();
+        uint64_t ub_n = ub.cast_to_uint(64).cast_to<uint>();
         uint64_t uint_max = (finite_width == 64) ? UINT64_MAX : UINT32_MAX;
         if ((lb_n >> (finite_width - imm)) != (ub_n >> (finite_width - imm))) {
             // The bits that will be shifted out to the left are different,
@@ -1172,13 +1172,13 @@ static void lshr(register_t reg, int imm, int finite_width,
         number_t lb = dst_unsigned.lb().number().value();
         number_t ub = dst_unsigned.ub().number().value();
         if (finite_width == 64) {
-            lb_n = lb.cast_to_uint64() >> imm;
-            ub_n = ub.cast_to_uint64() >> imm;
+            lb_n = lb.cast_to_uint(64) >> imm;
+            ub_n = ub.cast_to_uint(64) >> imm;
         } else {
-            number_t lb_w = lb.cast_to_signed_finite_width(finite_width);
-            number_t ub_w = ub.cast_to_signed_finite_width(finite_width);
-            lb_n = lb_w.cast_to_uint32() >> imm;
-            ub_n = ub_w.cast_to_uint32() >> imm;
+            number_t lb_w = lb.cast_to_sint(finite_width);
+            number_t ub_w = ub.cast_to_sint(finite_width);
+            lb_n = lb_w.cast_to_uint(32) >> imm;
+            ub_n = ub_w.cast_to_uint(32) >> imm;
 
             // The interval must be valid since a signed range crossing 0
             // was earlier converted to a full unsigned range.
@@ -1186,7 +1186,7 @@ static void lshr(register_t reg, int imm, int finite_width,
         }
     }
     dst_unsigned = interval_t{lb_n, ub_n};
-    if ((int64_t)ub_n >= (int64_t)lb_n) {
+    if (ub_n.cast_to<int64_t>() >= lb_n.cast_to<int64_t>()) {
         dst_signed = dst_unsigned;
     } else {
         dst_signed = interval_t::top();
@@ -1202,7 +1202,7 @@ static void ashr(register_t reg, interval_t src, int finite_width,
             src, left_interval, right_interval);
     if (auto sn = right_interval.singleton()) {
         // The BPF ISA requires masking the imm.
-        int64_t imm = sn->cast_to_sint64() & (finite_width - 1);
+        int64_t imm = sn->cast_to_sint(64).cast_to<int64_t>() & (finite_width - 1);
 
         int64_t lb_n = INT64_MIN >> imm;
         int64_t ub_n = INT64_MAX >> imm;
@@ -1210,14 +1210,14 @@ static void ashr(register_t reg, interval_t src, int finite_width,
             number_t lb = left_interval.lb().number().value();
             number_t ub = left_interval.ub().number().value();
             if (finite_width == 64) {
-                lb_n = lb.cast_to_sint64() >> imm;
-                ub_n = ub.cast_to_sint64() >> imm;
+                lb_n = lb.cast_to_sint(64).cast_to<int>() >> imm;
+                ub_n = ub.cast_to_sint(64).cast_to<int>() >> imm;
             } else {
-                number_t lb_w = lb.cast_to_signed_finite_width(finite_width) >> (int)imm;
-                number_t ub_w = ub.cast_to_signed_finite_width(finite_width) >> (int)imm;
-                if (lb_w.cast_to_uint32() <= ub_w.cast_to_uint32()) {
-                    lb_n = lb_w.cast_to_uint32();
-                    ub_n = ub_w.cast_to_uint32();
+                number_t lb_w = lb.cast_to_sint(finite_width) >> (int)imm;
+                number_t ub_w = ub.cast_to_sint(finite_width) >> (int)imm;
+                if (lb_w.cast_to_uint(32) <= ub_w.cast_to_uint(32)) {
+                    lb_n = lb_w.cast_to_uint(32).cast_to<int>();
+                    ub_n = ub_w.cast_to_uint(32).cast_to<int>();
                 }
             }
         }
@@ -1249,12 +1249,12 @@ void interval_domain_t::do_bin(const Bin& bin,
     interval_t dst_signed = subtracted;
     interval_t dst_unsigned = subtracted;
     if (subtracted != interval_t::bottom()) {
-        if (!(dst_signed <= interval_t::signed_int(bin.is64))) {
-            dst_signed = dst_signed.truncate_to_sint(bin.is64);
+        if (!(dst_signed <= interval_t::signed_int(64))) {
+            dst_signed = dst_signed.truncate_to_sint(64);
         }
         insert_in_registers_signed(dst_register, loc, dst_signed);
-        if (!(dst_unsigned <= interval_t::unsigned_int(bin.is64))) {
-            dst_unsigned = dst_unsigned.truncate_to_uint(bin.is64);
+        if (!(dst_unsigned <= interval_t::unsigned_int(64))) {
+            dst_unsigned = dst_unsigned.truncate_to_uint(64);
         }
         insert_in_registers_unsigned(dst_register, loc, dst_unsigned);
         return;
@@ -1277,7 +1277,7 @@ void interval_domain_t::do_bin(const Bin& bin,
         }
         auto imm_number = number_t{imm};
         auto imm_interval = interval_t{imm_number};
-        auto imm_unsigned_interval = interval_t{number_t{imm_number.cast_to_uint64()}};
+        auto imm_unsigned_interval = interval_t{number_t{imm_number.cast_to_uint(64)}};
         auto imm_int_interval = interval_t{number_t{(int)imm}};
         switch (bin.op) {
             case Op::MOV: {
@@ -1538,7 +1538,7 @@ void interval_domain_t::do_bin(const Bin& bin,
                 // ra <<= rb
                 if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
-                        uint64_t imm = sn->cast_to_uint64() & (bin.is64 ? 63 : 31);
+                        uint64_t imm = sn->cast_to_uint(64).cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= INT32_MAX) {
                             if (!bin.is64) {
                                 // Use only the low 32 bits of the value.
@@ -1561,7 +1561,7 @@ void interval_domain_t::do_bin(const Bin& bin,
                 // ra >>= rb
                 if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
-                        uint64_t imm = sn->cast_to_uint64() & (bin.is64 ? 63 : 31);
+                        uint64_t imm = sn->cast_to_uint(64).cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= INT32_MAX) {
                             if (!bin.is64) {
                                 // Use only the low 32 bits of the value.

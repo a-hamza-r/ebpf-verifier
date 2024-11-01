@@ -363,7 +363,7 @@ unsigned_interval_domain_t unsigned_interval_domain_t::narrow(const unsigned_int
 
 void unsigned_interval_domain_t::write(std::ostream& os) const {}
 
-crab::bound_t unsigned_interval_domain_t::get_loop_count_upper_bound() {
+crab::bound_t unsigned_interval_domain_t::get_loop_count_upper_bound() const {
     /* WARNING: The operation is not implemented yet.*/
     return crab::bound_t{crab::number_t{0}};
 }
@@ -385,10 +385,13 @@ unsigned_interval_domain_t unsigned_interval_domain_t::setup_entry() {
 void unsigned_interval_domain_t::operator()(const Un& u, location_t loc) {
     auto swap_endianness = [&](interval_t&& v, auto input, const auto& be_or_le) {
         if (std::optional<number_t> n = v.singleton()) {
-            if (n->fits_cast_to_int64()) {
+            if (n->fits_cast_to<int64_t>()) {
+                // TODO: fix this
+                /*
                 input = (decltype(input))n.value().cast_to_sint64();
                 decltype(input) output = be_or_le(input);
                 m_registers_values.insert(u.dst.v, loc, interval_t{number_t{output}});
+                */
                 return;
             }
         }

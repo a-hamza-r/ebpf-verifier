@@ -348,7 +348,7 @@ std::string offset_domain_t::domain_name() const {
     return "offset_domain";
 }
 
-crab::bound_t offset_domain_t::get_loop_count_upper_bound() {
+crab::bound_t offset_domain_t::get_loop_count_upper_bound() const {
     /* WARNING: The operation is not implemented yet.*/
     return crab::bound_t{crab::number_t{0}};
 }
@@ -690,7 +690,7 @@ void offset_domain_t::do_mem_store(const Mem& b,
     auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
     auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
     if (!basereg_off_singleton) return;
-    auto store_at = (uint64_t)(*basereg_off_singleton + offset);
+    auto store_at = (*basereg_off_singleton + offset).cast_to<uint64_t>();
     auto overlapping_cells = m_stack_state.find_overlapping_cells(store_at, width);
     m_stack_state -= overlapping_cells;
     m_stack_state.store(store_at, *rf_info, width);
@@ -726,7 +726,7 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
         return;
     }
     auto ptr_offset = *offset_singleton;
-    auto load_at = (uint64_t)(ptr_offset + offset);
+    auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
 
     if (is_stack_p) {
         auto it = m_stack_state.find(load_at);

@@ -43,12 +43,12 @@ class abstract_domain_t {
         virtual void operator()(const Packet&, location_t) = 0;
         virtual void operator()(const Assume&, location_t) = 0;
         virtual void operator()(const Assert&, location_t) = 0;
-        virtual void write(std::ostream& os) const = 0;
+        //virtual void write(std::ostream& os) const = 0;
 
         /* These operations are not very conventional for an abstract
            domain but it's convenient to have them */
 
-        virtual crab::bound_t get_loop_count_upper_bound() = 0;
+        virtual crab::bound_t get_loop_count_upper_bound() const = 0;
         virtual void initialize_loop_counter(const label_t) = 0;
         virtual string_invariant to_set() = 0;
         virtual void set_require_check(check_require_func_t f) = 0;
@@ -86,9 +86,9 @@ class abstract_domain_t {
         void operator()(const Packet& s, location_t loc = boost::none) override;
         void operator()(const Assume& s, location_t loc = boost::none) override;
         void operator()(const Assert& s, location_t loc = boost::none) override;
-        void write(std::ostream& os) const override;
+        //void write(std::ostream& os) const override;
         void initialize_loop_counter(const label_t) override;
-        crab::bound_t get_loop_count_upper_bound() override;
+        crab::bound_t get_loop_count_upper_bound() const override;
         string_invariant to_set() override;
         void set_require_check(check_require_func_t f) override;
         std::vector<std::string> get_errors() override;
@@ -129,8 +129,8 @@ class abstract_domain_t {
     void operator()(const Packet& s, location_t loc = boost::none);
     void operator()(const Assume& s, location_t loc = boost::none);
     void operator()(const Assert& s, location_t loc = boost::none);
-    void write(std::ostream& os) const;
-    crab::bound_t get_loop_count_upper_bound();
+    //void write(std::ostream& os) const;
+    crab::bound_t get_loop_count_upper_bound() const;
     void initialize_loop_counter(const label_t);
     string_invariant to_set();
     void set_require_check(check_require_func_t f);

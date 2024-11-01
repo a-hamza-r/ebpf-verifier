@@ -127,7 +127,7 @@ class signed_interval_domain_t final {
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none) {}
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& os) const {}
-    crab::bound_t get_loop_count_upper_bound();
+    crab::bound_t get_loop_count_upper_bound() const;
     void initialize_loop_counter(const label_t&);
     string_invariant to_set();
     void set_require_check(check_require_func_t f);

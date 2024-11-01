@@ -438,7 +438,7 @@ region_domain_t region_domain_t::narrow(const region_domain_t& other) const {
     return other;
 }
 
-crab::bound_t region_domain_t::get_loop_count_upper_bound() {
+crab::bound_t region_domain_t::get_loop_count_upper_bound() const {
     // WARNING: Not implemented yet.
     return crab::bound_t{crab::number_t{0}};
 }
@@ -558,10 +558,10 @@ bool region_domain_t::get_map_fd_range(const Reg& map_fd_reg, int32_t* start_fd,
     const auto& mapfd_interval = mapfd_type.get_mapfd().to_interval();
     auto lb = mapfd_interval.lb().number();
     auto ub = mapfd_interval.ub().number();
-    if (!lb || !lb->fits_sint32() || !ub || !ub->fits_sint32())
+    if (!lb || !lb->fits<int32_t>() || !ub || !ub->fits<int32_t>())
         return false;
-    *start_fd = (int32_t)lb.value();
-    *end_fd = (int32_t)ub.value();
+    *start_fd = lb.value().cast_to<int32_t>();
+    *end_fd = ub.value().cast_to<int32_t>();
 
     // Cap the maximum range we'll check.
     const int max_range = 32;
@@ -837,7 +837,8 @@ void region_domain_t::check_type(const TypeConstraint& s,
         }
         else {
             if (s.types == TypeGroup::pointer || s.types == TypeGroup::ptr_or_num) return;
-            if (s.types == TypeGroup::non_map_fd) return;
+            // TODO: This needs to be fixed
+            // if (s.types == TypeGroup::non_map_fd) return;
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_type)) {
                 ptr_with_off_t ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd_type);
                 if (ptr_with_off.get_region() == crab::region_t::T_CTX) {
@@ -865,7 +866,8 @@ void region_domain_t::check_type(const TypeConstraint& s,
     }
     else if (interval_opt) {
         if (s.types == TypeGroup::number || s.types == TypeGroup::ptr_or_num
-                || s.types == TypeGroup::non_map_fd || s.types == TypeGroup::mem_or_num)
+                // TODO: fix - || s.types == TypeGroup::non_map_fd 
+                || s.types == TypeGroup::mem_or_num)
             return;
     }
     //std::cout << "type error: type constraint assert fail\n";
@@ -1064,11 +1066,14 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
                 auto start = p_offset.lb();
                 auto end = p_offset.ub()+number_t{offset+width-1};
                 interval_t range{start, end};
+                // TODO: fix this
+                /*
                 if (range[number_t{(int)k}]) {
                     //std::cout << "stack load at unknown offset, and offset range contains pointers\n";
                     m_errors.push_back("stack load at unknown offset, and offset range contains pointers");
                     break;
                 }
+                */
             }
             m_registers -= target_register;
         }
@@ -1078,7 +1083,7 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
                 return;
             }
             auto ptr_offset = offset_singleton.value();
-            auto load_at = (uint64_t)(ptr_offset + offset);
+            auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
 
             auto loaded = m_stack.find(load_at);
             if (!loaded) {
@@ -1103,17 +1108,20 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
                 auto start = p_offset.lb();
                 auto end = p_offset.ub()+crab::bound_t{offset+width-1};
                 interval_t range{start, end};
+                // TODO: fix this
+                /*
                 if (range[number_t{(int)k}]) {
                     //std::cout << "ctx load at unknown offset, and offset range contains pointers\n";
                     m_errors.push_back("ctx load at unknown offset, and offset range contains pointers");
                     break;
                 }
+                */
             }
             m_registers -= target_register;
         }
         else {
             auto ptr_offset = offset_singleton.value();
-            auto load_at = (uint64_t)(ptr_offset + offset);
+            auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
 
             auto loaded = m_ctx->find(load_at);
             if (!loaded) {
@@ -1172,7 +1180,7 @@ void region_domain_t::do_mem_store(const Mem& b) {
         m_errors.push_back("storing to a pointer with unknown offset");
         return;
     }
-    auto store_at = (uint64_t)offset+(uint64_t)offset_singleton.value();
+    auto store_at = (uint64_t)offset+offset_singleton.value().cast_to<uint64_t>();
     auto overlapping_cells = m_stack.find_overlapping_cells(store_at, width);
     m_stack -= overlapping_cells;
 

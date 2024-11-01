@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "crab_utils/debug.hpp"
 #include "asm_syntax.hpp"
 #include "crab/cfg.hpp"
 
@@ -19,31 +18,133 @@ using std::to_string;
 using std::vector;
 
 static optional<label_t> get_jump(Instruction ins) {
-    if (std::holds_alternative<Jmp>(ins)) {
-        return std::get<Jmp>(ins).target;
+    if (const auto pins = std::get_if<Jmp>(&ins)) {
+        return pins->target;
     }
     return {};
 }
 
-static bool has_fall(Instruction ins) {
-    if (std::holds_alternative<Exit>(ins))
+static bool has_fall(const Instruction& ins) {
+    if (std::holds_alternative<Exit>(ins)) {
         return false;
+    }
 
-    if (std::holds_alternative<Jmp>(ins) && !std::get<Jmp>(ins).cond)
-        return false;
+    if (const auto pins = std::get_if<Jmp>(&ins)) {
+        if (!pins->cond) {
+            return false;
+        }
+    }
 
     return true;
 }
 
+/// Update a control-flow graph to inline function macros.
+static void add_cfg_nodes(cfg_t& cfg, const label_t& caller_label, const label_t& entry_label) {
+    bool first = true;
+
+    // Get the label of the node to go to on returning from the macro.
+    basic_block_t& exit_to_node = cfg.get_node(cfg.next_nodes(caller_label).front());
+
+    // Construct the variable prefix to use for the new stack frame,
+    // and store a copy in the CallLocal instruction since the instruction-specific
+    // labels may only exist until the CFG is simplified.
+    basic_block_t& caller_node = cfg.get_node(caller_label);
+    std::string stack_frame_prefix = to_string(caller_label);
+    for (auto& inst : caller_node) {
+        if (const auto pcall = std::get_if<CallLocal>(&inst)) {
+            pcall->stack_frame_prefix = stack_frame_prefix;
+        }
+    }
+
+    // Walk the transitive closure of CFG nodes starting at entry_label and ending at
+    // any exit instruction.
+    std::set macro_labels{entry_label};
+    std::set seen_labels{entry_label};
+    while (!macro_labels.empty()) {
+        label_t macro_label = *macro_labels.begin();
+        macro_labels.erase(macro_label);
+
+        if (stack_frame_prefix == macro_label.stack_frame_prefix) {
+            throw std::runtime_error{stack_frame_prefix + ": illegal recursion"};
+        }
+
+        // Clone the macro block into a new block with the new stack frame prefix.
+        const label_t label(macro_label.from, macro_label.to, stack_frame_prefix);
+        auto& bb = cfg.insert(label);
+        for (auto inst : cfg.get_node(macro_label)) {
+            if (const auto pexit = std::get_if<Exit>(&inst)) {
+                pexit->stack_frame_prefix = label.stack_frame_prefix;
+            } else if (const auto pcall = std::get_if<Call>(&inst)) {
+                pcall->stack_frame_prefix = label.stack_frame_prefix;
+            }
+            bb.insert(inst);
+        }
+
+        if (first) {
+            // Add an edge from the caller to the new block.
+            first = false;
+            caller_node >> bb;
+        }
+
+        // Add an edge from any other predecessors.
+        for (const auto& prev_macro_nodes = cfg.prev_nodes(macro_label);
+             const auto& prev_macro_label : prev_macro_nodes) {
+            const label_t prev_label(prev_macro_label.from, prev_macro_label.to, to_string(caller_label));
+            if (const auto& labels = cfg.labels(); std::ranges::find(labels, prev_label) != labels.end()) {
+                cfg.get_node(prev_label) >> bb;
+            }
+        }
+
+        // Walk all successor nodes.
+        for (const auto& next_macro_nodes = cfg.next_nodes(macro_label);
+             const auto& next_macro_label : next_macro_nodes) {
+            if (next_macro_label == cfg.exit_label()) {
+                // This is an exit transition, so add edge to the block to execute
+                // upon returning from the macro.
+                bb >> exit_to_node;
+            } else if (!seen_labels.contains(next_macro_label)) {
+                // Push any other unprocessed successor label onto the list to be processed.
+                if (!macro_labels.contains(next_macro_label)) {
+                    macro_labels.insert(next_macro_label);
+                }
+                seen_labels.insert(macro_label);
+            }
+        }
+    }
+
+    // Remove the original edge from the caller node to its successor,
+    // since processing now goes through the function macro instead.
+    caller_node -= exit_to_node;
+
+    // Finally, recurse to replace any nested function macros.
+    string caller_label_str = to_string(caller_label);
+    long stack_frame_depth = std::ranges::count(caller_label_str, STACK_FRAME_DELIMITER) + 2;
+    constexpr int MAX_CALL_STACK_FRAMES = 8;
+    for (auto& macro_label : seen_labels) {
+        for (const label_t label(macro_label.from, macro_label.to, caller_label_str);
+             const auto& inst : cfg.get_node(label)) {
+            if (const auto pins = std::get_if<CallLocal>(&inst)) {
+                if (stack_frame_depth >= MAX_CALL_STACK_FRAMES) {
+                    throw std::runtime_error{"too many call stack frames"};
+                }
+                add_cfg_nodes(cfg, label, pins->target);
+            }
+        }
+    }
+}
+
 /// Convert an instruction sequence to a control-flow graph (CFG).
-static cfg_t instruction_seq_to_cfg(const InstructionSeq& insts, bool must_have_exit) {
+static cfg_t instruction_seq_to_cfg(const InstructionSeq& insts, const bool must_have_exit) {
     cfg_t cfg;
     std::optional<label_t> falling_from = {};
     bool first = true;
+
+    // Do a first pass ignoring all function macro calls.
     for (const auto& [label, inst, _] : insts) {
 
-        if (std::holds_alternative<Undefined>(inst))
+        if (std::holds_alternative<Undefined>(inst)) {
             continue;
+        }
 
         auto& bb = cfg.insert(label);
 
@@ -57,27 +158,39 @@ static cfg_t instruction_seq_to_cfg(const InstructionSeq& insts, bool must_have_
             cfg.get_node(*falling_from) >> bb;
             falling_from = {};
         }
-        if (has_fall(inst))
+        if (has_fall(inst)) {
             falling_from = label;
-        auto jump_target = get_jump(inst);
-        if (jump_target)
+        }
+        if (auto jump_target = get_jump(inst)) {
             bb >> cfg.insert(*jump_target);
+        }
 
-        if (std::holds_alternative<Exit>(inst))
+        if (std::holds_alternative<Exit>(inst)) {
             bb >> cfg.get_node(cfg.exit_label());
+        }
     }
     if (falling_from) {
-        if (must_have_exit)
+        if (must_have_exit) {
             throw std::invalid_argument{"fallthrough in last instruction"};
-        else
+        } else {
             cfg.get_node(*falling_from) >> cfg.get_node(cfg.exit_label());
+        }
+    }
+
+    // Now replace macros. We have to do this as a second pass so that
+    // we only add new nodes that are actually reachable, based on the
+    // results of the first pass.
+    for (auto& [label, inst, _] : insts) {
+        if (const auto pins = std::get_if<CallLocal>(&inst)) {
+            add_cfg_nodes(cfg, label, pins->target);
+        }
     }
 
     return cfg;
 }
 
 /// Get the inverse of a given comparison operation.
-static Condition::Op reverse(Condition::Op op) {
+static Condition::Op reverse(const Condition::Op op) {
     switch (op) {
     case Condition::Op::EQ: return Condition::Op::NE;
     case Condition::Op::NE: return Condition::Op::EQ;
@@ -102,7 +215,9 @@ static Condition::Op reverse(Condition::Op op) {
 }
 
 /// Get the inverse of a given comparison condition.
-static Condition reverse(Condition cond) { return {.op = reverse(cond.op), .left = cond.left, .right = cond.right, .is64 = cond.is64}; }
+static Condition reverse(const Condition& cond) {
+    return {.op = reverse(cond.op), .left = cond.left, .right = cond.right, .is64 = cond.is64};
+}
 
 template <typename T>
 static vector<label_t> unique(const std::pair<T, T>& be) {
@@ -135,7 +250,7 @@ static cfg_t to_nondet(const cfg_t& cfg) {
         auto nextlist = bb.next_blocks_set();
         if (nextlist.size() == 2) {
             label_t mid_label = this_label;
-            Jmp jmp = std::get<Jmp>(*bb.rbegin());
+            auto jmp = std::get<Jmp>(*bb.rbegin());
 
             nextlist.erase(jmp.target);
             label_t fallthrough = *nextlist.begin();
@@ -152,38 +267,38 @@ static cfg_t to_nondet(const cfg_t& cfg) {
                 jump_bb >> res.insert(next_label);
             }
         } else {
-            for (const auto& label : nextlist)
+            for (const auto& label : nextlist) {
                 newbb >> res.insert(label);
+            }
         }
     }
     return res;
 }
 
-/// Get the type of a given instruction.
+/// Get the type of given instruction.
 /// Most of these type names are also statistics header labels.
 static std::string instype(Instruction ins) {
-    if (std::holds_alternative<Call>(ins)) {
-        auto call = std::get<Call>(ins);
-        if (call.is_map_lookup) {
+    if (const auto pcall = std::get_if<Call>(&ins)) {
+        if (pcall->is_map_lookup) {
             return "call_1";
         }
-        if (call.pairs.empty()) {
-            if (std::all_of(call.singles.begin(), call.singles.end(),
-                            [](ArgSingle kr) { return kr.kind == ArgSingle::Kind::ANYTHING; })) {
+        if (pcall->pairs.empty()) {
+            if (std::ranges::all_of(pcall->singles,
+                                    [](const ArgSingle kr) { return kr.kind == ArgSingle::Kind::ANYTHING; })) {
                 return "call_nomem";
             }
         }
         return "call_mem";
     } else if (std::holds_alternative<Callx>(ins)) {
         return "callx";
-    } else if (std::holds_alternative<Mem>(ins)) {
-        return std::get<Mem>(ins).is_load ? "load" : "store";
+    } else if (const auto pimm = std::get_if<Mem>(&ins)) {
+        return pimm->is_load ? "load" : "store";
     } else if (std::holds_alternative<Atomic>(ins)) {
         return "load_store";
     } else if (std::holds_alternative<Packet>(ins)) {
         return "packet_access";
-    } else if (std::holds_alternative<Bin>(ins)) {
-        switch (std::get<Bin>(ins).op) {
+    } else if (const auto pins = std::get_if<Bin>(&ins)) {
+        switch (pins->op) {
         case Bin::Op::MOV:
         case Bin::Op::MOVSX8:
         case Bin::Op::MOVSX16:
@@ -203,9 +318,9 @@ static std::string instype(Instruction ins) {
 
 std::vector<std::string> stats_headers() {
     return {
-        "basic_blocks", "joins",       "other",      "jumps",         "assign",  "arith",
-        "load",         "store",       "load_store", "packet_access", "call_1",  "call_mem",
-        "call_nomem",   "reallocate",  "map_in_map", "arith64",       "arith32",
+        "basic_blocks", "joins",      "other",      "jumps",         "assign",  "arith",
+        "load",         "store",      "load_store", "packet_access", "call_1",  "call_mem",
+        "call_nomem",   "reallocate", "map_in_map", "arith64",       "arith32",
     };
 }
 
@@ -219,31 +334,33 @@ std::map<std::string, int> collect_stats(const cfg_t& cfg) {
         basic_block_t const& bb = cfg.get_node(this_label);
 
         for (Instruction ins : bb) {
-            if (std::holds_alternative<LoadMapFd>(ins)) {
-                if (std::get<LoadMapFd>(ins).mapfd == -1) {
+            if (const auto pins = std::get_if<LoadMapFd>(&ins)) {
+                if (pins->mapfd == -1) {
                     res["map_in_map"] = 1;
                 }
             }
-            if (std::holds_alternative<Call>(ins)) {
-                auto call = std::get<Call>(ins);
-                if (call.reallocate_packet)
+            if (const auto pins = std::get_if<Call>(&ins)) {
+                if (pins->reallocate_packet) {
                     res["reallocate"] = 1;
+                }
             }
-            if (std::holds_alternative<Bin>(ins)) {
-                auto const& bin = std::get<Bin>(ins);
-                res[bin.is64 ? "arith64" : "arith32"]++;
+            if (const auto pins = std::get_if<Bin>(&ins)) {
+                res[pins->is64 ? "arith64" : "arith32"]++;
             }
             res[instype(ins)]++;
         }
-        if (unique(bb.prev_blocks()).size() > 1)
+        if (unique(bb.prev_blocks()).size() > 1) {
             res["joins"]++;
-        if (unique(bb.prev_blocks()).size() > 1)
+        }
+        if (unique(bb.prev_blocks()).size() > 1) {
             res["jumps"]++;
+        }
     }
     return res;
 }
 
-cfg_t prepare_cfg(const InstructionSeq& prog, const program_info& info, bool simplify, bool must_have_exit) {
+cfg_t prepare_cfg(const InstructionSeq& prog, const program_info& info, const bool simplify,
+                  const bool must_have_exit) {
     // Convert the instruction sequence to a deterministic control-flow graph.
     cfg_t det_cfg = instruction_seq_to_cfg(prog, must_have_exit);
 

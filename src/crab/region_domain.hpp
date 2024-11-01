@@ -150,7 +150,7 @@ class region_domain_t final {
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& o) const {}
-    crab::bound_t get_loop_count_upper_bound();
+    crab::bound_t get_loop_count_upper_bound() const;
     void initialize_loop_counter(const label_t&);
     friend std::ostream& operator<<(std::ostream&, const region_domain_t&);
     string_invariant to_set();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <algorithm>
+#include <bit>
 #include <iostream>
 #include <set>
 #include <variant>
@@ -10,14 +11,14 @@
 
 #include <yaml-cpp/yaml.h>
 
-#include "asm_parse.hpp"
 #include "asm_ostream.hpp"
+#include "asm_parse.hpp"
 #include "ebpf_verifier.hpp"
 #include "ebpf_yaml.hpp"
 #include "string_constraints.hpp"
 
-using std::vector;
 using std::string;
+using std::vector;
 
 // The YAML tests for Call depend on Linux prototypes.
 // parse_instruction() in asm_parse.cpp explicitly uses
@@ -36,65 +37,58 @@ static EbpfHelperPrototype ebpf_get_helper_prototype(int32_t n) {
     return g_ebpf_platform_linux.get_helper_prototype(n);
 }
 
-static bool ebpf_is_helper_usable(int32_t n) {
-    return g_ebpf_platform_linux.is_helper_usable(n);
-}
+static bool ebpf_is_helper_usable(int32_t n) { return g_ebpf_platform_linux.is_helper_usable(n); }
 
-static void ebpf_parse_maps_section(vector<EbpfMapDescriptor>& map_descriptors, const char* data, size_t map_record_size, int map_count,
-                                    const struct ebpf_platform_t* platform, ebpf_verifier_options_t options) {
-}
+static void ebpf_parse_maps_section(vector<EbpfMapDescriptor>&, const char*, size_t, int, const ebpf_platform_t*,
+                                    ebpf_verifier_options_t) {}
 
-static EbpfMapDescriptor test_map_descriptor = {
-    .original_fd=0,
-    .type=0,
-    .key_size=sizeof(uint32_t),
-    .value_size=sizeof(uint32_t),
-    .max_entries=4,
-    .inner_map_fd=0
-};
+static EbpfMapDescriptor test_map_descriptor = {.original_fd = 0,
+                                                .type = 0,
+                                                .key_size = sizeof(uint32_t),
+                                                .value_size = sizeof(uint32_t),
+                                                .max_entries = 4,
+                                                .inner_map_fd = 0};
 
-static EbpfMapDescriptor& ebpf_get_map_descriptor(int map_fd) { return test_map_descriptor; }
+static EbpfMapDescriptor& ebpf_get_map_descriptor(int) { return test_map_descriptor; }
 
-ebpf_platform_t g_platform_test = {
-    .get_program_type = ebpf_get_program_type,
-    .get_helper_prototype = ebpf_get_helper_prototype,
-    .is_helper_usable = ebpf_is_helper_usable,
-    .map_record_size = 0,
-    .parse_maps_section = ebpf_parse_maps_section,
-    .get_map_descriptor = ebpf_get_map_descriptor,
-    .get_map_type = ebpf_get_map_type,
-    .legacy = true,
-    .callx = true
-};
+ebpf_platform_t g_platform_test = {.get_program_type = ebpf_get_program_type,
+                                   .get_helper_prototype = ebpf_get_helper_prototype,
+                                   .is_helper_usable = ebpf_is_helper_usable,
+                                   .map_record_size = 0,
+                                   .parse_maps_section = ebpf_parse_maps_section,
+                                   .get_map_descriptor = ebpf_get_map_descriptor,
+                                   .get_map_type = ebpf_get_map_type,
+                                   .supported_conformance_groups = bpf_conformance_groups_t::default_groups |
+                                                                   bpf_conformance_groups_t::packet |
+                                                                   bpf_conformance_groups_t::callx};
 
-static EbpfProgramType make_program_type(const string& name, ebpf_context_descriptor_t* context_descriptor) {
-    return EbpfProgramType{
-        .name=name,
-        .context_descriptor=context_descriptor,
-        .platform_specific_data=0,
-        .section_prefixes={},
-        .is_privileged=false
-    };
+static EbpfProgramType make_program_type(const string& name, const ebpf_context_descriptor_t* context_descriptor) {
+    return EbpfProgramType{.name = name,
+                           .context_descriptor = context_descriptor,
+                           .platform_specific_data = 0,
+                           .section_prefixes = {},
+                           .is_privileged = false};
 }
 
 static std::set<string> vector_to_set(const vector<string>& s) {
     std::set<string> res;
-    for (const auto& item : s)
+    for (const auto& item : s) {
         res.insert(item);
+    }
     return res;
 }
 
 std::set<string> operator-(const std::set<string>& a, const std::set<string>& b) {
     std::set<string> res;
-    std::set_difference(a.begin(), a.end(), b.begin(), b.end(), std::inserter(res, res.begin()));
+    std::ranges::set_difference(a, b, std::inserter(res, res.begin()));
     return res;
 }
 
-
 static string_invariant read_invariant(const vector<string>& raw_invariant) {
-    std::set<string> res = vector_to_set(raw_invariant);
-    if (res == std::set<string>{"_|_"})
+    const std::set<string> res = vector_to_set(raw_invariant);
+    if (res == std::set<string>{"_|_"}) {
         return string_invariant{};
+    }
     return string_invariant{res};
 }
 
@@ -111,8 +105,9 @@ static vector<string> parse_block(const YAML::Node& block_node) {
     vector<string> block;
     std::istringstream is{block_node.as<string>()};
     string line;
-    while (std::getline(is, line))
+    while (std::getline(is, line)) {
         block.emplace_back(line);
+    }
     return block;
 }
 
@@ -125,13 +120,14 @@ static auto parse_code(const YAML::Node& code_node) {
 }
 
 static std::set<string> as_set_empty_default(const YAML::Node& optional_node) {
-    if (!optional_node.IsDefined() || optional_node.IsNull())
+    if (!optional_node.IsDefined() || optional_node.IsNull()) {
         return {};
+    }
     return vector_to_set(optional_node.as<vector<string>>());
 }
 
 static RawTestCase parse_case(const YAML::Node& case_node) {
-    return RawTestCase {
+    return RawTestCase{
         .test_case = case_node["test-case"].as<string>(),
         .options = as_set_empty_default(case_node["options"]),
         .pre = case_node["pre"].as<vector<string>>(),
@@ -148,7 +144,7 @@ static InstructionSeq raw_cfg_to_instruction_seq(const vector<std::tuple<string,
     for (const auto& [label_name, raw_block] : raw_blocks) {
         label_name_to_label.emplace(label_name, label_index);
         // don't count large instructions as 2
-        label_index += (int)raw_block.size();
+        label_index += gsl::narrow<int>(raw_block.size());
     }
 
     InstructionSeq res;
@@ -157,8 +153,9 @@ static InstructionSeq raw_cfg_to_instruction_seq(const vector<std::tuple<string,
         for (const string& line : raw_block) {
             try {
                 const Instruction& ins = parse_instruction(line, label_name_to_label);
-                if (std::holds_alternative<Undefined>(ins))
+                if (std::holds_alternative<Undefined>(ins)) {
                     std::cout << "text:" << line << "; ins: " << ins << "\n";
+                }
                 res.emplace_back(label_index, ins, std::optional<btf_line_info_t>());
             } catch (const std::exception& e) {
                 std::cout << "text:" << line << "; error: " << e.what() << "\n";
@@ -173,9 +170,17 @@ static InstructionSeq raw_cfg_to_instruction_seq(const vector<std::tuple<string,
 static ebpf_verifier_options_t raw_options_to_options(const std::set<string>& raw_options) {
     ebpf_verifier_options_t options = ebpf_verifier_default_options;
 
-    // All YAML tests use no_simplify and !setup_constraints.
-    options.no_simplify = true;
+    // Use ~simplify for YAML tests unless otherwise specified.
+    options.simplify = false;
+
+    // All YAML tests use !setup_constraints.
     options.setup_constraints = false;
+
+    // Default to the machine's native endianness.
+    options.big_endian = (std::endian::native == std::endian::big);
+
+    // Default to not assuming assertions.
+    options.assume_assertions = false;
 
     for (const string& name : raw_options) {
         if (name == "!allow_division_by_zero") {
@@ -184,6 +189,14 @@ static ebpf_verifier_options_t raw_options_to_options(const std::set<string>& ra
             options.check_termination = true;
         } else if (name == "strict") {
             options.strict = true;
+        } else if (name == "simplify") {
+            options.simplify = true;
+        } else if (name == "big_endian") {
+            options.big_endian = true;
+        } else if (name == "!big_endian") {
+            options.big_endian = false;
+        } else if (name == "assume_assertions") {
+            options.assume_assertions = true;
         } else {
             throw std::runtime_error("Unknown option: " + name);
         }
@@ -192,14 +205,12 @@ static ebpf_verifier_options_t raw_options_to_options(const std::set<string>& ra
 }
 
 static TestCase read_case(const RawTestCase& raw_case) {
-    return TestCase{
-        .name = raw_case.test_case,
-        .options = raw_options_to_options(raw_case.options),
-        .assumed_pre_invariant = read_invariant(raw_case.pre),
-        .instruction_seq = raw_cfg_to_instruction_seq(raw_case.raw_blocks),
-        .expected_post_invariant = read_invariant(raw_case.post),
-        .expected_messages = raw_case.messages
-    };
+    return TestCase{.name = raw_case.test_case,
+                    .options = raw_options_to_options(raw_case.options),
+                    .assumed_pre_invariant = read_invariant(raw_case.pre),
+                    .instruction_seq = raw_cfg_to_instruction_seq(raw_case.raw_blocks),
+                    .expected_post_invariant = read_invariant(raw_case.post),
+                    .expected_messages = raw_case.messages};
 }
 
 static vector<TestCase> read_suite(const string& path) {
@@ -216,17 +227,18 @@ static std::set<string> extract_messages(const string& str) {
     boost::split(output, str, boost::is_any_of("\n"));
 
     std::set<string> actual_messages;
-    for (auto& item: output) {
+    for (auto& item : output) {
         boost::trim(item);
-        if (!item.empty())
+        if (!item.empty()) {
             actual_messages.insert(item);
+        }
     }
     return actual_messages;
 }
 
-template<typename T>
+template <typename T>
 static Diff<T> make_diff(const T& actual, const T& expected) {
-    return Diff<T> {
+    return Diff<T>{
         .unexpected = actual - expected,
         .unseen = expected - actual,
     };
@@ -237,7 +249,7 @@ std::optional<Failure> run_yaml_test_case(abstract_domain_kind domain, TestCase 
     if (debug) {
         test_case.options.print_failures = true;
         test_case.options.print_invariants = true;
-        test_case.options.no_simplify = true;
+        test_case.options.simplify = false;
     }
 
     ebpf_context_descriptor_t context_descriptor{64, 0, 4, -1};
@@ -247,41 +259,37 @@ std::optional<Failure> run_yaml_test_case(abstract_domain_kind domain, TestCase 
 
     std::ostringstream ss;
     const auto& [actual_last_invariant, result] = ebpf_analyze_program_for_test(
-        domain,
-        ss, test_case.instruction_seq,
-        test_case.assumed_pre_invariant,
-        info, test_case.options);
+        domain, ss, test_case.instruction_seq, test_case.assumed_pre_invariant, info, test_case.options);
     std::set<string> actual_messages = extract_messages(ss.str());
 
-    if (actual_last_invariant == test_case.expected_post_invariant && actual_messages == test_case.expected_messages)
+    if (actual_last_invariant == test_case.expected_post_invariant && actual_messages == test_case.expected_messages) {
         return {};
-    return Failure{
-        .invariant = make_diff(actual_last_invariant, test_case.expected_post_invariant),
-        .messages = make_diff(actual_messages, test_case.expected_messages)
-    };
+    }
+    return Failure{.invariant = make_diff(actual_last_invariant, test_case.expected_post_invariant),
+                   .messages = make_diff(actual_messages, test_case.expected_messages)};
 }
 
 template <typename T>
 static vector<T> vector_of(const std::vector<uint8_t>& bytes) {
     auto data = bytes.data();
-    auto size = bytes.size();
-    if ((size % sizeof(T) != 0) || size > UINT32_MAX || !data) {
+    const auto size = bytes.size();
+    if ((size % sizeof(T) != 0) || size > std::numeric_limits<uint32_t>::max() || !data) {
         throw std::runtime_error("Invalid argument to vector_of");
     }
-    return {(T*)data, (T*)(data + size)};
+    return {reinterpret_cast<const T*>(data), reinterpret_cast<const T*>(data + size)};
 }
 
 template <typename TS>
 void add_stack_variable(std::set<std::string>& more, int& offset, const std::vector<uint8_t>& memory_bytes) {
-    typedef typename std::make_unsigned<TS>::type TU;
+    using TU = std::make_unsigned_t<TS>;
     TS svalue;
     TU uvalue;
     memcpy(&svalue, memory_bytes.data() + offset + memory_bytes.size() - EBPF_STACK_SIZE, sizeof(TS));
     memcpy(&uvalue, memory_bytes.data() + offset + memory_bytes.size() - EBPF_STACK_SIZE, sizeof(TU));
-    more.insert("s[" + std::to_string(offset) + "..." + std::to_string(offset + sizeof(TS) - 1) +
-                "].svalue" + "=" + std::to_string(svalue));
-    more.insert("s[" + std::to_string(offset) + "..." + std::to_string(offset + sizeof(TU) - 1) +
-                "].uvalue" + "=" + std::to_string(uvalue));
+    more.insert("s[" + std::to_string(offset) + "..." + std::to_string(offset + sizeof(TS) - 1) + "].svalue" + "=" +
+                std::to_string(svalue));
+    more.insert("s[" + std::to_string(offset) + "..." + std::to_string(offset + sizeof(TU) - 1) + "].uvalue" + "=" +
+                std::to_string(uvalue));
     offset += sizeof(TS);
 }
 
@@ -294,7 +302,7 @@ string_invariant stack_contents_invariant(const std::vector<uint8_t>& memory_byt
                                   "s[" + std::to_string(EBPF_STACK_SIZE - memory_bytes.size()) + "..." +
                                       std::to_string(EBPF_STACK_SIZE - 1) + "].type=number"};
 
-    int offset = EBPF_STACK_SIZE - (int)memory_bytes.size();
+    int offset = EBPF_STACK_SIZE - gsl::narrow<int>(memory_bytes.size());
     if (offset % 2 != 0) {
         add_stack_variable<int8_t>(more, offset, memory_bytes);
     }
@@ -330,13 +338,13 @@ ConformanceTestResult run_conformance_test_case(const std::vector<uint8_t>& memo
     }
     raw_program raw_prog{.prog = insts};
     ebpf_platform_t platform = g_ebpf_platform_linux;
-    platform.callx = true;
+    platform.supported_conformance_groups |= bpf_conformance_groups_t::callx;
     raw_prog.info.platform = &platform;
 
     // Convert the raw program section to a set of instructions.
     std::variant<InstructionSeq, std::string> prog_or_error = unmarshal(raw_prog);
-    if (std::holds_alternative<string>(prog_or_error)) {
-        std::cerr << "unmarshaling error at " << std::get<string>(prog_or_error) << "\n";
+    if (auto prog = std::get_if<std::string>(&prog_or_error)) {
+        std::cerr << "unmarshaling error at " << *prog << "\n";
         return {};
     }
 
@@ -347,7 +355,7 @@ ConformanceTestResult run_conformance_test_case(const std::vector<uint8_t>& memo
         print(prog, std::cout, {});
         options.print_failures = true;
         options.print_invariants = true;
-        options.no_simplify = true;
+        options.simplify = false;
     }
 
     try {
@@ -361,7 +369,7 @@ ConformanceTestResult run_conformance_test_case(const std::vector<uint8_t>& memo
                 crab::number_t lb, ub;
                 if (invariant[10] == '[') {
                     lb = std::stoll(invariant.substr(11));
-                    ub = std::stoll(invariant.substr(invariant.find(",", 11) + 1));
+                    ub = std::stoll(invariant.substr(invariant.find(',', 11) + 1));
                 } else {
                     lb = ub = std::stoll(invariant.substr(10));
                 }
@@ -409,14 +417,14 @@ void print_failure(const Failure& failure, std::ostream& out) {
 
 bool all_suites(const string& path) {
     bool result = true;
-    for (const TestCase& test_case: read_suite(path)) {
-        result = result && bool(run_yaml_test_case(abstract_domain_kind::EBPF_DOMAIN, test_case));
+    for (const TestCase& test_case : read_suite(path)) {
+        result = result && static_cast<bool>(run_yaml_test_case(abstract_domain_kind::EBPF_DOMAIN, test_case));
     }
     return result;
 }
 
 void foreach_suite(const string& path, const std::function<void(const TestCase&)>& f) {
-    for (const TestCase& test_case: read_suite(path)) {
+    for (const TestCase& test_case : read_suite(path)) {
         f(test_case);
     }
 }

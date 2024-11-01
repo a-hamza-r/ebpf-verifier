@@ -165,7 +165,7 @@ void expression_t::write(std::ostream &o) const {
         i++;
     }
     if (auto s = _constant_term.singleton()) {
-        if ((int)*s != 0 || _symbol_terms.empty()) {
+        if ((cpp_int)*s != 0 || _symbol_terms.empty()) {
             if (!_symbol_terms.empty()) o << " + ";
             o <<  *s;
         }

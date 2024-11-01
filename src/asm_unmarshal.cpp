@@ -5,117 +5,122 @@
 #include <string>
 #include <vector>
 
-#include "ebpf_vm_isa.hpp"
-
 #include "asm_unmarshal.hpp"
+#include "crab_utils/num_safety.hpp"
+#include "ebpf_vm_isa.hpp"
 
 using std::string;
 using std::vector;
 
-int opcode_to_width(uint8_t opcode) {
+int opcode_to_width(const uint8_t opcode) {
     switch (opcode & INST_SIZE_MASK) {
     case INST_SIZE_B: return 1;
     case INST_SIZE_H: return 2;
     case INST_SIZE_W: return 4;
     case INST_SIZE_DW: return 8;
+    default: CRAB_ERROR("unexpected opcode", opcode);
     }
-    assert(false);
-    return {};
 }
 
-uint8_t width_to_opcode(int width) {
+uint8_t width_to_opcode(const int width) {
     switch (width) {
     case 1: return INST_SIZE_B;
     case 2: return INST_SIZE_H;
     case 4: return INST_SIZE_W;
     case 8: return INST_SIZE_DW;
+    default: CRAB_ERROR("unexpected width", width);
     }
-    assert(false);
-    return {};
 }
 
 template <typename T>
 void compare(const string& field, T actual, T expected) {
-    if (actual != expected)
-        std::cerr << field << ": (actual) " << std::hex << (int)actual << " != " << (int)expected << " (expected)\n";
+    if (actual != expected) {
+        std::cerr << field << ": (actual) " << std::hex << static_cast<int>(actual)
+                  << " != " << static_cast<int>(expected) << " (expected)\n";
+    }
 }
 
-static std::string make_opcode_message(const char* msg, uint8_t opcode) {
+static std::string make_opcode_message(const char* msg, const uint8_t opcode) {
     std::ostringstream oss;
-    oss << msg << " op 0x" << std::hex << (int)opcode;
+    oss << msg << " op 0x" << std::hex << static_cast<int>(opcode);
     return oss.str();
 }
 
 struct InvalidInstruction : std::invalid_argument {
     size_t pc;
-    explicit InvalidInstruction(size_t pc, const char* what) : std::invalid_argument{what}, pc{pc} {}
-    InvalidInstruction(size_t pc, std::string what) : std::invalid_argument{what}, pc{pc} {}
-    InvalidInstruction(size_t pc, uint8_t opcode) : std::invalid_argument{make_opcode_message("bad instruction", opcode)}, pc{pc} {}
+    explicit InvalidInstruction(const size_t pc, const char* what) : std::invalid_argument{what}, pc{pc} {}
+    InvalidInstruction(const size_t pc, const std::string& what) : std::invalid_argument{what}, pc{pc} {}
+    InvalidInstruction(const size_t pc, const uint8_t opcode)
+        : std::invalid_argument{make_opcode_message("bad instruction", opcode)}, pc{pc} {}
 };
 
 struct UnsupportedMemoryMode : std::invalid_argument {
     explicit UnsupportedMemoryMode(const char* what) : std::invalid_argument{what} {}
 };
 
-static auto getMemIsLoad(uint8_t opcode) -> bool {
+static auto getMemIsLoad(const uint8_t opcode) -> bool {
     switch (opcode & INST_CLS_MASK) {
     case INST_CLS_LD:
     case INST_CLS_LDX: return true;
     case INST_CLS_ST:
     case INST_CLS_STX: return false;
+    default: CRAB_ERROR("unexpected opcode", opcode);
     }
-    return {};
 }
 
-static auto getMemWidth(uint8_t opcode) -> int {
+static auto getMemWidth(const uint8_t opcode) -> int {
     switch (opcode & INST_SIZE_MASK) {
     case INST_SIZE_B: return 1;
     case INST_SIZE_H: return 2;
     case INST_SIZE_W: return 4;
     case INST_SIZE_DW: return 8;
+    default: CRAB_ERROR("unexpected opcode", opcode);
     }
-    return {};
 }
 
-// static auto getMemX(uint8_t opcode) -> bool {
-//     switch (opcode & INST_CLS_MASK) {
-//         case INST_CLS_LD : return false;
-//         case INST_CLS_ST : return false;
-//         case INST_CLS_LDX: return true;
-//         case INST_CLS_STX: return true;
-//     }
-//     return {};
-// }
-
-static Instruction shift32(Reg dst, Bin::Op op) {
-    return (Instruction)Bin{.op=op,.dst = dst, .v = Imm{32}, .is64=true, .lddw=false};
+static Instruction shift32(const Reg dst, const Bin::Op op) {
+    return Bin{.op = op, .dst = dst, .v = Imm{32}, .is64 = true, .lddw = false};
 }
 
 struct Unmarshaller {
     vector<vector<string>>& notes;
     const program_info& info;
+    // ReSharper disable once CppMemberFunctionMayBeConst
     void note(const string& what) { notes.back().emplace_back(what); }
+    // ReSharper disable once CppMemberFunctionMayBeConst
     void note_next_pc() { notes.emplace_back(); }
-    explicit Unmarshaller(vector<vector<string>>& notes, const program_info& info) : notes{notes}, info{info} { note_next_pc(); }
+    explicit Unmarshaller(vector<vector<string>>& notes, const program_info& info) : notes{notes}, info{info} {
+        note_next_pc();
+    }
 
-    auto getAluOp(size_t pc, ebpf_inst inst) -> std::variant<Bin::Op, Un::Op> {
+    auto getAluOp(const size_t pc, const ebpf_inst inst) -> std::variant<Bin::Op, Un::Op> {
         // First handle instructions that support a non-zero offset.
+        const bool is64 = (inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64;
         switch (inst.opcode & INST_ALU_OP_MASK) {
         case INST_ALU_OP_DIV:
+            if (!info.platform->supports_group(is64 ? bpf_conformance_groups_t::divmul64
+                                                    : bpf_conformance_groups_t::divmul32)) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
             switch (inst.offset) {
             case 0: return Bin::Op::UDIV;
             case 1: return Bin::Op::SDIV;
             default: throw InvalidInstruction(pc, make_opcode_message("invalid offset for", inst.opcode));
             }
         case INST_ALU_OP_MOD:
+            if (!info.platform->supports_group(is64 ? bpf_conformance_groups_t::divmul64
+                                                    : bpf_conformance_groups_t::divmul32)) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
             switch (inst.offset) {
             case 0: return Bin::Op::UMOD;
             case 1: return Bin::Op::SMOD;
             default: throw InvalidInstruction(pc, make_opcode_message("invalid offset for", inst.opcode));
             }
         case INST_ALU_OP_MOV:
-            if (inst.offset > 0 && !(inst.opcode & INST_SRC_REG))
+            if (inst.offset > 0 && !(inst.opcode & INST_SRC_REG)) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
+            }
             switch (inst.offset) {
             case 0: return Bin::Op::MOV;
             case 8: return Bin::Op::MOVSX8;
@@ -123,67 +128,103 @@ struct Unmarshaller {
             case 32: return Bin::Op::MOVSX32;
             default: throw InvalidInstruction(pc, make_opcode_message("invalid offset for", inst.opcode));
             }
+        default: break;
         }
 
         // All the rest require a zero offset.
-        if (inst.offset != 0)
+        if (inst.offset != 0) {
             throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
+        }
 
         switch (inst.opcode & INST_ALU_OP_MASK) {
         case INST_ALU_OP_ADD: return Bin::Op::ADD;
         case INST_ALU_OP_SUB: return Bin::Op::SUB;
-        case INST_ALU_OP_MUL: return Bin::Op::MUL;
+        case INST_ALU_OP_MUL:
+            if (!info.platform->supports_group(is64 ? bpf_conformance_groups_t::divmul64
+                                                    : bpf_conformance_groups_t::divmul32)) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
+            return Bin::Op::MUL;
         case INST_ALU_OP_OR: return Bin::Op::OR;
         case INST_ALU_OP_AND: return Bin::Op::AND;
         case INST_ALU_OP_LSH: return Bin::Op::LSH;
         case INST_ALU_OP_RSH: return Bin::Op::RSH;
         case INST_ALU_OP_NEG:
             // Negation is a unary operation. The SRC bit, src, and imm must be all 0.
-            if (inst.opcode & INST_SRC_REG)
+            if (inst.opcode & INST_SRC_REG) {
                 throw InvalidInstruction{pc, inst.opcode};
-            if (inst.src != 0)
+            }
+            if (inst.src != 0) {
                 throw InvalidInstruction{pc, inst.opcode};
-            if (inst.imm != 0)
+            }
+            if (inst.imm != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
+            }
             return Un::Op::NEG;
         case INST_ALU_OP_XOR: return Bin::Op::XOR;
         case INST_ALU_OP_ARSH:
-            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_ALU)
+            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_ALU) {
                 note("arsh32 is not allowed");
+            }
             return Bin::Op::ARSH;
         case INST_ALU_OP_END:
-            if (inst.src != 0)
+            if (inst.src != 0) {
                 throw InvalidInstruction{pc, inst.opcode};
+            }
             if ((inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64) {
-                if (inst.opcode & INST_END_BE)
+                if (inst.opcode & INST_END_BE) {
                     throw InvalidInstruction(pc, inst.opcode);
+                }
                 switch (inst.imm) {
-                case 16: return Un::Op::SWAP16;
-                case 32: return Un::Op::SWAP32;
-                case 64: return Un::Op::SWAP64;
+                case 16:
+                    if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
+                        throw InvalidInstruction(pc, inst.opcode);
+                    }
+                    return Un::Op::SWAP16;
+                case 32:
+                    if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
+                        throw InvalidInstruction(pc, inst.opcode);
+                    }
+                    return Un::Op::SWAP32;
+                case 64:
+                    if (!info.platform->supports_group(bpf_conformance_groups_t::base64)) {
+                        throw InvalidInstruction(pc, inst.opcode);
+                    }
+                    return Un::Op::SWAP64;
                 default: throw InvalidInstruction(pc, "unsupported immediate");
                 }
             }
             switch (inst.imm) {
-            case 16: return (inst.opcode & INST_END_BE) ? Un::Op::BE16 : Un::Op::LE16;
-            case 32: return (inst.opcode & INST_END_BE) ? Un::Op::BE32 : Un::Op::LE32;
-            case 64: return (inst.opcode & INST_END_BE) ? Un::Op::BE64 : Un::Op::LE64;
-            default:
-                throw InvalidInstruction(pc, "unsupported immediate");
+            case 16:
+                if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
+                    throw InvalidInstruction(pc, inst.opcode);
+                }
+                return (inst.opcode & INST_END_BE) ? Un::Op::BE16 : Un::Op::LE16;
+            case 32:
+                if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
+                    throw InvalidInstruction(pc, inst.opcode);
+                }
+                return (inst.opcode & INST_END_BE) ? Un::Op::BE32 : Un::Op::LE32;
+            case 64:
+                if (!info.platform->supports_group(bpf_conformance_groups_t::base64)) {
+                    throw InvalidInstruction(pc, inst.opcode);
+                }
+                return (inst.opcode & INST_END_BE) ? Un::Op::BE64 : Un::Op::LE64;
+            default: throw InvalidInstruction(pc, "unsupported immediate");
             }
         case 0xe0: throw InvalidInstruction{pc, inst.opcode};
         case 0xf0: throw InvalidInstruction{pc, inst.opcode};
+        default: return {};
         }
-        return {};
     }
 
-    auto getAtomicOp(size_t pc, ebpf_inst inst) -> Atomic::Op {
-        Atomic::Op op = (Atomic::Op)(inst.imm & ~INST_FETCH);
-        switch (op) {
+    static auto getAtomicOp(const size_t pc, const ebpf_inst inst) -> Atomic::Op {
+        switch (const auto op = gsl::narrow<Atomic::Op>(inst.imm & ~INST_FETCH)) {
         case Atomic::Op::XCHG:
         case Atomic::Op::CMPXCHG:
-            if ((inst.imm & INST_FETCH) == 0)
+            if ((inst.imm & INST_FETCH) == 0) {
                 throw InvalidInstruction(pc, "unsupported immediate");
+            }
         case Atomic::Op::ADD:
         case Atomic::Op::OR:
         case Atomic::Op::AND:
@@ -192,24 +233,25 @@ struct Unmarshaller {
         throw InvalidInstruction(pc, "unsupported immediate");
     }
 
-    uint64_t sign_extend(int32_t imm) { return (uint64_t)(int64_t)imm; }
+    static uint64_t sign_extend(const int32_t imm) { return crab::to_unsigned(int64_t{imm}); }
 
-    uint64_t zero_extend(int32_t imm) { return (uint64_t)(uint32_t)imm; }
+    static uint64_t zero_extend(const int32_t imm) { return uint64_t{crab::to_unsigned(imm)}; }
 
-    auto getBinValue(pc_t pc, ebpf_inst inst) -> Value {
+    static auto getBinValue(const pc_t pc, const ebpf_inst inst) -> Value {
         if (inst.opcode & INST_SRC_REG) {
-            if (inst.imm != 0)
+            if (inst.imm != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
+            }
             return Reg{inst.src};
-        } else {
-            if (inst.src != 0)
-                throw InvalidInstruction{pc, inst.opcode};
-            // Imm is a signed 32-bit number.  Sign extend it to 64-bits for storage.
-            return Imm{sign_extend(inst.imm)};
         }
+        if (inst.src != 0) {
+            throw InvalidInstruction{pc, inst.opcode};
+        }
+        // Imm is a signed 32-bit number.  Sign extend it to 64-bits for storage.
+        return Imm{sign_extend(inst.imm)};
     }
 
-    static auto getJmpOp(size_t pc, uint8_t opcode) -> Condition::Op {
+    static auto getJmpOp(const size_t pc, const uint8_t opcode) -> Condition::Op {
         using Op = Condition::Op;
         switch ((opcode >> 4) & 0xF) {
         case 0x0: return {}; // goto
@@ -228,57 +270,75 @@ struct Unmarshaller {
         case 0xd: return Op::SLE;
         case 0xe: throw InvalidInstruction(pc, opcode);
         case 0xf: throw InvalidInstruction(pc, opcode);
+        default: return {};
         }
-        return {};
     }
 
-    auto makeMemOp(pc_t pc, ebpf_inst inst) -> Instruction {
-        if (inst.dst > R10_STACK_POINTER || inst.src > R10_STACK_POINTER)
+    auto makeMemOp(const pc_t pc, const ebpf_inst inst) -> Instruction {
+        if (inst.dst > R10_STACK_POINTER || inst.src > R10_STACK_POINTER) {
             throw InvalidInstruction(pc, "bad register");
+        }
 
-        int width = getMemWidth(inst.opcode);
-        bool isLD = (inst.opcode & INST_CLS_MASK) == INST_CLS_LD;
-        switch (inst.opcode & INST_MODE_MASK) {
-        case INST_MODE_IMM:
+        const int width = getMemWidth(inst.opcode);
+        if (!info.platform->supports_group((width == sizeof(uint64_t)) ? bpf_conformance_groups_t::base64
+                                                                       : bpf_conformance_groups_t::base32)) {
             throw InvalidInstruction(pc, inst.opcode);
+        }
+        const bool isLD = (inst.opcode & INST_CLS_MASK) == INST_CLS_LD;
+        switch (inst.opcode & INST_MODE_MASK) {
+        case INST_MODE_IMM: throw InvalidInstruction(pc, inst.opcode);
+
         case INST_MODE_ABS:
-            if (!info.platform->legacy || !isLD || (width == 8))
+            if (!info.platform->supports_group(bpf_conformance_groups_t::packet) || !isLD || (width == 8)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.dst != 0)
+            }
+            if (inst.dst != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero dst for register", inst.opcode));
-            if (inst.src > 0)
+            }
+            if (inst.src > 0) {
                 throw InvalidInstruction(pc, make_opcode_message("bad instruction", inst.opcode));
-            if (inst.offset != 0)
+            }
+            if (inst.offset != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
+            }
             return Packet{.width = width, .offset = inst.imm, .regoffset = {}};
 
         case INST_MODE_IND:
-            if (!info.platform->legacy || !isLD || (width == 8))
+            if (!info.platform->supports_group(bpf_conformance_groups_t::packet) || !isLD || (width == 8)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.dst != 0)
+            }
+            if (inst.dst != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero dst for register", inst.opcode));
-            if (inst.src > R10_STACK_POINTER)
+            }
+            if (inst.src > R10_STACK_POINTER) {
                 throw InvalidInstruction(pc, "bad register");
-            if (inst.offset != 0)
+            }
+            if (inst.offset != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
+            }
             return Packet{.width = width, .offset = inst.imm, .regoffset = Reg{inst.src}};
 
         case INST_MODE_MEM: {
-            if (isLD)
+            if (isLD) {
                 throw InvalidInstruction(pc, inst.opcode);
-            bool isLoad = getMemIsLoad(inst.opcode);
-            if (isLoad && inst.dst == R10_STACK_POINTER)
+            }
+            const bool isLoad = getMemIsLoad(inst.opcode);
+            if (isLoad && inst.dst == R10_STACK_POINTER) {
                 throw InvalidInstruction(pc, "cannot modify r10");
-            bool isImm = !(inst.opcode & 1);
-            if (isImm && inst.src != 0)
+            }
+            const bool isImm = !(inst.opcode & 1);
+            if (isImm && inst.src != 0) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (!isImm && inst.imm != 0)
+            }
+            if (!isImm && inst.imm != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
+            }
 
             assert(!(isLoad && isImm));
-            uint8_t basereg = isLoad ? inst.src : inst.dst;
+            const uint8_t basereg = isLoad ? inst.src : inst.dst;
 
-            if (basereg == R10_STACK_POINTER && (inst.offset + opcode_to_width(inst.opcode) > 0 || inst.offset < -EBPF_STACK_SIZE)) {
+            if (basereg == R10_STACK_POINTER &&
+                (inst.offset + opcode_to_width(inst.opcode) > 0 || inst.offset < -EBPF_STACK_SIZE)) {
                 note("Stack access out of bounds");
             }
             auto res = Mem{
@@ -288,8 +348,9 @@ struct Unmarshaller {
                         .basereg = Reg{basereg},
                         .offset = inst.offset,
                     },
-                .value =
-                    isLoad ? (Value)Reg{inst.dst} : (isImm ? (Value)Imm{zero_extend(inst.imm)} : (Value)Reg{inst.src}),
+                .value = isLoad  ? Value{Reg{inst.dst}}
+                         : isImm ? Value{Imm{zero_extend(inst.imm)}}
+                                 : Value{Reg{inst.src}},
                 .is_load = isLoad,
             };
             return res;
@@ -297,9 +358,14 @@ struct Unmarshaller {
 
         case INST_MODE_ATOMIC:
             if (((inst.opcode & INST_CLS_MASK) != INST_CLS_STX) ||
-                ((inst.opcode & INST_SIZE_MASK) != INST_SIZE_W &&
-                 (inst.opcode & INST_SIZE_MASK) != INST_SIZE_DW))
+                ((inst.opcode & INST_SIZE_MASK) != INST_SIZE_W && (inst.opcode & INST_SIZE_MASK) != INST_SIZE_DW)) {
                 throw InvalidInstruction(pc, inst.opcode);
+            }
+            if (!info.platform->supports_group(((inst.opcode & INST_SIZE_MASK) == INST_SIZE_DW)
+                                                   ? bpf_conformance_groups_t::atomic64
+                                                   : bpf_conformance_groups_t::atomic32)) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
             return Atomic{
                 .op = getAtomicOp(pc, inst),
                 .fetch = (inst.imm & INST_FETCH) == INST_FETCH,
@@ -313,43 +379,64 @@ struct Unmarshaller {
             };
         default: throw InvalidInstruction(pc, inst.opcode);
         }
-        return {};
     }
 
-    auto makeAluOp(size_t pc, ebpf_inst inst) -> Instruction {
-        if (inst.dst == R10_STACK_POINTER)
+    auto makeAluOp(const size_t pc, const ebpf_inst inst) -> Instruction {
+        const bool is64 = (inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64;
+        if (!info.platform->supports_group(is64 ? bpf_conformance_groups_t::base64
+                                                : bpf_conformance_groups_t::base32)) {
+            throw InvalidInstruction(pc, inst.opcode);
+        }
+        if (inst.dst == R10_STACK_POINTER) {
             throw InvalidInstruction(pc, "invalid target r10");
-        if (inst.dst > R10_STACK_POINTER || inst.src > R10_STACK_POINTER)
+        }
+        if (inst.dst > R10_STACK_POINTER || inst.src > R10_STACK_POINTER) {
             throw InvalidInstruction(pc, "bad register");
-        bool is64 = (inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64;
-        return std::visit(overloaded{[&](Un::Op op) -> Instruction { return Un{.op = op, .dst = Reg{inst.dst}, .is64 = is64}; },
-                                     [&](Bin::Op op) -> Instruction {
-                                         Bin res{
-                                             .op = op,
-                                             .dst = Reg{inst.dst},
-                                             .v = getBinValue(pc, inst),
-                                             .is64 = is64,
-                                         };
-                                         if (!thread_local_options.allow_division_by_zero && (op == Bin::Op::UDIV || op == Bin::Op::UMOD))
-                                             if (std::holds_alternative<Imm>(res.v) && std::get<Imm>(res.v).v == 0)
-                                                 note("division by zero");
-                                         return res;
-                                     }},
-                          getAluOp(pc, inst));
+        }
+        return std::visit(
+            overloaded{[&](const Un::Op op) -> Instruction { return Un{.op = op, .dst = Reg{inst.dst}, .is64 = is64}; },
+                       [&](const Bin::Op op) -> Instruction {
+                           Bin res{
+                               .op = op,
+                               .dst = Reg{inst.dst},
+                               .v = getBinValue(pc, inst),
+                               .is64 = is64,
+                           };
+                           if (!thread_local_options.allow_division_by_zero &&
+                               (op == Bin::Op::UDIV || op == Bin::Op::UMOD)) {
+                               if (const auto pimm = std::get_if<Imm>(&res.v)) {
+                                   if (pimm->v == 0) {
+                                       note("division by zero");
+                                   }
+                               }
+                           }
+                           return res;
+                       }},
+            getAluOp(pc, inst));
     }
 
-    auto makeLddw(ebpf_inst inst, int32_t next_imm, const vector<ebpf_inst>& insts, pc_t pc) -> Instruction {
-        if (pc >= insts.size() - 1)
+    [[nodiscard]]
+    auto makeLddw(const ebpf_inst inst, const int32_t next_imm, const vector<ebpf_inst>& insts, const pc_t pc) const
+        -> Instruction {
+        if (!info.platform->supports_group(bpf_conformance_groups_t::base64)) {
+            throw InvalidInstruction{pc, inst.opcode};
+        }
+        if (pc >= insts.size() - 1) {
             throw InvalidInstruction(pc, "incomplete lddw");
-        ebpf_inst next = insts[pc + 1];
-        if (next.opcode != 0 || next.dst != 0 || next.src != 0 || next.offset != 0)
+        }
+        const ebpf_inst next = insts[pc + 1];
+        if (next.opcode != 0 || next.dst != 0 || next.src != 0 || next.offset != 0) {
             throw InvalidInstruction(pc, "invalid lddw");
-        if (inst.src > 1)
+        }
+        if (inst.src > 1) {
             throw InvalidInstruction(pc, make_opcode_message("bad instruction", inst.opcode));
-        if (inst.offset != 0)
+        }
+        if (inst.offset != 0) {
             throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
-        if (inst.dst > R10_STACK_POINTER)
+        }
+        if (inst.dst > R10_STACK_POINTER) {
             throw InvalidInstruction(pc, "bad register");
+        }
 
         if (inst.src == 1) {
             // magic number, meaning we're a per-process file descriptor defining the map.
@@ -369,7 +456,7 @@ struct Unmarshaller {
         };
     }
 
-    static ArgSingle::Kind toArgSingleKind(ebpf_argument_type_t t) {
+    static ArgSingle::Kind toArgSingleKind(const ebpf_argument_type_t t) {
         switch (t) {
         case EBPF_ARGUMENT_TYPE_ANYTHING: return ArgSingle::Kind::ANYTHING;
         case EBPF_ARGUMENT_TYPE_PTR_TO_MAP: return ArgSingle::Kind::MAP_FD;
@@ -382,7 +469,7 @@ struct Unmarshaller {
         return {};
     }
 
-    static ArgPair::Kind toArgPairKind(ebpf_argument_type_t t) {
+    static ArgPair::Kind toArgPairKind(const ebpf_argument_type_t t) {
         switch (t) {
         case EBPF_ARGUMENT_TYPE_PTR_TO_READABLE_MEM_OR_NULL: return ArgPair::Kind::PTR_TO_READABLE_MEM_OR_NULL;
         case EBPF_ARGUMENT_TYPE_PTR_TO_READABLE_MEM: return ArgPair::Kind::PTR_TO_READABLE_MEM;
@@ -392,8 +479,9 @@ struct Unmarshaller {
         return {};
     }
 
-    auto makeCall(int32_t imm) const {
-        EbpfHelperPrototype proto = info.platform->get_helper_prototype(imm);
+    [[nodiscard]]
+    auto makeCall(const int32_t imm) const -> Call {
+        const EbpfHelperPrototype proto = info.platform->get_helper_prototype(imm);
         if (proto.return_type == EBPF_RETURN_TYPE_UNSUPPORTED) {
             throw std::runtime_error(std::string("unsupported function: ") + proto.name);
         }
@@ -402,14 +490,9 @@ struct Unmarshaller {
         res.name = proto.name;
         res.reallocate_packet = proto.reallocate_packet;
         res.is_map_lookup = proto.return_type == EBPF_RETURN_TYPE_PTR_TO_MAP_VALUE_OR_NULL;
-        std::array<ebpf_argument_type_t, 7> args = {{
-            EBPF_ARGUMENT_TYPE_DONTCARE,
-            proto.argument_type[0],
-            proto.argument_type[1],
-            proto.argument_type[2],
-            proto.argument_type[3],
-            proto.argument_type[4],
-            EBPF_ARGUMENT_TYPE_DONTCARE}};
+        const std::array<ebpf_argument_type_t, 7> args = {
+            {EBPF_ARGUMENT_TYPE_DONTCARE, proto.argument_type[0], proto.argument_type[1], proto.argument_type[2],
+             proto.argument_type[3], proto.argument_type[4], EBPF_ARGUMENT_TYPE_DONTCARE}};
         for (size_t i = 1; i < args.size() - 1; i++) {
             switch (args[i]) {
             case EBPF_ARGUMENT_TYPE_UNSUPPORTED: {
@@ -422,15 +505,41 @@ struct Unmarshaller {
             case EBPF_ARGUMENT_TYPE_PTR_TO_MAP_KEY:
             case EBPF_ARGUMENT_TYPE_PTR_TO_MAP_VALUE:
             case EBPF_ARGUMENT_TYPE_PTR_TO_CTX:
-                res.singles.push_back({toArgSingleKind(args[i]), Reg{(uint8_t)i}});
+                res.singles.push_back({toArgSingleKind(args[i]), Reg{gsl::narrow<uint8_t>(i)}});
                 break;
-            case EBPF_ARGUMENT_TYPE_CONST_SIZE: assert(false); continue;
-            case EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO: assert(false); continue;
+            case EBPF_ARGUMENT_TYPE_CONST_SIZE: {
+                // Sanity check: This argument should never be seen in isolation.
+                throw std::runtime_error(
+                    std::string("mismatched EBPF_ARGUMENT_TYPE_PTR_TO* and EBPF_ARGUMENT_TYPE_CONST_SIZE: ") +
+                    proto.name);
+            }
+            case EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO: {
+                // Sanity check: This argument should never be seen in isolation.
+                throw std::runtime_error(
+                    std::string("mismatched EBPF_ARGUMENT_TYPE_PTR_TO* and EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO: ") +
+                    proto.name);
+            }
             case EBPF_ARGUMENT_TYPE_PTR_TO_READABLE_MEM_OR_NULL:
             case EBPF_ARGUMENT_TYPE_PTR_TO_READABLE_MEM:
             case EBPF_ARGUMENT_TYPE_PTR_TO_WRITABLE_MEM:
-                bool can_be_zero = (args[i + 1] == EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO);
-                res.pairs.push_back({toArgPairKind(args[i]), Reg{(uint8_t)i}, Reg{(uint8_t)(i + 1)}, can_be_zero});
+                // Sanity check: This argument must be followed by EBPF_ARGUMENT_TYPE_CONST_SIZE or
+                // EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO.
+                if (args.size() - i < 2) {
+                    throw std::runtime_error(
+                        std::string(
+                            "missing EBPF_ARGUMENT_TYPE_CONST_SIZE or EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO: ") +
+                        proto.name);
+                }
+                if (args[i + 1] != EBPF_ARGUMENT_TYPE_CONST_SIZE &&
+                    args[i + 1] != EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO) {
+                    throw std::runtime_error(
+                        std::string("Pointer argument not followed by EBPF_ARGUMENT_TYPE_CONST_SIZE or "
+                                    "EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO: ") +
+                        proto.name);
+                }
+                const bool can_be_zero = (args[i + 1] == EBPF_ARGUMENT_TYPE_CONST_SIZE_OR_ZERO);
+                res.pairs.push_back({toArgPairKind(args[i]), Reg{gsl::narrow<uint8_t>(i)},
+                                     Reg{gsl::narrow<uint8_t>(i + 1)}, can_be_zero});
                 i++;
                 break;
             }
@@ -438,97 +547,151 @@ struct Unmarshaller {
         return res;
     }
 
-    auto makeCallx(ebpf_inst inst, pc_t pc) const {
+    /// Given a program counter and an offset, get the label of the target instruction.
+    static label_t getJumpTarget(const int32_t offset, const vector<ebpf_inst>& insts, const pc_t pc) {
+        const pc_t new_pc = pc + 1 + offset;
+        if (new_pc >= insts.size()) {
+            throw InvalidInstruction(pc, "jump out of bounds");
+        }
+        if (insts[new_pc].opcode == 0) {
+            throw InvalidInstruction(pc, "jump to middle of lddw");
+        }
+        return label_t{gsl::narrow<int>(new_pc)};
+    }
+
+    static auto makeCallLocal(const ebpf_inst inst, const vector<ebpf_inst>& insts, const pc_t pc) -> CallLocal {
+        if (inst.opcode & INST_SRC_REG) {
+            throw InvalidInstruction(pc, inst.opcode);
+        }
+        if (inst.dst != 0) {
+            throw InvalidInstruction(pc, make_opcode_message("nonzero dst for register", inst.opcode));
+        }
+        return CallLocal{.target = getJumpTarget(inst.imm, insts, pc)};
+    }
+
+    static auto makeCallx(const ebpf_inst inst, const pc_t pc) -> Callx {
         // callx puts the register number in the 'dst' field rather than the 'src' field.
-        if (inst.dst > R10_STACK_POINTER)
+        if (inst.dst > R10_STACK_POINTER) {
             throw InvalidInstruction(pc, "bad register");
+        }
         if (inst.imm != 0) {
             // Clang prior to v19 put the register number into the 'imm' field.
-            if (inst.dst > 0)
+            if (inst.dst > 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
-            if (inst.imm < 0 || inst.imm > R10_STACK_POINTER)
+            }
+            if (inst.imm < 0 || inst.imm > R10_STACK_POINTER) {
                 throw InvalidInstruction(pc, "bad register");
-            return Callx{(uint8_t)inst.imm};
+            }
+            return Callx{gsl::narrow<uint8_t>(inst.imm)};
         }
         return Callx{inst.dst};
     }
 
-    auto makeJmp(ebpf_inst inst, const vector<ebpf_inst>& insts, pc_t pc) -> Instruction {
+    [[nodiscard]]
+    auto makeJmp(const ebpf_inst inst, const vector<ebpf_inst>& insts, const pc_t pc) const -> Instruction {
         switch ((inst.opcode >> 4) & 0xF) {
         case INST_CALL:
-            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP)
+            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (!info.platform->callx && (inst.opcode & INST_SRC_REG))
+            }
+            if (!info.platform->supports_group(bpf_conformance_groups_t::callx) && (inst.opcode & INST_SRC_REG)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.src > 0)
+            }
+            if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.offset != 0)
+            }
+            if (inst.src >= INST_CALL_BTF_HELPER) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
+            if (inst.offset != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
-            if (inst.opcode & INST_SRC_REG)
+            }
+            if (inst.src == INST_CALL_LOCAL) {
+                return makeCallLocal(inst, insts, pc);
+            }
+            if (inst.opcode & INST_SRC_REG) {
                 return makeCallx(inst, pc);
-            if (inst.dst != 0)
+            }
+            if (inst.dst != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero dst for register", inst.opcode));
-            if (!info.platform->is_helper_usable(inst.imm))
+            }
+            if (!info.platform->is_helper_usable(inst.imm)) {
                 throw InvalidInstruction(pc, "invalid helper function id " + std::to_string(inst.imm));
+            }
             return makeCall(inst.imm);
         case INST_EXIT:
-            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP || (inst.opcode & INST_SRC_REG))
+            if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.src != 0)
+            }
+            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP || (inst.opcode & INST_SRC_REG)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.dst != 0)
+            }
+            if (inst.src != 0) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
+            if (inst.dst != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero dst for register", inst.opcode));
-            if (inst.imm != 0)
+            }
+            if (inst.imm != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
-            if (inst.offset != 0)
+            }
+            if (inst.offset != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
+            }
             return Exit{};
         case INST_JA:
-            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP &&
-                (inst.opcode & INST_CLS_MASK) != INST_CLS_JMP32)
+            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP && (inst.opcode & INST_CLS_MASK) != INST_CLS_JMP32) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if (inst.opcode & INST_SRC_REG)
+            }
+            if (!info.platform->supports_group(bpf_conformance_groups_t::base32)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_JMP && (inst.imm != 0))
+            }
+            if (inst.opcode & INST_SRC_REG) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
+            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_JMP && (inst.imm != 0)) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
-            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_JMP32 && (inst.offset != 0))
+            }
+            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_JMP32 && (inst.offset != 0)) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero offset for", inst.opcode));
-            if (inst.dst != 0)
+            }
+            if (inst.dst != 0) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero dst for register", inst.opcode));
+            }
         default: {
             // First validate the opcode, src, and imm.
-            auto op = getJmpOp(pc, inst.opcode);
-            if (!(inst.opcode & INST_SRC_REG) && (inst.src != 0))
+            const auto is64 = (inst.opcode & INST_CLS_MASK) == INST_CLS_JMP;
+            if (!info.platform->supports_group(is64 ? bpf_conformance_groups_t::base64
+                                                    : bpf_conformance_groups_t::base32)) {
                 throw InvalidInstruction(pc, inst.opcode);
-            if ((inst.opcode & INST_SRC_REG) && (inst.imm != 0))
+            }
+            const auto op = getJmpOp(pc, inst.opcode);
+            if (!(inst.opcode & INST_SRC_REG) && (inst.src != 0)) {
+                throw InvalidInstruction(pc, inst.opcode);
+            }
+            if ((inst.opcode & INST_SRC_REG) && (inst.imm != 0)) {
                 throw InvalidInstruction(pc, make_opcode_message("nonzero imm for", inst.opcode));
-
-            int32_t offset = (inst.opcode == INST_OP_JA32) ? inst.imm : inst.offset;
-            pc_t new_pc = pc + 1 + offset;
-            if (new_pc >= insts.size())
-                throw InvalidInstruction(pc, "jump out of bounds");
-            else if (insts[new_pc].opcode == 0)
-                throw InvalidInstruction(pc, "jump to middle of lddw");
-            if (inst.opcode != INST_OP_JA16 && inst.opcode != INST_OP_JA32) {
-                if (inst.dst > R10_STACK_POINTER)
-                    throw InvalidInstruction(pc, "bad register");
-                if ((inst.opcode & INST_SRC_REG) && (inst.src > R10_STACK_POINTER))
-                    throw InvalidInstruction(pc, "bad register");
             }
 
-            auto cond = (inst.opcode == INST_OP_JA16 || inst.opcode == INST_OP_JA32)
-                                                  ? std::optional<Condition>{}
-                                                  : Condition{
-                                                        .op = op,
-                                                        .left = Reg{inst.dst},
-                                                        .right = (inst.opcode & INST_SRC_REG) ? (Value)Reg{inst.src}
-                                                                                              : Imm{sign_extend(inst.imm)},
-                                                        .is64 = ((inst.opcode & INST_CLS_MASK) == INST_CLS_JMP)
-                                                    };
-            return Jmp{
-                .cond = cond,
-                .target = label_t{(int)new_pc},
-            };
+            const int32_t offset = (inst.opcode == INST_OP_JA32) ? inst.imm : inst.offset;
+            const label_t target = getJumpTarget(offset, insts, pc);
+            if (inst.opcode != INST_OP_JA16 && inst.opcode != INST_OP_JA32) {
+                if (inst.dst > R10_STACK_POINTER) {
+                    throw InvalidInstruction(pc, "bad register");
+                }
+                if ((inst.opcode & INST_SRC_REG) && inst.src > R10_STACK_POINTER) {
+                    throw InvalidInstruction(pc, "bad register");
+                }
+            }
+
+            const auto cond = (inst.opcode == INST_OP_JA16 || inst.opcode == INST_OP_JA32)
+                                  ? std::optional<Condition>{}
+                                  : Condition{.op = op,
+                                              .left = Reg{inst.dst},
+                                              .right = (inst.opcode & INST_SRC_REG) ? Value{Reg{inst.src}}
+                                                                                    : Value{Imm{sign_extend(inst.imm)}},
+                                              .is64 = (inst.opcode & INST_CLS_MASK) == INST_CLS_JMP};
+            return Jmp{.cond = cond, .target = target};
         }
         }
     }
@@ -540,15 +703,15 @@ struct Unmarshaller {
             throw std::invalid_argument("Zero length programs are not allowed");
         }
         for (size_t pc = 0; pc < insts.size();) {
-            ebpf_inst inst = insts[pc];
+            const ebpf_inst inst = insts[pc];
             Instruction new_ins;
             bool skip_instruction = false;
             bool fallthrough = true;
             switch (inst.opcode & INST_CLS_MASK) {
             case INST_CLS_LD:
                 if (inst.opcode == INST_OP_LDDW_IMM) {
-                    int32_t next_imm = pc < insts.size() - 1 ? insts[pc + 1].imm : 0;
-                    new_ins = makeLddw(inst, next_imm, insts, static_cast<pc_t>(pc));
+                    const int32_t next_imm = pc < insts.size() - 1 ? insts[pc + 1].imm : 0;
+                    new_ins = makeLddw(inst, next_imm, insts, pc);
                     skip_instruction = true;
                     break;
                 }
@@ -563,17 +726,20 @@ struct Unmarshaller {
 
                 // Merge (rX <<= 32; rX >>>= 32) into wX = rX
                 //       (rX <<= 32; rX >>= 32)  into rX s32= rX
-                if (pc >= insts.size() - 1)
+                if (pc >= insts.size() - 1) {
                     break;
-                ebpf_inst next = insts[pc + 1];
+                }
+                const ebpf_inst next = insts[pc + 1];
                 auto dst = Reg{inst.dst};
 
-                if (new_ins != shift32(dst, Bin::Op::LSH))
+                if (new_ins != shift32(dst, Bin::Op::LSH)) {
                     break;
+                }
 
-                if ((next.opcode & INST_CLS_MASK) != INST_CLS_ALU64)
+                if ((next.opcode & INST_CLS_MASK) != INST_CLS_ALU64) {
                     break;
-                auto next_ins = makeAluOp(pc+1, next);
+                }
+                auto next_ins = makeAluOp(pc + 1, next);
                 if (next_ins == shift32(dst, Bin::Op::RSH)) {
                     new_ins = Bin{.op = Bin::Op::MOV, .dst = dst, .v = dst, .is64 = false};
                     skip_instruction = true;
@@ -587,27 +753,31 @@ struct Unmarshaller {
 
             case INST_CLS_JMP32:
             case INST_CLS_JMP: {
-                new_ins = makeJmp(inst, insts, static_cast<pc_t>(pc));
+                new_ins = makeJmp(inst, insts, pc);
                 if (std::holds_alternative<Exit>(new_ins)) {
                     fallthrough = false;
                     exit_count++;
                 }
-                if (std::holds_alternative<Jmp>(new_ins)) {
-                    if (!std::get<Jmp>(new_ins).cond)
+                if (const auto pjmp = std::get_if<Jmp>(&new_ins)) {
+                    if (!pjmp->cond) {
                         fallthrough = false;
+                    }
                 }
                 break;
             }
+            default: CRAB_ERROR("invalid class: ", inst.opcode & INST_CLS_MASK);
             }
-            if (pc == insts.size() - 1 && fallthrough)
+            if (pc == insts.size() - 1 && fallthrough) {
                 note("fallthrough in last instruction");
+            }
 
             std::optional<btf_line_info_t> current_line_info = {};
 
-            if (pc < line_info.size())
+            if (pc < line_info.size()) {
                 current_line_info = line_info[pc];
+            }
 
-            prog.emplace_back(label_t(static_cast<int>(pc)), new_ins, current_line_info);
+            prog.emplace_back(label_t(gsl::narrow<int>(pc)), new_ins, current_line_info);
 
             pc++;
             note_next_pc();
@@ -616,8 +786,9 @@ struct Unmarshaller {
                 note_next_pc();
             }
         }
-        if (exit_count == 0)
+        if (exit_count == 0) {
             note("no exit instruction");
+        }
         return prog;
     }
 };
@@ -638,9 +809,8 @@ std::variant<InstructionSeq, std::string> unmarshal(const raw_program& raw_prog)
     return unmarshal(raw_prog, notes);
 }
 
-Call make_call(int imm, const ebpf_platform_t& platform)
-{
+Call make_call(const int imm, const ebpf_platform_t& platform) {
     vector<vector<string>> notes;
-    program_info info{.platform = &platform};
+    const program_info info{.platform = &platform};
     return Unmarshaller{notes, info}.makeCall(imm);
 }

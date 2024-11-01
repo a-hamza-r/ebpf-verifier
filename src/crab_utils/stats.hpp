@@ -3,7 +3,6 @@
 #pragma once
 
 #include <map>
-#include <optional>
 #include <string>
 
 #include "crab/variable.hpp"
@@ -34,8 +33,8 @@ inline std::ostream& operator<<(std::ostream& OS, const Stopwatch& sw) {
 }
 
 class CrabStats {
-    static thread_local crab::lazy_allocator<std::map<std::string, unsigned>> counters;
-    static thread_local crab::lazy_allocator<std::map<std::string, Stopwatch>> sw;
+    static thread_local lazy_allocator<std::map<std::string, unsigned>> counters;
+    static thread_local lazy_allocator<std::map<std::string, Stopwatch>> sw;
 
   public:
     static void clear_thread_local_state();

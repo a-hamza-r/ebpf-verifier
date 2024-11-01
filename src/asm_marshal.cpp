@@ -7,10 +7,11 @@
 
 #include "asm_marshal.hpp"
 #include "asm_ostream.hpp"
+#include "crab_utils/num_safety.hpp"
 
 using std::vector;
 
-static uint8_t op(Condition::Op op) {
+static uint8_t op(const Condition::Op op) {
     using Op = Condition::Op;
     switch (op) {
     case Op::EQ: return 0x1;
@@ -30,7 +31,7 @@ static uint8_t op(Condition::Op op) {
     return {};
 }
 
-static uint8_t op(Bin::Op op) {
+static uint8_t op(const Bin::Op op) {
     using Op = Bin::Op;
     switch (op) {
     case Op::ADD: return 0x0;
@@ -55,7 +56,7 @@ static uint8_t op(Bin::Op op) {
     return {};
 }
 
-static int16_t offset(Bin::Op op) {
+static int16_t offset(const Bin::Op op) {
     using Op = Bin::Op;
     switch (op) {
     case Op::SDIV:
@@ -63,11 +64,11 @@ static int16_t offset(Bin::Op op) {
     case Op::MOVSX8: return 8;
     case Op::MOVSX16: return 16;
     case Op::MOVSX32: return 32;
+    default: return 0;
     }
-    return 0;
 }
 
-static uint8_t imm_endian(Un::Op op) {
+static uint8_t imm_endian(const Un::Op op) {
     using Op = Un::Op;
     switch (op) {
     case Op::NEG: assert(false); return 0;
@@ -87,10 +88,10 @@ static uint8_t imm_endian(Un::Op op) {
 
 struct MarshalVisitor {
   private:
-    static vector<ebpf_inst> makeLddw(Reg dst, bool isFd, int32_t imm, int32_t next_imm) {
-        return {ebpf_inst{.opcode = static_cast<uint8_t>(INST_CLS_LD | width_to_opcode(8)),
+    static vector<ebpf_inst> makeLddw(const Reg dst, const bool isFd, const int32_t imm, const int32_t next_imm) {
+        return {ebpf_inst{.opcode = gsl::narrow<uint8_t>(INST_CLS_LD | width_to_opcode(8)),
                           .dst = dst.v,
-                          .src = static_cast<uint8_t>(isFd ? 1 : 0),
+                          .src = gsl::narrow<uint8_t>(isFd ? 1 : 0),
                           .offset = 0,
                           .imm = imm},
                 ebpf_inst{.opcode = 0, .dst = 0, .src = 0, .offset = 0, .imm = next_imm}};
@@ -100,39 +101,40 @@ struct MarshalVisitor {
     std::function<auto(label_t)->int16_t> label_to_offset16;
     std::function<auto(label_t)->int32_t> label_to_offset32;
 
-    vector<ebpf_inst> operator()(Undefined const& a) {
+    vector<ebpf_inst> operator()(Undefined const& a) const {
         assert(false);
         return {};
     }
 
-    vector<ebpf_inst> operator()(LoadMapFd const& b) { return makeLddw(b.dst, true, b.mapfd, 0); }
+    vector<ebpf_inst> operator()(LoadMapFd const& b) const { return makeLddw(b.dst, true, b.mapfd, 0); }
 
-    vector<ebpf_inst> operator()(Bin const& b) {
+    vector<ebpf_inst> operator()(Bin const& b) const {
         if (b.lddw) {
-            assert(std::holds_alternative<Imm>(b.v));
-            auto [imm, next_imm] = split(std::get<Imm>(b.v).v);
+            const auto pimm = std::get_if<Imm>(&b.v);
+            assert(pimm != nullptr);
+            auto [imm, next_imm] = split(pimm->v);
             return makeLddw(b.dst, false, imm, next_imm);
         }
 
-        ebpf_inst res{.opcode = static_cast<uint8_t>((b.is64 ? INST_CLS_ALU64 : INST_CLS_ALU) | (op(b.op) << 4)),
+        ebpf_inst res{.opcode = gsl::narrow<uint8_t>((b.is64 ? INST_CLS_ALU64 : INST_CLS_ALU) | (op(b.op) << 4)),
                       .dst = b.dst.v,
                       .src = 0,
                       .offset = offset(b.op),
                       .imm = 0};
-        std::visit(overloaded{[&](Reg right) {
+        std::visit(overloaded{[&](const Reg right) {
                                   res.opcode |= INST_SRC_REG;
                                   res.src = right.v;
                               },
-                              [&](Imm right) { res.imm = static_cast<int32_t>(right.v); }},
+                              [&](const Imm right) { res.imm = gsl::narrow<int32_t>(right.v); }},
                    b.v);
         return {res};
     }
 
-    vector<ebpf_inst> operator()(Un const& b) {
+    vector<ebpf_inst> operator()(Un const& b) const {
         switch (b.op) {
         case Un::Op::NEG:
             return {ebpf_inst{
-                .opcode = static_cast<uint8_t>((b.is64 ? INST_CLS_ALU64 : INST_CLS_ALU) | INST_ALU_OP_NEG),
+                .opcode = gsl::narrow<uint8_t>((b.is64 ? INST_CLS_ALU64 : INST_CLS_ALU) | INST_ALU_OP_NEG),
                 .dst = b.dst.v,
                 .src = 0,
                 .offset = 0,
@@ -142,7 +144,7 @@ struct MarshalVisitor {
         case Un::Op::LE32:
         case Un::Op::LE64:
             return {ebpf_inst{
-                .opcode = static_cast<uint8_t>(INST_CLS_ALU | INST_END_LE | INST_ALU_OP_END),
+                .opcode = gsl::narrow<uint8_t>(INST_CLS_ALU | INST_END_LE | INST_ALU_OP_END),
                 .dst = b.dst.v,
                 .src = 0,
                 .offset = 0,
@@ -152,7 +154,7 @@ struct MarshalVisitor {
         case Un::Op::BE32:
         case Un::Op::BE64:
             return {ebpf_inst{
-                .opcode = static_cast<uint8_t>(INST_CLS_ALU | INST_END_BE | INST_ALU_OP_END),
+                .opcode = gsl::narrow<uint8_t>(INST_CLS_ALU | INST_END_BE | INST_ALU_OP_END),
                 .dst = b.dst.v,
                 .src = 0,
                 .offset = 0,
@@ -162,7 +164,7 @@ struct MarshalVisitor {
         case Un::Op::SWAP32:
         case Un::Op::SWAP64:
             return {ebpf_inst{
-                .opcode = static_cast<uint8_t>(INST_CLS_ALU64 | INST_ALU_OP_END),
+                .opcode = gsl::narrow<uint8_t>(INST_CLS_ALU64 | INST_ALU_OP_END),
                 .dst = b.dst.v,
                 .src = 0,
                 .offset = 0,
@@ -173,84 +175,99 @@ struct MarshalVisitor {
         return {};
     }
 
-    vector<ebpf_inst> operator()(Call const& b) {
-        return {
-            ebpf_inst{.opcode = static_cast<uint8_t>(INST_OP_CALL | INST_SRC_IMM), .dst = 0, .src = 0, .offset = 0, .imm = b.func}};
+    vector<ebpf_inst> operator()(Call const& b) const {
+        return {ebpf_inst{.opcode = gsl::narrow<uint8_t>(INST_OP_CALL),
+                          .dst = 0,
+                          .src = INST_CALL_STATIC_HELPER,
+                          .offset = 0,
+                          .imm = b.func}};
     }
 
-    vector<ebpf_inst> operator()(Callx const& b) {
+    vector<ebpf_inst> operator()(CallLocal const& b) const {
+        return {ebpf_inst{.opcode = gsl::narrow<uint8_t>(INST_OP_CALL),
+                          .dst = 0,
+                          .src = INST_CALL_LOCAL,
+                          .offset = 0,
+                          .imm = label_to_offset32(b.target)}};
+    }
+
+    vector<ebpf_inst> operator()(Callx const& b) const {
         // callx is defined to have the register in 'dst' not in 'src'.
-        return {
-            ebpf_inst{.opcode = static_cast<uint8_t>(INST_OP_CALL | INST_SRC_REG), .dst = b.func.v, .src = 0, .offset = 0}};
+        return {ebpf_inst{.opcode = gsl::narrow<uint8_t>(INST_OP_CALLX),
+                          .dst = b.func.v,
+                          .src = INST_CALL_STATIC_HELPER,
+                          .offset = 0}};
     }
 
-    vector<ebpf_inst> operator()(Exit const& b) {
+    vector<ebpf_inst> operator()(Exit const& b) const {
         return {ebpf_inst{.opcode = INST_OP_EXIT, .dst = 0, .src = 0, .offset = 0, .imm = 0}};
     }
 
-    vector<ebpf_inst> operator()(Assume const& b) { throw std::invalid_argument("Cannot marshal assumptions"); }
+    vector<ebpf_inst> operator()(Assume const&) const { throw std::invalid_argument("Cannot marshal assumptions"); }
 
-    vector<ebpf_inst> operator()(Assert const& b) { throw std::invalid_argument("Cannot marshal assertions"); }
+    vector<ebpf_inst> operator()(Assert const&) const { throw std::invalid_argument("Cannot marshal assertions"); }
 
-    vector<ebpf_inst> operator()(Jmp const& b) {
+    vector<ebpf_inst> operator()(Jmp const& b) const {
         if (b.cond) {
             ebpf_inst res{
-                .opcode = static_cast<uint8_t>(INST_CLS_JMP | (op(b.cond->op) << 4)),
+                .opcode = gsl::narrow<uint8_t>(INST_CLS_JMP | (op(b.cond->op) << 4)),
                 .dst = b.cond->left.v,
                 .src = 0,
                 .offset = label_to_offset16(b.target),
             };
-            visit(overloaded{[&](Reg right) {
+            visit(overloaded{[&](const Reg right) {
                                  res.opcode |= INST_SRC_REG;
                                  res.src = right.v;
                              },
-                             [&](Imm right) { res.imm = static_cast<int32_t>(right.v); }},
+                             [&](const Imm right) { res.imm = gsl::narrow<int32_t>(right.v); }},
                   b.cond->right);
             return {res};
         } else {
-            int32_t imm = label_to_offset32(b.target);
-            if (imm != 0)
+            const int32_t imm = label_to_offset32(b.target);
+            if (imm != 0) {
                 return {ebpf_inst{.opcode = INST_OP_JA32, .imm = imm}};
-            else
+            } else {
                 return {ebpf_inst{.opcode = INST_OP_JA16, .offset = label_to_offset16(b.target)}};
+            }
         }
     }
 
-    vector<ebpf_inst> operator()(Mem const& b) {
-        Deref access = b.access;
+    vector<ebpf_inst> operator()(Mem const& b) const {
+        const Deref access = b.access;
         ebpf_inst res{
-            .opcode = static_cast<uint8_t>(INST_MODE_MEM | width_to_opcode(access.width)),
+            .opcode = gsl::narrow<uint8_t>(INST_MODE_MEM | width_to_opcode(access.width)),
             .dst = 0,
             .src = 0,
-            .offset = static_cast<int16_t>(access.offset),
+            .offset = gsl::narrow<int16_t>(access.offset),
         };
         if (b.is_load) {
-            if (!std::holds_alternative<Reg>(b.value))
+            if (!std::holds_alternative<Reg>(b.value)) {
                 throw std::runtime_error(std::string("LD IMM: ") + to_string(b));
+            }
             res.opcode |= INST_CLS_LD | 0x1;
-            res.dst = static_cast<uint8_t>(std::get<Reg>(b.value).v);
-            res.src = static_cast<uint8_t>(access.basereg.v);
+            res.dst = gsl::narrow<uint8_t>(std::get<Reg>(b.value).v);
+            res.src = access.basereg.v;
         } else {
             res.opcode |= INST_CLS_ST;
             res.dst = access.basereg.v;
-            if (std::holds_alternative<Reg>(b.value)) {
+            if (const auto preg = std::get_if<Reg>(&b.value)) {
                 res.opcode |= 0x1;
-                res.src = std::get<Reg>(b.value).v;
+                res.src = preg->v;
             } else {
                 res.opcode |= 0x0;
-                res.imm = static_cast<int32_t>(std::get<Imm>(b.value).v);
+                res.imm = gsl::narrow<int32_t>(std::get<Imm>(b.value).v);
             }
         }
         return {res};
     }
 
-    vector<ebpf_inst> operator()(Packet const& b) {
+    vector<ebpf_inst> operator()(Packet const& b) const {
         ebpf_inst res{
-            .opcode = static_cast<uint8_t>(INST_CLS_LD | width_to_opcode(b.width)),
+            .opcode = gsl::narrow<uint8_t>(INST_CLS_LD | width_to_opcode(b.width)),
             .dst = 0,
             .src = 0,
             .offset = 0,
-            .imm = static_cast<int32_t>(b.offset),
+            .imm = gsl::narrow<int32_t>(b.offset),
         };
         if (b.regoffset) {
             res.opcode |= INST_MODE_IND;
@@ -261,43 +278,31 @@ struct MarshalVisitor {
         return {res};
     }
 
-    vector<ebpf_inst> operator()(Atomic const& b) {
-        int32_t imm = (int32_t)b.op;
-        if (b.fetch)
+    vector<ebpf_inst> operator()(Atomic const& b) const {
+        auto imm = gsl::narrow<int32_t>(b.op);
+        if (b.fetch) {
             imm |= INST_FETCH;
-        return {ebpf_inst{
-            .opcode = static_cast<uint8_t>(INST_CLS_STX | INST_MODE_ATOMIC | width_to_opcode(b.access.width)),
-            .dst = b.access.basereg.v,
-            .src = b.valreg.v,
-            .offset = static_cast<int16_t>(b.access.offset),
-            .imm = imm}};
+        }
+        return {
+            ebpf_inst{.opcode = gsl::narrow<uint8_t>(INST_CLS_STX | INST_MODE_ATOMIC | width_to_opcode(b.access.width)),
+                      .dst = b.access.basereg.v,
+                      .src = b.valreg.v,
+                      .offset = gsl::narrow<int16_t>(b.access.offset),
+                      .imm = imm}};
     }
 
-    vector<ebpf_inst> operator()(IncrementLoopCounter const& ins) {
-        return {};
-    }
+    vector<ebpf_inst> operator()(IncrementLoopCounter const&) const { return {}; }
 };
 
-vector<ebpf_inst> marshal(const Instruction& ins, pc_t pc) {
+vector<ebpf_inst> marshal(const Instruction& ins, const pc_t pc) {
     return std::visit(MarshalVisitor{label_to_offset16(pc), label_to_offset32(pc)}, ins);
 }
 
-vector<ebpf_inst> marshal(const vector<Instruction>& insts) {
-    vector<ebpf_inst> res;
-    pc_t pc = 0;
-    for (const auto& ins : insts) {
-        for (auto e : marshal(ins, pc)) {
-            pc++;
-            res.push_back(e);
-        }
-    }
-    return res;
-}
-
-static int size(Instruction inst) {
-    if (std::holds_alternative<Bin>(inst)) {
-        if (std::get<Bin>(inst).lddw)
+static int size(const Instruction& inst) {
+    if (const auto pins = std::get_if<Bin>(&inst)) {
+        if (pins->lddw) {
             return 2;
+        }
     }
     if (std::holds_alternative<LoadMapFd>(inst)) {
         return 2;
@@ -308,7 +313,7 @@ static int size(Instruction inst) {
 static auto get_labels(const InstructionSeq& insts) {
     pc_t pc = 0;
     std::map<label_t, pc_t> pc_of_label;
-    for (auto [label, inst, _] : insts) {
+    for (const auto& [label, inst, _] : insts) {
         pc_of_label[label] = pc;
         pc += size(inst);
     }
@@ -317,13 +322,12 @@ static auto get_labels(const InstructionSeq& insts) {
 
 vector<ebpf_inst> marshal(const InstructionSeq& insts) {
     vector<ebpf_inst> res;
-    auto pc_of_label = get_labels(insts);
+    const auto pc_of_label = get_labels(insts);
     pc_t pc = 0;
     for (auto [label, ins, _] : insts) {
         (void)label; // unused
-        if (std::holds_alternative<Jmp>(ins)) {
-            Jmp& jmp = std::get<Jmp>(ins);
-            jmp.target = label_t(pc_of_label.at(jmp.target));
+        if (const auto pins = std::get_if<Jmp>(&ins)) {
+            pins->target = label_t(pc_of_label.at(pins->target));
         }
         for (auto e : marshal(ins, pc)) {
             pc++;

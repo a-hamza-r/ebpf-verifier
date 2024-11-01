@@ -3,7 +3,7 @@
 
 #include "abstract_domain.hpp"
 #include "ebpf_domain.hpp"
-#include "type_domain.hpp"
+#include "type_inference.hpp"
 #include "region_domain.hpp"
 #include "interval_domain.hpp"
 #include "signed_interval_domain.hpp"
@@ -172,13 +172,13 @@ void abstract_domain_t::abstract_domain_model<Domain>::operator()(const Assert& 
     m_abs_val.operator()(s, loc);
 }
 
-template <typename Domain>
-void abstract_domain_t::abstract_domain_model<Domain>::write(std::ostream& os) const {
-    m_abs_val.write(os);
-}
+//template <typename Domain>
+//void abstract_domain_t::abstract_domain_model<Domain>::write(std::ostream& os) const {
+//    m_abs_val.write(os);
+//}
 
 template <typename Domain>
-crab::bound_t abstract_domain_t::abstract_domain_model<Domain>::get_loop_count_upper_bound() {
+crab::bound_t abstract_domain_t::abstract_domain_model<Domain>::get_loop_count_upper_bound() const {
     return m_abs_val.get_loop_count_upper_bound();
 }
 
@@ -280,9 +280,9 @@ void abstract_domain_t::operator()(const Assume& s, location_t loc) { m_concept-
 
 void abstract_domain_t::operator()(const Assert& s, location_t loc) { m_concept->operator()(s, loc); }
 
-void abstract_domain_t::write(std::ostream& os) const { m_concept->write(os); }
+//void abstract_domain_t::write(std::ostream& os) const { m_concept->write(os); }
 
-crab::bound_t abstract_domain_t::get_loop_count_upper_bound() { return m_concept->get_loop_count_upper_bound(); }
+crab::bound_t abstract_domain_t::get_loop_count_upper_bound() const { return m_concept->get_loop_count_upper_bound(); }
 
 void abstract_domain_t::initialize_loop_counter(const label_t label) { m_concept->initialize_loop_counter(label); }
 
@@ -293,7 +293,8 @@ void abstract_domain_t::set_require_check(check_require_func_t f) { m_concept->s
 std::vector<std::string> abstract_domain_t::get_errors() { return m_concept->get_errors(); }
 
 std::ostream& operator<<(std::ostream& o, const abstract_domain_t& dom) {
-    dom.write(o);
+    o << dom.m_concept;
+    //dom.write(o);
     return o;
 }
 

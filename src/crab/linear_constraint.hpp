@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <gsl/narrow>
+
 #include "linear_expression.hpp"
 
 // A linear constraint is of the form:
 //    <linear expression> <operator> 0
 namespace crab {
 
-enum class constraint_kind_t {
-    EQUALS_ZERO,
-    LESS_THAN_OR_EQUALS_ZERO,
-    LESS_THAN_ZERO,
-    NOT_ZERO
-};
+enum class constraint_kind_t { EQUALS_ZERO, LESS_THAN_OR_EQUALS_ZERO, LESS_THAN_ZERO, NOT_ZERO };
 
 class linear_constraint_t final {
   private:
@@ -21,28 +18,37 @@ class linear_constraint_t final {
     constraint_kind_t _constraint_kind;
 
   public:
-    linear_constraint_t(linear_expression_t expression, constraint_kind_t constraint_kind) : _expression(std::move(expression)), _constraint_kind(constraint_kind) {}
+    linear_constraint_t(linear_expression_t expression, constraint_kind_t constraint_kind)
+        : _expression(std::move(expression)), _constraint_kind(constraint_kind) {}
 
-    [[nodiscard]] const linear_expression_t& expression() const { return _expression; }
-    [[nodiscard]] constraint_kind_t kind() const { return _constraint_kind; }
+    [[nodiscard]]
+    const linear_expression_t& expression() const {
+        return _expression;
+    }
+    [[nodiscard]]
+    constraint_kind_t kind() const {
+        return _constraint_kind;
+    }
 
     // Test whether the constraint is guaranteed to be true.
-    [[nodiscard]] bool is_tautology() const {
+    [[nodiscard]]
+    bool is_tautology() const {
         if (!_expression.is_constant()) {
             return false;
         }
-        number_t constant = _expression.constant_term();
+        const number_t constant = _expression.constant_term();
         switch (_constraint_kind) {
-        case constraint_kind_t::EQUALS_ZERO: return (constant == 0);
-        case constraint_kind_t::LESS_THAN_OR_EQUALS_ZERO: return (constant <= 0);
-        case constraint_kind_t::LESS_THAN_ZERO: return (constant < 0);
-        case constraint_kind_t::NOT_ZERO: return (constant != 0);
+        case constraint_kind_t::EQUALS_ZERO: return constant == 0;
+        case constraint_kind_t::LESS_THAN_OR_EQUALS_ZERO: return constant <= 0;
+        case constraint_kind_t::LESS_THAN_ZERO: return constant < 0;
+        case constraint_kind_t::NOT_ZERO: return constant != 0;
         default: throw std::exception();
         }
     }
 
     // Test whether the constraint is guaranteed to be false.
-    [[nodiscard]] bool is_contradiction() const {
+    [[nodiscard]]
+    bool is_contradiction() const {
         if (!_expression.is_constant()) {
             return false;
         }
@@ -50,12 +56,11 @@ class linear_constraint_t final {
     }
 
     // Construct the logical NOT of this constraint.
-    [[nodiscard]] linear_constraint_t negate() const {
+    [[nodiscard]]
+    linear_constraint_t negate() const {
         switch (_constraint_kind) {
-        case constraint_kind_t::NOT_ZERO:
-            return linear_constraint_t(_expression, constraint_kind_t::EQUALS_ZERO);
-        case constraint_kind_t::EQUALS_ZERO:
-            return linear_constraint_t(_expression, constraint_kind_t::NOT_ZERO);
+        case constraint_kind_t::NOT_ZERO: return linear_constraint_t(_expression, constraint_kind_t::EQUALS_ZERO);
+        case constraint_kind_t::EQUALS_ZERO: return linear_constraint_t(_expression, constraint_kind_t::NOT_ZERO);
         case constraint_kind_t::LESS_THAN_ZERO:
             return linear_constraint_t(_expression.negate(), constraint_kind_t::LESS_THAN_OR_EQUALS_ZERO);
         case constraint_kind_t::LESS_THAN_OR_EQUALS_ZERO:
@@ -64,14 +69,13 @@ class linear_constraint_t final {
         }
     }
 
-    static linear_constraint_t FALSE() {
+    static linear_constraint_t false_const() {
         return linear_constraint_t{linear_expression_t(0), constraint_kind_t::NOT_ZERO};
-    };
+    }
 
-    static linear_constraint_t TRUE() {
+    static linear_constraint_t true_const() {
         return linear_constraint_t{linear_expression_t(0), constraint_kind_t::EQUALS_ZERO};
-    };
-
+    }
 };
 
 // Output a linear constraint to a stream.
@@ -88,9 +92,9 @@ inline std::ostream& operator<<(std::ostream& o, const linear_constraint_t& cons
         const auto& expression = constraint.expression();
         expression.output_variable_terms(o);
 
-        const char* constraint_kind_label[] = {" == ", " <= ", " < ", " != "};
-        int kind = (int)constraint.kind();
-        if (kind < 0 || kind >= (int)(sizeof(constraint_kind_label) / sizeof(*constraint_kind_label))) {
+        constexpr std::array constraint_kind_label{" == ", " <= ", " < ", " != "};
+        const size_t kind = gsl::narrow<size_t>(constraint.kind());
+        if (kind >= std::size(constraint_kind_label)) {
             throw std::exception();
         }
         o << constraint_kind_label[kind] << -expression.constant_term();
@@ -98,4 +102,4 @@ inline std::ostream& operator<<(std::ostream& o, const linear_constraint_t& cons
     return o;
 }
 
-}
+} // namespace crab
