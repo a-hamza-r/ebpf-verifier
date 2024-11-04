@@ -6,53 +6,53 @@
 
 namespace crab {
 
-bool type_domain_t::is_bottom() const {
+bool inference_domain_t::is_bottom() const {
     if (m_is_bottom) return true;
     return (m_region.is_bottom() || m_offset.is_bottom() || m_interval.is_bottom());
 }
 
-bool type_domain_t::is_top() const {
+bool inference_domain_t::is_top() const {
     if (m_is_bottom) return false;
     return (m_region.is_top() && m_offset.is_top() && m_interval.is_top());
 }
 
-type_domain_t type_domain_t::bottom() {
-    type_domain_t typ;
+inference_domain_t inference_domain_t::bottom() {
+    inference_domain_t typ;
     typ.set_to_bottom();
     return typ;
 }
 
-void type_domain_t::set_to_bottom() {
+void inference_domain_t::set_to_bottom() {
     m_is_bottom = true;
     m_region.set_to_bottom();
     m_offset.set_to_bottom();
     m_interval.set_to_bottom();
 }
 
-void type_domain_t::set_to_top() {
+void inference_domain_t::set_to_top() {
     m_is_bottom = false;
     m_region.set_to_top();
     m_offset.set_to_top();
     m_interval.set_to_top();
 }
 
-bool type_domain_t::operator<=(const type_domain_t& abs) const {
+bool inference_domain_t::operator<=(const inference_domain_t& abs) const {
     /* WARNING: The operation is not implemented yet.*/
     return true;
 }
 
-type_domain_t type_domain_t::widen(const type_domain_t& other, bool to_constants) {
+inference_domain_t inference_domain_t::widen(const inference_domain_t& other, bool to_constants) {
     /* WARNING: The operation is not implemented yet.*/
-    type_domain_t res{};
+    inference_domain_t res{};
     return res;
 }
 
-void type_domain_t::operator|=(const type_domain_t& abs) {
-    type_domain_t tmp{abs};
+void inference_domain_t::operator|=(const inference_domain_t& abs) {
+    inference_domain_t tmp{abs};
     operator|=(std::move(tmp));
 }
 
-void type_domain_t::operator|=(type_domain_t&& abs) {
+void inference_domain_t::operator|=(inference_domain_t&& abs) {
     if (is_bottom()) {
         *this = abs;
         return;
@@ -60,49 +60,49 @@ void type_domain_t::operator|=(type_domain_t&& abs) {
     *this = *this | std::move(abs);
 }
 
-type_domain_t type_domain_t::operator|(const type_domain_t& other) const {
+inference_domain_t inference_domain_t::operator|(const inference_domain_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
     }
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | other.m_region, m_offset | other.m_offset,
+    return inference_domain_t(m_region | other.m_region, m_offset | other.m_offset,
             m_interval | other.m_interval);
 }
 
-type_domain_t type_domain_t::operator|(type_domain_t&& other) const {
+inference_domain_t inference_domain_t::operator|(inference_domain_t&& other) const {
     if (is_bottom() || other.is_top()) {
         return std::move(other);
     }
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return type_domain_t(m_region | std::move(other.m_region),
+    return inference_domain_t(m_region | std::move(other.m_region),
             m_offset | std::move(other.m_offset),
             m_interval | std::move(other.m_interval));
 }
 
-type_domain_t type_domain_t::operator&(const type_domain_t& abs) const {
+inference_domain_t inference_domain_t::operator&(const inference_domain_t& abs) const {
     /* WARNING: The operation is not implemented yet.*/
     return abs;
 }
 
-type_domain_t type_domain_t::narrow(const type_domain_t& other) const {
+inference_domain_t inference_domain_t::narrow(const inference_domain_t& other) const {
     /* WARNING: The operation is not implemented yet.*/
     return other;
 }
 
-void type_domain_t::initialize_loop_counter(label_t label) {
+void inference_domain_t::initialize_loop_counter(label_t label) {
     // WARNING: Not implemented yet
 }
 
-crab::bound_t type_domain_t::get_loop_count_upper_bound() const {
+crab::bound_t inference_domain_t::get_loop_count_upper_bound() const {
     // WARNING: Not implemented yet
     return crab::bound_t{crab::number_t{0}};
 }
 
-string_invariant type_domain_t::to_set() const {
+string_invariant inference_domain_t::to_set() const {
     if (is_top()) return string_invariant::top();
     std::set<std::string> result;
     for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
@@ -173,11 +173,11 @@ string_invariant type_domain_t::to_set() const {
     return string_invariant{result};
 }
 
-void type_domain_t::operator()(const Undefined& u, location_t loc) {
+void inference_domain_t::operator()(const Undefined& u, location_t loc) {
     // nothing to do here
 }
 
-void type_domain_t::operator()(const Un& u, location_t loc) {
+void inference_domain_t::operator()(const Un& u, location_t loc) {
     m_region(u, loc);
     m_interval(u, loc);
     // TODO: check if we need to get signed values in any case
@@ -187,7 +187,7 @@ void type_domain_t::operator()(const Un& u, location_t loc) {
     m_offset.do_un(u, interval, loc);
 }
 
-void type_domain_t::operator()(const LoadMapFd& u, location_t loc) {
+void inference_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
@@ -209,7 +209,7 @@ static Bin atomic_to_bin(const Atomic& a) {
     return bin;
 }
 
-void type_domain_t::operator()(const Atomic &u, location_t loc) {
+void inference_domain_t::operator()(const Atomic &u, location_t loc) {
     // WARNING: Not implemented yet
     if (is_bottom()) return;
     std::optional<ptr_or_mapfd_t> base_reg_opt
@@ -263,11 +263,11 @@ void type_domain_t::operator()(const Atomic &u, location_t loc) {
     m_interval -= register_t{11};
 }
 
-void type_domain_t::operator()(const IncrementLoopCounter &u, location_t loc) {
+void inference_domain_t::operator()(const IncrementLoopCounter &u, location_t loc) {
     // WARNING: Not implemented yet
 }
 
-void type_domain_t::operator()(const Call& u, location_t loc) {
+void inference_domain_t::operator()(const Call& u, location_t loc) {
 
     stack_cells_t stack_values;
     for (ArgPair param : u.pairs) {
@@ -298,27 +298,27 @@ void type_domain_t::operator()(const Call& u, location_t loc) {
     m_interval.do_call(u, stack_values, loc);
 }
 
-void type_domain_t::operator()(const Callx &u, location_t loc) {
+void inference_domain_t::operator()(const Callx &u, location_t loc) {
     // WARNING: Not implemented yet
     // This operation is not needed for current benchmarks,
     // TODO: implement this if needed
 }
 
-void type_domain_t::operator()(const Exit& u, location_t loc) {
+void inference_domain_t::operator()(const Exit& u, location_t loc) {
     // nothing to do here
 }
 
-void type_domain_t::operator()(const Jmp& u, location_t loc) {
+void inference_domain_t::operator()(const Jmp& u, location_t loc) {
     // nothing to do here
 }
 
-void type_domain_t::operator()(const Packet& u, location_t loc) {
+void inference_domain_t::operator()(const Packet& u, location_t loc) {
     m_region(u, loc);
     m_offset(u, loc);
     m_interval(u, loc);
 }
 
-void type_domain_t::operator()(const Assume& s, location_t loc) {
+void inference_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
     const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
     const auto& maybe_left_interval = m_interval.find_interval_value(cond.left.v);
@@ -369,13 +369,13 @@ void type_domain_t::operator()(const Assume& s, location_t loc) {
     }
 }
 
-void type_domain_t::operator()(const FuncConstraint& s, location_t loc) {
+void inference_domain_t::operator()(const FuncConstraint& s, location_t loc) {
     // WARNING: Not implemented yet
     // This operation is not needed for current benchmarks,
     // TODO: implement this if needed
 }
 
-void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {
+void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     auto maybe_ptr_or_mapfd_reg = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type_reg = m_interval.find_unsigned_interval_value(u.reg.v);
     assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
@@ -391,7 +391,7 @@ void type_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     }
 }
 
-void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
+void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     if (reg_type) {
         std::optional<mock_interval_t> width_mock_interval;
@@ -434,18 +434,18 @@ void type_domain_t::operator()(const ValidAccess& s, location_t loc) {
     }
 }
 
-void type_domain_t::operator()(const TypeConstraint& s, location_t loc) {
+void inference_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
     assert(!reg_type.has_value() || !mock_interval_type.has_value());
     m_region.check_type(s, mock_interval_type);
 }
 
-void type_domain_t::operator()(const Assert& u, location_t loc) {
+void inference_domain_t::operator()(const Assert& u, location_t loc) {
     std::visit([this, loc](const auto& v) { std::apply(*this, std::make_tuple(v, loc)); }, u.cst);
 }
 
-void type_domain_t::operator()(const Comparable& u, location_t loc) {
+void inference_domain_t::operator()(const Comparable& u, location_t loc) {
 
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
@@ -468,7 +468,7 @@ void type_domain_t::operator()(const Comparable& u, location_t loc) {
     m_errors.push_back("Non-comparable types");
 }
 
-void type_domain_t::operator()(const Addable& u, location_t loc) {
+void inference_domain_t::operator()(const Addable& u, location_t loc) {
     auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
     auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
     auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
@@ -485,7 +485,7 @@ void type_domain_t::operator()(const Addable& u, location_t loc) {
     m_errors.push_back("Addable assertion fail");
 }
 
-void type_domain_t::operator()(const ValidStore& u, location_t loc) {
+void inference_domain_t::operator()(const ValidStore& u, location_t loc) {
     auto maybe_ptr_or_mapfd_mem = m_region.find_ptr_or_mapfd_type(u.mem.v);
     auto maybe_ptr_or_mapfd_val = m_region.find_ptr_or_mapfd_type(u.val.v);
     auto maybe_num_type_mem = m_interval.find_interval_value(u.mem.v);
@@ -502,7 +502,7 @@ void type_domain_t::operator()(const ValidStore& u, location_t loc) {
     m_errors.push_back("Valid store assertion fail");
 }
 
-void type_domain_t::operator()(const ValidSize& u, location_t loc) {
+void inference_domain_t::operator()(const ValidSize& u, location_t loc) {
     auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(u.reg.v);
     auto maybe_num_type = m_interval.find_interval_value(u.reg.v);
     assert(!maybe_ptr_or_mapfd || !maybe_num_type);
@@ -517,7 +517,7 @@ void type_domain_t::operator()(const ValidSize& u, location_t loc) {
     m_errors.push_back("Valid Size assertion fail");
 }
 
-void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
+void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
 
     // TODO: move map-related function to common
     //auto fd_type = m_region.get_map_type(u.map_fd_reg);
@@ -567,19 +567,19 @@ void type_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
     m_errors.push_back("map update with a non-numerical value");
 }
 
-void type_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
+void inference_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     m_region(u, loc);
 }
 
-type_domain_t type_domain_t::setup_entry(bool init_r1) {
+inference_domain_t inference_domain_t::setup_entry(bool init_r1) {
     auto&& reg = crab::region_domain_t::setup_entry(init_r1);
     auto&& off = offset_domain_t::setup_entry();
     auto&& interval = interval_domain_t::setup_entry();
-    type_domain_t typ(std::move(reg), std::move(off), std::move(interval));
+    inference_domain_t typ(std::move(reg), std::move(off), std::move(interval));
     return typ;
 }
 
-void type_domain_t::operator()(const Bin& bin, location_t loc) {
+void inference_domain_t::operator()(const Bin& bin, location_t loc) {
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
     std::optional<interval_t> src_signed_interval, src_unsigned_interval;
 
@@ -649,7 +649,7 @@ void type_domain_t::operator()(const Bin& bin, location_t loc) {
             dst_signed_interval, dst_ptr_or_mapfd, std::move(interval_result), loc);
 }
 
-void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
+void inference_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
         std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc) {
     m_region.do_load(b, register_t{target_reg.v}, unknown_ptr, loc);
     // TODO: replace with a bool value returned from region do_load
@@ -661,13 +661,13 @@ void type_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_pt
     m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, std::move(interval), loc);
 }
 
-void type_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt) {
+void inference_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt) {
     m_region.do_mem_store(b);
     m_interval.do_mem_store(b, basereg_opt);
     m_offset.do_mem_store(b, basereg_opt);
 }
 
-void type_domain_t::operator()(const Mem& b, location_t loc) {
+void inference_domain_t::operator()(const Mem& b, location_t loc) {
     auto basereg = b.access.basereg;
     auto base_ptr_or_mapfd_opt = m_region.find_ptr_or_mapfd_type(basereg.v);
     bool unknown_ptr = !base_ptr_or_mapfd_opt.has_value();
@@ -686,7 +686,7 @@ void type_domain_t::operator()(const Mem& b, location_t loc) {
     }
 }
 
-void type_domain_t::print_ctx() const {
+void inference_domain_t::print_ctx() const {
     std::vector<uint64_t> ctx_keys = m_region.get_ctx_keys();
     std::cout << "\tctx: {\n";
     for (auto const& k : ctx_keys) {
@@ -701,7 +701,7 @@ void type_domain_t::print_ctx() const {
     std::cout << "\t}\n";
 }
 
-void type_domain_t::print_stack() const {
+void inference_domain_t::print_stack() const {
     std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
     std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
     std::cout << "\tstack: {\n";
@@ -744,13 +744,13 @@ void type_domain_t::print_stack() const {
     std::cout << "\t}\n";
 }
 
-void type_domain_t::adjust_bb_for_types(location_t loc) {
+void inference_domain_t::adjust_bb_for_types(location_t loc) {
     m_region.adjust_bb_for_types(loc);
     m_offset.adjust_bb_for_types(loc);
     m_interval.adjust_bb_for_types(loc);
 }
 
-void type_domain_t::operator()(const basic_block_t& bb, int print) {
+void inference_domain_t::operator()(const basic_block_t& bb, int print) {
 
     if (print != 0) {
         print_annotated(std::cout, *this, bb, print);
@@ -780,22 +780,22 @@ void type_domain_t::operator()(const basic_block_t& bb, int print) {
 }
 
 std::optional<crab::ptr_or_mapfd_t>
-type_domain_t::find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_region.find_ptr_or_mapfd_at_loc(loc);
 }
 
 std::optional<crab::refinement_t>
-type_domain_t::find_refinement_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_refinement_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_offset.find_refinement_at_loc(loc);
 }
 
 std::optional<crab::mock_interval_t>
-type_domain_t::find_signed_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_signed_interval_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_interval.find_signed_interval_at_loc(loc);
 }
 
 std::optional<crab::mock_interval_t>
-type_domain_t::find_unsigned_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_unsigned_interval_at_loc(const crab::reg_with_loc_t& loc) const {
     return m_interval.find_unsigned_interval_at_loc(loc);
 }
 
@@ -812,54 +812,54 @@ static inline region_t string_to_region(const std::string& s) {
     throw std::runtime_error(std::string("Unsupported region name: ") + s);
 }
 
-void type_domain_t::insert_in_registers_in_interval_domain(register_t r, location_t loc,
+void inference_domain_t::insert_in_registers_in_interval_domain(register_t r, location_t loc,
         interval_t interval) {
     m_interval.insert_in_registers(r, loc, interval);
 }
 
-void type_domain_t::insert_in_registers_in_signed_interval_domain(register_t r, location_t loc,
+void inference_domain_t::insert_in_registers_in_signed_interval_domain(register_t r, location_t loc,
         interval_t interval) {
     m_interval.insert_in_registers_signed(r, loc, interval);
 }
 
-void type_domain_t::insert_in_registers_in_unsigned_interval_domain(register_t r, location_t loc,
+void inference_domain_t::insert_in_registers_in_unsigned_interval_domain(register_t r, location_t loc,
         interval_t interval) {
     m_interval.insert_in_registers_unsigned(r, loc, interval);
 }
 
-void type_domain_t::store_in_stack_in_interval_domain(uint64_t key, mock_interval_t p, int width) {
+void inference_domain_t::store_in_stack_in_interval_domain(uint64_t key, mock_interval_t p, int width) {
     m_interval.store_in_stack(key, p, width);
 }
 
-void type_domain_t::store_in_stack_in_signed_interval_domain(uint64_t key, mock_interval_t p,
+void inference_domain_t::store_in_stack_in_signed_interval_domain(uint64_t key, mock_interval_t p,
         int width) {
     m_interval.store_in_stack_signed(key, p, width);
 }
 
-void type_domain_t::store_in_stack_in_unsigned_interval_domain(uint64_t key, mock_interval_t p,
+void inference_domain_t::store_in_stack_in_unsigned_interval_domain(uint64_t key, mock_interval_t p,
         int width) {
     m_interval.store_in_stack_unsigned(key, p, width);
 }
 
-void type_domain_t::insert_in_registers_in_offset_domain(register_t r, location_t loc,
+void inference_domain_t::insert_in_registers_in_offset_domain(register_t r, location_t loc,
         refinement_t d) {
     m_offset.insert_in_registers(r, loc, d);
 }
 
-void type_domain_t::store_in_stack_in_offset_domain(uint64_t key, refinement_t d, int width) {
+void inference_domain_t::store_in_stack_in_offset_domain(uint64_t key, refinement_t d, int width) {
     m_offset.store_in_stack(key, d, width);
 }
 
-void type_domain_t::insert_in_registers_in_region_domain(register_t r, location_t loc,
+void inference_domain_t::insert_in_registers_in_region_domain(register_t r, location_t loc,
         const ptr_or_mapfd_t& p) {
     m_region.insert_in_registers(r, loc, p);
 }
 
-void type_domain_t::store_in_stack_in_region_domain(uint64_t key, ptr_or_mapfd_t p, int width) {
+void inference_domain_t::store_in_stack_in_region_domain(uint64_t key, ptr_or_mapfd_t p, int width) {
     m_region.store_in_stack(key, p, width);
 }
 
-type_domain_t type_domain_t::from_predefined_types(const std::set<std::string>& types,
+inference_domain_t inference_domain_t::from_predefined_types(const std::set<std::string>& types,
         bool setup_constraints) {
     // TODO: redo the method according to the new offset domain
     // also, need to store the intervals in the offset domain
@@ -943,9 +943,9 @@ type_domain_t type_domain_t::from_predefined_types(const std::set<std::string>& 
     };
     */
 
-    type_domain_t typ;
+    inference_domain_t typ;
     if (setup_constraints) {
-        typ = type_domain_t::setup_entry(false);
+        typ = inference_domain_t::setup_entry(false);
     }
     else {
         typ.set_to_top();
@@ -1040,18 +1040,18 @@ type_domain_t type_domain_t::from_predefined_types(const std::set<std::string>& 
     return typ;
 }
 
-void type_domain_t::write(std::ostream& os) const {
+void inference_domain_t::write(std::ostream& os) const {
     os << to_set();
 }
 
-std::ostream& operator<<(std::ostream& o, const type_domain_t& typ) {
+std::ostream& operator<<(std::ostream& o, const inference_domain_t& typ) {
     typ.write(o);
     return o;
 }
 
 } // namespace crab
 
-void print_annotated(std::ostream& o, const crab::type_domain_t& typ,
+void print_annotated(std::ostream& o, const crab::inference_domain_t& typ,
         const basic_block_t& bb, int print) {
     if (typ.is_bottom()) {
         o << bb << "\n";

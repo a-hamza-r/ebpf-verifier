@@ -11,7 +11,7 @@
 
 namespace crab {
 
-class type_domain_t final {
+class inference_domain_t final {
     region_domain_t m_region;
     offset_domain_t m_offset;
     interval_domain_t m_interval;
@@ -20,35 +20,35 @@ class type_domain_t final {
 
   public:
 
-    type_domain_t() = default;
-    type_domain_t(type_domain_t&& o) = default;
-    type_domain_t(const type_domain_t& o) = default;
-    explicit type_domain_t(region_domain_t&& reg, offset_domain_t&& off,
+    inference_domain_t() = default;
+    inference_domain_t(inference_domain_t&& o) = default;
+    inference_domain_t(const inference_domain_t& o) = default;
+    explicit inference_domain_t(region_domain_t&& reg, offset_domain_t&& off,
             interval_domain_t&& interval, bool is_bottom = false) :
         m_region(reg), m_offset(off), m_interval(interval), m_is_bottom(is_bottom) {}
-    type_domain_t& operator=(type_domain_t&& o) = default;
-    type_domain_t& operator=(const type_domain_t& o) = default;
+    inference_domain_t& operator=(inference_domain_t&& o) = default;
+    inference_domain_t& operator=(const inference_domain_t& o) = default;
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
-    static type_domain_t setup_entry(bool);
+    static inference_domain_t setup_entry(bool);
     // bottom/top
-    static type_domain_t bottom();
+    static inference_domain_t bottom();
     void set_to_top();
     void set_to_bottom();
     bool is_bottom() const;
     bool is_top() const;
     // inclusion
-    bool operator<=(const type_domain_t& other) const;
+    bool operator<=(const inference_domain_t& other) const;
     // join
-    void operator|=(const type_domain_t& abs);
-    void operator|=(type_domain_t&& abs);
-    type_domain_t operator|(const type_domain_t& other) const;
-    type_domain_t operator|(type_domain_t&& abs) const;
+    void operator|=(const inference_domain_t& abs);
+    void operator|=(inference_domain_t&& abs);
+    inference_domain_t operator|(const inference_domain_t& other) const;
+    inference_domain_t operator|(inference_domain_t&& abs) const;
     // meet
-    type_domain_t operator&(const type_domain_t& other) const;
+    inference_domain_t operator&(const inference_domain_t& other) const;
     // widening
-    type_domain_t widen(const type_domain_t& other, bool);
+    inference_domain_t widen(const inference_domain_t& other, bool);
     // narrowing
-    type_domain_t narrow(const type_domain_t& other) const;
+    inference_domain_t narrow(const inference_domain_t& other) const;
 
     //// abstract transformers
     void operator()(const Undefined&, location_t loc = boost::none);
@@ -79,7 +79,7 @@ class type_domain_t final {
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
     void operator()(const basic_block_t& bb, int print = 0);
     void write(std::ostream& os) const;
-    friend std::ostream& operator<<(std::ostream& o, const type_domain_t& dom);
+    friend std::ostream& operator<<(std::ostream& o, const inference_domain_t& dom);
     void initialize_loop_counter(label_t label);
     crab::bound_t get_loop_count_upper_bound() const;
     string_invariant to_set() const;
@@ -91,7 +91,7 @@ class type_domain_t final {
     std::optional<crab::refinement_t> find_refinement_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::mock_interval_t> find_unsigned_interval_at_loc(const crab::reg_with_loc_t&) const;
-    static type_domain_t from_predefined_types(const std::set<std::string>&, bool);
+    static inference_domain_t from_predefined_types(const std::set<std::string>&, bool);
     void insert_in_registers_in_region_domain(register_t, location_t, const ptr_or_mapfd_t&);
     void store_in_stack_in_region_domain(uint64_t, ptr_or_mapfd_t, int);
     void insert_in_registers_in_interval_domain(register_t, location_t, interval_t);
@@ -114,8 +114,8 @@ class type_domain_t final {
     void operator+=(std::vector<std::string>& errs) {
         m_errors.insert(m_errors.end(), errs.begin(), errs.end());
     }
-}; // end type_domain_t
+}; // end inference_domain_t
 
 } // namespace crab
 
-void print_annotated(std::ostream&, const crab::type_domain_t&, const basic_block_t&, int);
+void print_annotated(std::ostream&, const crab::inference_domain_t&, const basic_block_t&, int);

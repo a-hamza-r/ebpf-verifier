@@ -5,7 +5,7 @@
 #include "config.hpp"
 #include "crab/cfg.hpp"
 #include "crab_verifier.hpp"
-#include "crab/type_domain.hpp"
+#include "crab/type_inference.hpp"
 
 // - prog is a prevail representation of the eBPF program
 // - results contains the Crab CFG together with the inferred invariants

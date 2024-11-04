@@ -23,7 +23,7 @@
 #include "string_constraints.hpp"
 
 using crab::ebpf_domain_t;
-using crab::type_domain_t;
+using crab::inference_domain_t;
 using crab::linear_constraint_t;
 
 thread_local crab::lazy_allocator<program_info> global_program_info;
@@ -75,7 +75,7 @@ static checks_db generate_report(cfg_t& cfg, const crab::invariant_table_t& pre_
     return m_db;
 }
 
-static checks_db generate_report_type_domain(cfg_t& cfg,
+static checks_db generate_report_inference_domain(cfg_t& cfg,
                                  const crab::invariant_table_t& post_invariants) {
     checks_db m_db;
     for (const label_t& label : cfg.sorted_labels()) {
@@ -127,8 +127,8 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, const crab::in
     // Analyze the control-flow graph.
     //checks_db db = generate_report(cfg, pre_invariants, post_invariants);
     checks_db db;
-    if (thread_local_options.abstract_domain == abstract_domain_kind::TYPE_DOMAIN) {
-        db = generate_report_type_domain(cfg, post_invariants);
+    if (thread_local_options.abstract_domain == abstract_domain_kind::INFERENCE_DOMAIN) {
+        db = generate_report_inference_domain(cfg, post_invariants);
         if (thread_local_options.print_invariants) {
             auto exit_state = post_invariants.at(label_t::exit);
             // only to print ctx and stack, fix later
@@ -172,8 +172,8 @@ static abstract_domain_t make_initial(const ebpf_verifier_options_t* options) {
         ebpf_domain_t entry_inv = ebpf_domain_t::setup_entry(true);
         return abstract_domain_t(entry_inv);
     }
-    case abstract_domain_kind::TYPE_DOMAIN: {
-        type_domain_t entry_inv = type_domain_t::setup_entry(true);
+    case abstract_domain_kind::INFERENCE_DOMAIN: {
+        inference_domain_t entry_inv = inference_domain_t::setup_entry(true);
         return abstract_domain_t(entry_inv);
     }
     default:
@@ -193,10 +193,10 @@ static abstract_domain_t make_initial(abstract_domain_kind abstract_domain, cons
                                       : ebpf_domain_t::from_constraints(entry_invariant.value(), setup_constraints);
         return abstract_domain_t(entry_inv);
     }
-    case abstract_domain_kind::TYPE_DOMAIN: {
-        type_domain_t entry_inv = entry_invariant.is_bottom()
-                                      ? type_domain_t::from_predefined_types({"false"}, setup_constraints)
-                                      : type_domain_t::from_predefined_types(entry_invariant.value(), setup_constraints);
+    case abstract_domain_kind::INFERENCE_DOMAIN: {
+        inference_domain_t entry_inv = entry_invariant.is_bottom()
+                                      ? inference_domain_t::from_predefined_types({"false"}, setup_constraints)
+                                      : inference_domain_t::from_predefined_types(entry_invariant.value(), setup_constraints);
         return abstract_domain_t(entry_inv);
     }
     default:

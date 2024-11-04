@@ -70,9 +70,9 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     TEST_CASE(project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") {  \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true);                      \
     }                                                                                                           \
-    TEST_CASE(project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") {      \
+    TEST_CASE(project "/" filename " " section " --domain=inference", "[verify][samples][" project "][inference]") {      \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                            \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                            \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                     \
     }
 
@@ -80,9 +80,9 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     TEST_CASE(project "/" filename " " program_name " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
         VERIFY_PROGRAM(project, filename, section_name, program_name, nullptr, &g_ebpf_platform_linux, true);       \
     }                                                                                                               \
-    TEST_CASE(project "/" filename " " program_name " --domain=type", "[verify][samples][" project "][type]") {     \
+    TEST_CASE(project "/" filename " " program_name " --domain=inference", "[verify][samples][" project "][inference]") {     \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                            \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                                \
         VERIFY_PROGRAM(project, filename, section_name, program_name, &options, &g_ebpf_platform_linux, true);      \
     }
 
@@ -90,9 +90,9 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     TEST_CASE(project "/" filename " " program_name " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") { \
         VERIFY_PROGRAM(project, filename, section_name, program_name, nullptr, &g_ebpf_platform_linux, false);      \
     }                                                                                                               \
-    TEST_CASE(project "/" filename " " program_name " --domain=type", "[verify][samples][" project "][type]") {     \
+    TEST_CASE(project "/" filename " " program_name " --domain=inference", "[verify][samples][" project "][inference]") {     \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                            \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                                \
         VERIFY_PROGRAM(project, filename, section_name, program_name, &options, &g_ebpf_platform_linux, false);     \
     }
 
@@ -100,9 +100,9 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     TEST_CASE(project "/" filename " " section " --domain=zoneCrab", "[verify][samples][" project "][ebpf]") {  \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false);                     \
     }                                                                                                           \
-    TEST_CASE(project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") {      \
+    TEST_CASE(project "/" filename " " section " --domain=inference", "[verify][samples][" project "][inference]") {      \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                            \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                            \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                    \
     }
 
@@ -113,9 +113,9 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
         options.strict = true;                                                                                  \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                    \
     }                                                                                                           \
-    TEST_CASE(project "/" filename " " section " --domain=type", "[verify][samples][" project "][type]") {      \
+    TEST_CASE(project "/" filename " " section " --domain=inference", "[verify][samples][" project "][inference]") {      \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                        \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                            \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                            \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                     \
         options.strict = true;                                                                                  \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                    \
@@ -125,9 +125,9 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     TEST_CASE("expect failure " project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, true);                                                    \
     }                                                                                                                                         \
-    TEST_CASE("expect failure " project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") {     \
+    TEST_CASE("expect failure " project "/" filename " " section " --domain=inference", "[!shouldfail][verify][samples][" project "][inference]") {     \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                                                      \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                                          \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                                                          \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, true);                                                   \
     }
 
@@ -135,13 +135,13 @@ FAIL_UNMARSHAL("invalid", "invalid-lddw.o", ".text")
     TEST_CASE("expect failure " project "/" filename " " section " --domain=zoneCrab", "[!shouldfail][verify][samples][" project "][ebpf]") { \
         VERIFY_SECTION(project, filename, section, nullptr, &g_ebpf_platform_linux, false);                                                   \
     }                                                                                                                                         \
-    TEST_CASE("expect failure " project "/" filename " " section " --domain=type", "[!shouldfail][verify][samples][" project "][type]") {     \
+    TEST_CASE("expect failure " project "/" filename " " section " --domain=inference", "[!shouldfail][verify][samples][" project "][inference]") {     \
         ebpf_verifier_options_t options = ebpf_verifier_default_options;                                                                      \
-        options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;                                                                          \
+        options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;                                                                          \
         VERIFY_SECTION(project, filename, section, &options, &g_ebpf_platform_linux, false);                                                  \
     }
 
-// need these defined for type domain as well
+// need these defined for inference domain as well
 #define TEST_SECTION_LEGACY(dirname, filename, sectionname)                                               \
     TEST_SECTION(dirname, filename, sectionname)                                                          \
     TEST_CASE("Fail unmarshalling: " dirname "/" filename " " sectionname, "[unmarshal]") {               \

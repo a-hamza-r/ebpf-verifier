@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     app.add_option("--domain", domain, "Abstract domain")
         ->type_name("DOMAIN")
         ->capture_default_str()
-        ->check(CLI::IsMember({"stats", "linux", "zoneCrab", "cfg", "type"}));
+        ->check(CLI::IsMember({"stats", "linux", "zoneCrab", "cfg", "inference"}));
 
     app.add_flag("--termination,!--no-verify-termination", ebpf_verifier_options.check_termination,
                  "Verify termination. Default: ignore")
@@ -233,10 +233,10 @@ int main(int argc, char** argv) {
         print_map_descriptors(global_program_info->map_descriptors, out);
     }
 
-    if (domain == "zoneCrab" || domain == "type") {
+    if (domain == "zoneCrab" || domain == "inference") {
         ebpf_verifier_stats_t verifier_stats;
-        if (domain == "type") {
-          ebpf_verifier_options.abstract_domain = abstract_domain_kind::TYPE_DOMAIN;
+        if (domain == "inference") {
+          ebpf_verifier_options.abstract_domain = abstract_domain_kind::INFERENCE_DOMAIN;
         }
         auto [res, seconds] = timed_execution([&] {
             return ebpf_verify_program(std::cout, prog, raw_prog.info, &ebpf_verifier_options, &verifier_stats);

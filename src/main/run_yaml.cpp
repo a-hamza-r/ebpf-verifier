@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     CLI11_PARSE(app, argc, argv);
     bool res = true;
     bool tests_for_type_d = filename.find("types") != filename.npos;
-    auto domain = tests_for_type_d ? abstract_domain_kind::TYPE_DOMAIN :
+    auto domain = tests_for_type_d ? abstract_domain_kind::INFERENCE_DOMAIN :
         abstract_domain_kind::EBPF_DOMAIN;
     foreach_suite(filename, [&](const TestCase& test_case) {
         if (!pattern.empty() && test_case.name.find(pattern) == test_case.name.npos) {
