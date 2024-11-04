@@ -6,7 +6,6 @@
 #include <boost/functional/hash.hpp>
 
 #include "ebpf_verifier.hpp"
-#include "ebpf_proof.hpp"
 #ifdef _WIN32
 #include "memsize_windows.hpp"
 #else
