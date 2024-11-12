@@ -3,118 +3,104 @@
 ---
 test-case: add immediate to large singleton number
 
-pre: ["r0 : number<2147483647>"]
+pre: ["r0 : snumber<2147483647>", "r0 : unumber<2147483647>"]
 
 code:
   <start>: |
     r0 += 2 ; make sure value does not become a negative 64 bit number
 
-post: ["r0 : number<2147483649>"]
-
+post: ["r0 : snumber<2147483649>", "r0 : unumber<2147483649>"]
 ---
-
 test-case: add immediate to large number range
 
-pre: ["r0 : number<[2147483645, 2147483647]>"]
+pre: ["r0 : snumber<[2147483645, 2147483647]>", "r0 : unumber<[2147483645, 2147483647]>"]
 
 code:
   <start>: |
     r0 += 4 ; make sure value does not become a negative 64 bit number
 
-post: ["r0 : number<[2147483649, 2147483651]>"]
-
+post: ["r0 : snumber<[2147483649, 2147483651]>", "r0 : unumber<[2147483649, 2147483651]>"]
 ---
-
 test-case: add immediate to unknown number
 
-pre: ["r1 : number"]
+pre: ["r1 : snumber", "r1 : unumber"]
 
 code:
   <start>: |
     r1 += 0
 
-post: ["r1 : number"]
-
+post: ["r1 : snumber", "r1 : unumber"]
 ---
-
 test-case: add number register to unknown number
 
-pre: ["r1 : number", "r2 : number"]
+pre: ["r1 : snumber", "r1 : unumber", "r2 : snumber", "r2 : unumber"]
 
 code:
   <start>: |
     r1 += r2
 
-post: ["r1 : number", "r2 : number"]
-
+post: ["r1 : snumber", "r1 : unumber", "r2 : snumber", "r2 : unumber"]
 ---
-
 test-case: add immediate to singleton number
 
-pre: ["r1 : number<5>"]
+pre: ["r1 : snumber<5>", "r1 : unumber<5>"]
 
 code:
   <start>: |
     r1 += 3
 
-post: ["r1 : number<8>"]
-
+post: ["r1 : snumber<8>", "r1 : unumber<8>"]
 ---
-
 test-case: add constant register to singleton number
 
-pre: ["r1 : number<5>", "r2 : number<7>"]
+pre: ["r1 : snumber<5>", "r1 : unumber<5>", "r2 : snumber<7>", "r2 : unumber<7>"]
 
 code:
   <start>: |
     r1 += r2
 
-post: ["r1 : number<12>", "r2 : number<7>"]
+post: ["r1 : snumber<12>", "r1 : unumber<12>", "r2 : snumber<7>", "r2 : unumber<7>"]
 
 ---
-
 test-case: add immediate to finite interval number
 
-pre: ["r1 : number<[5, 10]>"]
+pre: ["r1 : snumber<[5, 10]>", "r1 : unumber<[5, 10]>"]
 
 code:
   <start>: |
     r1 += 5
 
-post: ["r1 : number<[10, 15]>"]
+post: ["r1 : snumber<[10, 15]>", "r1 : unumber<[10, 15]>"]
 
 ---
-
 test-case: add constant register number to finite interval number
 
-pre: ["r1 : number<[5, 10]>", "r2 : number<5>"]
+pre: ["r1 : snumber<[5, 10]>", "r1 : unumber<[5, 10]>", "r2 : snumber<5>", "r2 : unumber<5>"]
 
 code:
   <start>: |
     r1 += r2
 
-post: ["r1 : number<[10, 15]>", "r2 : number<5>"]
+post: ["r1 : snumber<[10, 15]>", "r1 : unumber<[10, 15]>", "r2 : snumber<5>", "r2 : unumber<5>"]
 
 ---
-
 test-case: add interval number register to constant register pointer
 
-pre: ["r2 : packet_p<begin+0>", "r7 : number<[3, 5]>"]
+pre: ["r2 : packet_p<begin>", "r7 : snumber<[3, 5]>", "r7 : unumber<[3, 5]>"]
 
 code:
   <start>: |
     r2 += r7
 
-post: ["r2 : packet_p<begin+[3, 5]>", "r7 : number<[3, 5]>"]
+post: ["r2 : packet_p<begin+[3, 5]>", "r7 : snumber<[3, 5]>", "r7 : unumber<[3, 5]>"]
 
 ---
-
 test-case: add constant register pointer to interval number
 
-pre: ["r2 : packet_p<begin+0>", "r7 : number<[3, 5]>"]
+pre: ["r2 : packet_p<begin>", "r7 : snumber<[3, 5]>", "r7 : unumber<[3, 5]>"]
 
 code:
   <start>: |
     r7 += r2
 
-post: ["r2 : packet_p<begin+0>", "r7 : packet_p<begin+[3, 5]>"]
+post: ["r2 : packet_p<begin>", "r7 : packet_p<begin+[3, 5]>"]
