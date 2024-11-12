@@ -69,7 +69,7 @@ class mock_interval_t {
         mock_interval_t& operator=(const mock_interval_t& o) = default;
         bool operator==(const mock_interval_t& o) const;
         mock_interval_t(const interval_t& i) : _lb(i.lb()), _ub(i.ub()) {}
-        interval_t to_interval() const { return std::move(interval_t(_lb, _ub)); }
+        interval_t to_interval() const { return interval_t(_lb, _ub); }
 };
 
 class ptr_with_off_t {

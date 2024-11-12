@@ -181,10 +181,12 @@ void inference_domain_t::operator()(const Un& u, location_t loc) {
     m_region(u, loc);
     m_interval(u, loc);
     // TODO: check if we need to get signed values in any case
-    auto mock_interval_opt = m_interval.find_unsigned_interval_value(u.dst.v);
-    auto interval = mock_interval_opt ? mock_interval_opt->to_interval()
-        : interval_t::bottom();
-    m_offset.do_un(u, interval, loc);
+    // TODO: activate this when we deal with offset domain
+    //auto mock_interval_opt = m_interval.find_unsigned_interval_value(u.dst.v);
+    //auto interval = mock_interval_opt ? mock_interval_opt->to_interval()
+    //    : interval_t::bottom();
+    // m_offset.do_un(u, interval, loc);
+    m_offset.do_un(u, interval_t::bottom(), loc);
 }
 
 void inference_domain_t::operator()(const LoadMapFd& u, location_t loc) {
@@ -446,7 +448,6 @@ void inference_domain_t::operator()(const Assert& u, location_t loc) {
 }
 
 void inference_domain_t::operator()(const Comparable& u, location_t loc) {
-
     auto maybe_ptr_or_mapfd1 = m_region.find_ptr_or_mapfd_type(u.r1.v);
     auto maybe_ptr_or_mapfd2 = m_region.find_ptr_or_mapfd_type(u.r2.v);
     auto maybe_num_type1 = m_interval.find_interval_value(u.r1.v);

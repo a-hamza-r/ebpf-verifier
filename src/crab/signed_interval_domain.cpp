@@ -3,6 +3,7 @@
 
 #include "crab/signed_interval_domain.hpp"
 #include "boost/endian/conversion.hpp"
+#include "config.hpp"
 
 namespace crab {
 
@@ -426,16 +427,17 @@ signed_interval_domain_t signed_interval_domain_t::setup_entry() {
     return interval;
 }
 
+// Simple truncation function usable with swap_endianness().
+template <class T>
+constexpr T truncate(T x) noexcept {
+    return x;
+}
+
 void signed_interval_domain_t::operator()(const Un& u, location_t loc) {
-    auto swap_endianness = [&](interval_t&& v, auto input, const auto& be_or_le) {
-        if (std::optional<number_t> n = v.singleton()) {
+    auto swap_endianness = [&](interval_t& v, auto be_or_le) {
+        if (const auto n = v.singleton()) {
             if (n->fits_cast_to<int64_t>()) {
-                // TODO: Fix later
-                /*
-                input = (decltype(input))n.value().cast_to_sint(64);
-                decltype(input) output = be_or_le(input);
-                m_registers_values.insert(u.dst.v, loc, interval_t{number_t{output}});
-                */
+                m_registers_values.insert(u.dst.v, loc, interval_t{be_or_le(n->cast_to<int64_t>())});
                 return;
             }
         }
@@ -451,32 +453,51 @@ void signed_interval_domain_t::operator()(const Un& u, location_t loc) {
     // so we use unsigned which still fits in a signed int64.
     switch (u.op) {
     case Un::Op::BE16:
-        swap_endianness(std::move(interval), uint16_t(0),
-                boost::endian::native_to_big<uint16_t>);
+        if (!thread_local_options.big_endian) {
+            swap_endianness(interval, boost::endian::endian_reverse<uint16_t>);
+        } else {
+            swap_endianness(interval, truncate<uint16_t>);
+        }
         break;
     case Un::Op::BE32:
-        swap_endianness(std::move(interval), uint32_t(0),
-                boost::endian::native_to_big<uint32_t>);
+        if (!thread_local_options.big_endian) {
+            swap_endianness(interval, boost::endian::endian_reverse<uint32_t>);
+        } else {
+            swap_endianness(interval, truncate<uint32_t>);
+        }
         break;
     case Un::Op::BE64:
-        swap_endianness(std::move(interval), int64_t(0),
-                boost::endian::native_to_big<int64_t>);
+        if (!thread_local_options.big_endian) {
+            swap_endianness(interval, boost::endian::endian_reverse<uint64_t>);
+        }
         break;
     case Un::Op::LE16:
-        swap_endianness(std::move(interval), uint16_t(0),
-                boost::endian::native_to_little<uint16_t>);
+        if (thread_local_options.big_endian) {
+            swap_endianness(interval, boost::endian::endian_reverse<uint16_t>);
+        } else {
+            swap_endianness(interval, truncate<uint16_t>);
+        }
         break;
     case Un::Op::LE32:
-        swap_endianness(std::move(interval), uint32_t(0),
-                boost::endian::native_to_little<uint32_t>);
+        if (thread_local_options.big_endian) {
+            swap_endianness(interval, boost::endian::endian_reverse<uint32_t>);
+        } else {
+            swap_endianness(interval, truncate<uint32_t>);
+        }
         break;
     case Un::Op::LE64:
-        swap_endianness(std::move(interval), int64_t(0),
-                boost::endian::native_to_little<int64_t>);
+        if (thread_local_options.big_endian) {
+            swap_endianness(interval, boost::endian::endian_reverse<uint64_t>);
+        }
         break;
-    case Un::Op::NEG:
-        auto reg_with_loc = reg_with_loc_t(u.dst.v, loc);
-        m_registers_values.insert(u.dst.v, loc, -interval);
+    case Un::Op::SWAP16:
+        swap_endianness(interval, boost::endian::endian_reverse<uint16_t>);
+        break;
+    case Un::Op::SWAP32:
+        swap_endianness(interval, boost::endian::endian_reverse<uint32_t>);
+        break;
+    case Un::Op::SWAP64:
+        swap_endianness(interval, boost::endian::endian_reverse<uint64_t>);
         break;
     }
 }
