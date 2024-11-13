@@ -2849,12 +2849,16 @@ void ebpf_domain_t::operator()(const Bin& bin, location_t loc) {
 
 string_invariant ebpf_domain_t::to_set() const { return this->m_inv.to_set() + this->stack.to_set(); }
 
-std::ostream& operator<<(std::ostream& o, const ebpf_domain_t& dom) {
-    if (dom.is_bottom()) {
+void ebpf_domain_t::write(std::ostream& o) const {
+    if (is_bottom()) {
         o << "_|_";
     } else {
-        o << dom.m_inv << "\nStack: " << dom.stack;
+        o << m_inv << "\nStack: " << stack;
     }
+}
+
+std::ostream& operator<<(std::ostream& o, ebpf_domain_t dom) {
+    dom.write(o);
     return o;
 }
 

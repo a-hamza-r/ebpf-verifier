@@ -81,6 +81,9 @@ class ebpf_domain_t final {
     void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
 
+    // write operation is important to keep in ebpf_domain_t because of the parametric abstract domain
+    void write(std::ostream& o) const;
+
     void initialize_loop_counter(const label_t& label);
     static ebpf_domain_t calculate_constant_limits();
 
