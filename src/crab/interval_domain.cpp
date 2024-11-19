@@ -218,15 +218,27 @@ interval_domain_t interval_domain_t::setup_entry() {
     return interval;
 }
 
-static void overflow_bounds(interval_t& interval, number_t span, int finite_width,
-        bool issigned) {
+void interval_domain_t::overflow_bounds(const register_t& lhs, number_t span, const int finite_width, location_t loc, bool is_signed) {
+    auto mock_interval = is_signed ? m_signed.find_interval_value(lhs) : m_unsigned.find_interval_value(lhs);
+    if (!mock_interval) return;
+    interval_t interval = mock_interval->to_interval();
     if (interval.ub() - interval.lb() >= span) {
         // Interval covers the full space.
-        interval = interval_t::top();
+        // We do not forget the interval, as it will remove the information that it is a number.
+        // We only set the interval to top.
+        if (is_signed) {
+            m_signed.insert_in_registers(lhs, loc, interval_t::top());
+        } else {
+            m_unsigned.insert_in_registers(lhs, loc, interval_t::top());
+        }
         return;
     }
     if (interval.is_bottom()) {
-        interval = interval_t::top();
+        if (is_signed) {
+            m_signed.insert_in_registers(lhs, loc, interval_t::top());
+        } else {
+            m_unsigned.insert_in_registers(lhs, loc, interval_t::top());
+        }
         return;
     }
     number_t lb_value = interval.lb().number().value();
@@ -238,89 +250,416 @@ static void overflow_bounds(interval_t& interval, number_t span, int finite_widt
     // a sign extended negative one.
     number_t lb = lb_value.truncate_to_uint(finite_width);
     number_t ub = ub_value.truncate_to_uint(finite_width);
-    if (issigned) {
+    if (is_signed) {
         lb = lb.truncate_to<int64_t>();
         ub = ub.truncate_to<int64_t>();
     }
+    auto new_interval = interval_t{lb, ub};
     if (lb > ub) {
         // Range wraps in the middle, so we cannot represent as an unsigned interval.
-        interval = interval_t::top();
-        return;
+        new_interval = interval_t::top();
     }
-    interval = crab::interval_t{lb, ub};
+    if (is_signed) {
+        m_signed.insert_in_registers(lhs, loc, new_interval);
+    } else {
+        m_unsigned.insert_in_registers(lhs, loc, new_interval);
+    }
 }
 
-static void overflow_unsigned(interval_t& interval, int finite_width) {
-    auto span{finite_width == 64   ? number_t{std::numeric_limits<uint64_t>::max()}
-        : finite_width == 32 ? number_t{std::numeric_limits<uint32_t>::max()}
-                                   : throw std::exception()};
-    overflow_bounds(interval, span, finite_width, false);
+void interval_domain_t::overflow(const register_t& lhs, const int finite_width, location_t loc, bool is_signed) {
+    const auto span{finite_width == 64   ? number_t{std::numeric_limits<uint64_t>::max()}
+                    : finite_width == 32 ? number_t{std::numeric_limits<uint32_t>::max()}
+                                         : throw std::exception()};
+    overflow_bounds(lhs, span, finite_width, loc, is_signed);
 }
 
-static void overflow_signed(interval_t& interval, int finite_width) {
-    auto span{finite_width == 64   ? number_t{std::numeric_limits<int64_t>::max()}
-        : finite_width == 32 ? number_t{std::numeric_limits<int32_t>::max()}
-                                   : throw std::exception()};
-    overflow_bounds(interval, span, finite_width, true);
+// As defined in the BPF ISA specification, the immediate value of an unsigned modulo and division is treated
+// differently depending on the width:
+// * for 32 bit, as a 32-bit unsigned integer
+// * for 64 bit, as a 32-bit (not 64 bit) signed integer
+static number_t read_imm_for_udiv_or_umod(const number_t& imm, const int width) {
+    assert(width == 32 || width == 64);
+    if (width == 32) {
+        return number_t{imm.cast_to<uint32_t>()};
+    }
+    return number_t{imm.cast_to<int32_t>()};
 }
 
-enum class arithm_binop_t { ADD, SUB, MUL, SDIV, UDIV, SREM, UREM };
-//enum class bitwise_binop_t { AND, OR, XOR, SHL, LSHR, ASHR };
-//using binop_t = std::variant<arith_binop_t, bitwise_binop_t>;
+// As defined in the BPF ISA specification, the immediate value of a signed modulo and division is treated
+// differently depending on the width:
+// * for 32 bit, as a 32-bit signed integer
+// * for 64 bit, as a 64-bit signed integer
+static number_t read_imm_for_sdiv_or_smod(const number_t& imm, const int width) {
+    assert(width == 32 || width == 64);
+    if (width == 32) {
+        return number_t{imm.cast_to<int32_t>()};
+    }
+    return number_t{imm.cast_to<int64_t>()};
+}
 
-static void apply_signed(interval_t& dst_signed, interval_t& dst_unsigned, const interval_t& lhs, const interval_t& rhs, int finite_width, arithm_binop_t op) {
+
+void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, const register_t& y, const register_t& z, const int finite_width, location_t loc, bool is_signed) {
+    // performing arithmatic operation
+    interval_t xi = interval_t::bottom();
+    interval_t yi = interval_t::bottom();
+    interval_t zi = interval_t::bottom();
+    if (is_signed) {
+        auto yi_opt = m_signed.find_interval_value(y);
+        auto zi_opt = m_signed.find_interval_value(z);
+        if (!yi_opt || !zi_opt) {
+            std::cerr << "Error: registers not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+        zi = zi_opt->to_interval();
+    } else {
+        auto yi_opt = m_unsigned.find_interval_value(y);
+        auto zi_opt = m_unsigned.find_interval_value(z);
+        if (!yi_opt || !zi_opt) {
+            std::cerr << "Error: registers not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+        zi = zi_opt->to_interval();
+    }
+
     switch (op) {
-        case arithm_binop_t::ADD: {
-            dst_signed = lhs + rhs;
+        case arith_binaryop_t::ADD: xi = yi + zi; break;
+        case arith_binaryop_t::SUB: xi = yi - zi; break;
+        case arith_binaryop_t::MUL: xi = yi * zi; break;
+        case arith_binaryop_t::SDIV: xi = yi.SDiv(zi); break;
+        case arith_binaryop_t::UDIV: {
+            // this hack is required because UDiv call returns [+oo, +oo], at least in case when 
+            // updated_interval is top,
+            // which causes the error: CRAB ERROR: Bound: undefined operation -oo + +oo
+            // SplitDBM (possibly) uses a normalize() to avoid this issue,
+            // but we don't have that here
+            // TODO: fix this
+            if (yi.is_top()) {
+                if (is_signed) {
+                    m_signed -= x;
+                } else {
+                    m_unsigned -= x;
+                }
+                return;
+            }
+            xi = yi.UDiv(zi);
             break;
         }
-        case arithm_binop_t::SUB: {
-            dst_signed = lhs - rhs;
-            break;
-        }
-        case arithm_binop_t::MUL: {
-            dst_signed = lhs * rhs;
-            break;
-        }
-        default: {
-            break;
-        }
+        case arith_binaryop_t::SREM: xi = yi.SRem(zi); break;
+        case arith_binaryop_t::UREM: xi = yi.URem(zi); break;
+        default: break;
     }
+    if (is_signed) {
+        m_signed.insert_in_registers(x, loc, xi);
+    } else {
+        m_unsigned.insert_in_registers(x, loc, xi);
+    }
+}
+
+
+void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, const register_t& y, const number_t& k, const int finite_width, location_t loc, bool is_signed) {
+    // performing arithmatic operation
+    interval_t xi = interval_t::bottom();
+    interval_t yi = interval_t::bottom();
+    if (is_signed) {
+        auto yi_opt = m_signed.find_interval_value(y);
+        if (!yi_opt) {
+            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+    } else {
+        auto yi_opt = m_unsigned.find_interval_value(y);
+        if (!yi_opt) {
+            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+    }
+
+    switch (op) {
+        case arith_binaryop_t::ADD: xi = yi + interval_t{k}; break;
+        case arith_binaryop_t::SUB: xi = yi - interval_t{k}; break;
+        case arith_binaryop_t::MUL: xi = yi * interval_t{k}; break;
+        case arith_binaryop_t::SDIV: xi = yi.SDiv(interval_t{read_imm_for_sdiv_or_smod(k, finite_width)}); break;
+        case arith_binaryop_t::UDIV: xi = yi.UDiv(interval_t{read_imm_for_udiv_or_umod(k, finite_width)}); break;
+        case arith_binaryop_t::SREM: xi = yi.SRem(interval_t{read_imm_for_sdiv_or_smod(k, finite_width)}); break;
+        case arith_binaryop_t::UREM: xi = yi.URem(interval_t{read_imm_for_udiv_or_umod(k, finite_width)}); break;
+        default: break;
+    }
+    if (is_signed) {
+        m_signed.insert_in_registers(x, loc, xi);
+    } else {
+        m_unsigned.insert_in_registers(x, loc, xi);
+    }
+}
+
+
+void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x, const register_t& y, const number_t& k, const int finite_width, location_t loc, bool is_signed) {
+    // performing bitwise operation 
+    interval_t xi = interval_t::bottom();
+    interval_t yi = interval_t::bottom();
+    if (is_signed) {
+        auto yi_opt = m_signed.find_interval_value(y);
+        if (!yi_opt) {
+            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+    } else {
+        auto yi_opt = m_unsigned.find_interval_value(y);
+        if (!yi_opt) {
+            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+    }
+    interval_t zi{number_t{k.cast_to<uint64_t>()}};
+
+    switch (op) {
+        case bitwise_binaryop_t::AND: xi = yi.And(zi); break;
+        case bitwise_binaryop_t::OR: xi = yi.Or(zi); break;
+        case bitwise_binaryop_t::XOR: xi = yi.Xor(zi); break;
+        case bitwise_binaryop_t::SHL: xi = yi.Shl(zi); break;
+        case bitwise_binaryop_t::LSHR: xi = yi.LShr(zi); break;
+        case bitwise_binaryop_t::ASHR: xi = yi.AShr(zi); break;
+        default: break;
+    }
+    if (is_signed) {
+        m_signed.insert_in_registers(x, loc, xi);
+    } else {
+        m_unsigned.insert_in_registers(x, loc, xi);
+    }
+}
+
+
+void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x, const register_t& y, const register_t& z, const int finite_width, location_t loc, bool is_signed) {
+    // performing bitwise operation
+    interval_t xi = interval_t::bottom();
+    interval_t yi = interval_t::bottom();
+    interval_t zi = interval_t::bottom();
+    if (is_signed) {
+        auto yi_opt = m_signed.find_interval_value(y);
+        auto zi_opt = m_signed.find_interval_value(z);
+        if (!yi_opt || !zi_opt) {
+            std::cerr << "Error: registers not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+        zi = zi_opt->to_interval();
+    } else {
+        auto yi_opt = m_unsigned.find_interval_value(y);
+        auto zi_opt = m_unsigned.find_interval_value(z);
+        if (!yi_opt || !zi_opt) {
+            std::cerr << "Error: registers not found in the interval environment\n";
+            return;
+        }
+        yi = yi_opt->to_interval();
+        zi = zi_opt->to_interval();
+    }
+
+    switch (op) {
+        case bitwise_binaryop_t::AND: xi = yi.And(zi); break;
+        case bitwise_binaryop_t::OR: xi = yi.Or(zi); break;
+        case bitwise_binaryop_t::XOR: xi = yi.Xor(zi); break;
+        case bitwise_binaryop_t::SHL: xi = yi.Shl(zi); break;
+        case bitwise_binaryop_t::LSHR: xi = yi.LShr(zi); break;
+        case bitwise_binaryop_t::ASHR: xi = yi.AShr(zi); break;
+        default: break;
+    }
+    if (is_signed) {
+        m_signed.insert_in_registers(x, loc, xi);
+    } else {
+        m_unsigned.insert_in_registers(x, loc, xi);
+    }
+}
+
+
+void interval_domain_t::apply_signed(const binaryop_t& op, const register_t& result, const register_t& lhs, const number_t& k_rhs, const int finite_width, location_t loc) {
+    apply(op, result, lhs, k_rhs, finite_width, loc, true);
     if (finite_width) {
-        dst_unsigned = dst_signed;
-        overflow_signed(dst_signed, finite_width);
-        overflow_unsigned(dst_unsigned, finite_width);
+        auto signed_result = m_signed.find_interval_value(result);
+        if (signed_result) {
+            auto signed_interval = signed_result->to_interval();
+            m_unsigned.insert_in_registers(result, loc, signed_interval);
+        }
+        overflow(result, finite_width, loc, true);
+        overflow(result, finite_width, loc, false);
     }
+}
+
+void interval_domain_t::apply_signed(const binaryop_t& op, const register_t& result, const register_t& lhs, const register_t& rhs, const int finite_width, location_t loc) {
+    apply(op, result, lhs, rhs, finite_width, loc, true);
+    if (finite_width) {
+        auto signed_result = m_signed.find_interval_value(result);
+        if (signed_result) {
+            auto signed_interval = signed_result->to_interval();
+            m_unsigned.insert_in_registers(result, loc, signed_interval);
+        }
+        overflow(result, finite_width, loc, true);
+        overflow(result, finite_width, loc, false);
+    }
+}
+
+void interval_domain_t::apply_unsigned(const binaryop_t& op, const register_t& result, const register_t& lhs, const number_t& k_rhs, const int finite_width, location_t loc) {
+    apply(op, result, lhs, k_rhs, finite_width, loc, false);
+    if (finite_width) {
+        auto unsigned_result = m_unsigned.find_interval_value(result);
+        if (unsigned_result) {
+            auto unsigned_interval = unsigned_result->to_interval();
+            m_signed.insert_in_registers(result, loc, unsigned_interval);
+        }
+        overflow(result, finite_width, loc, true);
+        overflow(result, finite_width, loc, false);
+    }
+}
+
+void interval_domain_t::apply_unsigned(const binaryop_t& op, const register_t& result, const register_t& lhs, const register_t& rhs, const int finite_width, location_t loc) {
+    apply(op, result, lhs, rhs, finite_width, loc, false);
+    if (finite_width) {
+        auto unsigned_result = m_unsigned.find_interval_value(result);
+        if (unsigned_result) {
+            auto unsigned_interval = unsigned_result->to_interval();
+            m_signed.insert_in_registers(result, loc, unsigned_interval);
+        }
+        overflow(result, finite_width, loc, true);
+        overflow(result, finite_width, loc, false);
+    }
+}
+
+void interval_domain_t::add(const register_t& lhs, const register_t& op2, location_t loc) {
+    apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, 0, loc);
+}
+
+void interval_domain_t::add(const register_t& lhs, const number_t& op2, location_t loc) {
+    apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, 0, loc);
+}
+
+void interval_domain_t::sub(const register_t& lhs, const register_t& op2, location_t loc) {
+    apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, 0, loc);
+}
+
+void interval_domain_t::sub(const register_t& lhs, const number_t& op2, location_t loc) {
+    apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, 0, loc);
+}
+
+// Add/subtract with overflow are both signed and unsigned. We can use either one of the two to compute the
+// result before adjusting for overflow, though if one is top we want to use the other to retain precision.
+void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+        apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
+    } else {
+        apply_unsigned(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
+    }
+}
+
+void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+        apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
+    } else {
+        apply_unsigned(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
+    }
+}
+
+void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+        apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
+    } else {
+        apply_unsigned(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
+    }
+}
+
+void interval_domain_t::sub_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+        apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
+    } else {
+        apply_unsigned(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
+    }
+}
+
+void interval_domain_t::neg(const register_t& lhs, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::MUL, lhs, lhs, number_t{-1}, finite_width, loc);
+}
+
+void interval_domain_t::mul(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::MUL, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::mul(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::MUL, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::udiv(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(arith_binaryop_t::UDIV, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::udiv(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(arith_binaryop_t::UDIV, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::sdiv(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::SDIV, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::sdiv(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::SDIV, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::srem(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::SREM, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::srem(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    apply_signed(arith_binaryop_t::SREM, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::urem(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(arith_binaryop_t::UREM, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::urem(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(arith_binaryop_t::UREM, lhs, lhs, op2, finite_width, loc);
+}
+
+
+void interval_domain_t::bitwise_and(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::AND, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::bitwise_and(const register_t& lhs, const number_t& op2, location_t loc) {
+    // Use finite width 64 to make the svalue be set as well as the uvalue.
+    apply_unsigned(bitwise_binaryop_t::AND, lhs, lhs, op2, 64, loc);
+}
+
+void interval_domain_t::bitwise_or(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::OR, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::bitwise_or(const register_t& lhs, const number_t& op2, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::OR, lhs, lhs, op2, 64, loc);
+}
+
+void interval_domain_t::bitwise_xor(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::XOR, lhs, lhs, op2, finite_width, loc);
+}
+
+void interval_domain_t::bitwise_xor(const register_t& lhs, const number_t& op2, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::XOR, lhs, lhs, op2, 64, loc);
+}
+
+void interval_domain_t::shl_overflow(const register_t& lhs, const register_t& op2, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::SHL, lhs, lhs, op2, 64, loc);
+}
+
+void interval_domain_t::shl_overflow(const register_t& lhs, const number_t& op2, location_t loc) {
+    apply_unsigned(bitwise_binaryop_t::SHL, lhs, lhs, op2, 64, loc);
 }
 
 void interval_domain_t::operator()(const Un& u, location_t loc) {
     if (u.op == Un::Op::NEG) {
         auto dst = register_t{u.dst.v};
-        auto signed_mock_interval = find_signed_interval_value(dst);
-        auto unsigned_mock_interval = find_unsigned_interval_value(dst);
-        if (!signed_mock_interval && !unsigned_mock_interval) {
-            m_signed -= dst;
-            m_unsigned -= dst;
-            return;
-        }
-        interval_t minus_one = interval_t{number_t{-1}};
-        interval_t signed_interval = signed_mock_interval ? signed_mock_interval->to_interval() : interval_t::top();
-        interval_t unsigned_interval = unsigned_mock_interval ? unsigned_mock_interval->to_interval() : interval_t::top();
-        // TODO: this is a temporary fix, need to handle this better
-        // scenario: when either signed or unsigned is not present, but the other is
-        if (!signed_mock_interval) {
-            signed_interval = unsigned_interval;
-        }
-        else if (!unsigned_mock_interval) {
-            unsigned_interval = signed_interval;
-        }
-        apply_signed(signed_interval, unsigned_interval, signed_interval, minus_one, u.is64 ? 64 : 32, arithm_binop_t::MUL);
-        if (signed_mock_interval) {
-            insert_in_registers_signed(dst, loc, signed_interval);
-        }
-        if (unsigned_mock_interval) {
-            insert_in_registers_unsigned(dst, loc, unsigned_interval);
-        }
+        neg(dst, u.is64 ? 64 : 32, loc);
         return;
     }
     m_signed(u, loc);
@@ -1102,166 +1441,79 @@ void interval_domain_t::check_valid_access(const ValidAccess& s, interval_t&& in
     m_signed.check_valid_access(s, std::move(interval), width, check_stack_all_numeric);
 }
 
-static void apply_unsigned(interval_t& dst_signed, interval_t& dst_unsigned,
-        const interval_t& src, int finite_width, const interval_t& updated_interval, Bin::Op op) {
-    switch (op) {
-        case Bin::Op::UDIV: {
-            // this hack is required because UDiv call returns [+oo, +oo], at least in case when 
-            // updated_interval is top,
-            // which causes the error: CRAB ERROR: Bound: undefined operation -oo + +oo
-            // SplitDBM (possibly) uses a normalize() to avoid this issue,
-            // but we don't have that here
-            // TODO: fix this
-            if (updated_interval.is_top()) {
-                dst_unsigned = interval_t::top();
-                dst_signed = interval_t::top();
-                return;
-            }
-            dst_unsigned = updated_interval.UDiv(src);
-            break;
-        }
-        case Bin::Op::UMOD: {
-            dst_unsigned = updated_interval.URem(src);
-            break;
-        }
-        case Bin::Op::AND: {
-            dst_unsigned = updated_interval.And(src);
-            break;
-        }
-        case Bin::Op::OR: {
-            dst_unsigned = updated_interval.Or(src);
-            break;
-        }
-        case Bin::Op::XOR: {
-            dst_unsigned = updated_interval.Xor(src);
-            break;
-        }
-        case Bin::Op::LSH: {
-            dst_unsigned = updated_interval.Shl(src);
-            break;
-        }
-        case Bin::Op::RSH: {
-            dst_unsigned = updated_interval.LShr(src);
-            break;
-        }
-        case Bin::Op::ARSH: {
-            dst_unsigned = updated_interval.AShr(src);
-            break;
-        }
-        default: {
-            break;
-        }
-    }
-    if (finite_width) {
-        dst_signed = dst_unsigned;
-        overflow_unsigned(dst_unsigned, finite_width);
-        overflow_signed(dst_signed, finite_width);
-    }
-}
 
-static void shl(register_t reg, int imm, int finite_width,
-        interval_t& dst_signed, interval_t& dst_unsigned, location_t loc) {
+void interval_domain_t::shl(const register_t& reg, int imm, const int finite_width, location_t loc) {
     // The BPF ISA requires masking the imm.
     imm &= finite_width - 1;
 
-    if (dst_unsigned.finite_size()) {
-        number_t lb = dst_unsigned.lb().number().value();
-        number_t ub = dst_unsigned.ub().number().value();
-        uint64_t lb_n = lb.cast_to_uint(64).cast_to<uint>();
-        uint64_t ub_n = ub.cast_to_uint(64).cast_to<uint>();
-        uint64_t uint_max = (finite_width == 64) ? UINT64_MAX : UINT32_MAX;
-        if ((lb_n >> (finite_width - imm)) != (ub_n >> (finite_width - imm))) {
-            // The bits that will be shifted out to the left are different,
-            // which means all combinations of remaining bits are possible.
-            lb_n = 0;
-            ub_n = (uint_max << imm) & uint_max;
-        } else {
-            // The bits that will be shifted out to the left are identical
-            // for all values in the interval, so we can safely shift left
-            // to get a new interval.
-            lb_n = (lb_n << imm) & uint_max;
-            ub_n = (ub_n << imm) & uint_max;
-        }
-        dst_unsigned = interval_t{number_t{lb_n}, number_t{ub_n}};
-        dst_signed = interval_t::top();
-        if ((int64_t)ub_n >= (int64_t)lb_n) {
-            dst_signed = dst_unsigned;
-        }
-        return;
-    }
-    apply_unsigned(dst_signed, dst_unsigned, interval_t{number_t{imm}}, 64,
-            dst_unsigned, Bin::Op::LSH);
-}
-
-static void lshr(register_t reg, int imm, int finite_width,
-        interval_t& dst_signed, interval_t& dst_unsigned, location_t loc) {
-    // The BPF ISA requires masking the imm.
-    imm &= finite_width - 1;
-
-    number_t lb_n{0};
-    number_t ub_n{UINT64_MAX >> imm};
-    if (dst_unsigned.finite_size()) {
-        number_t lb = dst_unsigned.lb().number().value();
-        number_t ub = dst_unsigned.ub().number().value();
-        if (finite_width == 64) {
-            lb_n = lb.cast_to_uint(64) >> imm;
-            ub_n = ub.cast_to_uint(64) >> imm;
-        } else {
-            number_t lb_w = lb.cast_to_sint(finite_width);
-            number_t ub_w = ub.cast_to_sint(finite_width);
-            lb_n = lb_w.cast_to_uint(32) >> imm;
-            ub_n = ub_w.cast_to_uint(32) >> imm;
-
-            // The interval must be valid since a signed range crossing 0
-            // was earlier converted to a full unsigned range.
-            assert(lb_n <= ub_n);
-        }
-    }
-    dst_unsigned = interval_t{lb_n, ub_n};
-    if (ub_n.cast_to<int64_t>() >= lb_n.cast_to<int64_t>()) {
-        dst_signed = dst_unsigned;
-    } else {
-        dst_signed = interval_t::top();
-    }
-    return;
-}
-
-static void ashr(register_t reg, interval_t src, int finite_width,
-        interval_t& dst_signed, interval_t& dst_unsigned, location_t loc) {
-    interval_t left_interval = interval_t::bottom();
-    interval_t right_interval = interval_t::bottom();
-    get_signed_intervals(finite_width == 64, dst_signed, dst_unsigned,
-            src, left_interval, right_interval);
-    if (auto sn = right_interval.singleton()) {
-        // The BPF ISA requires masking the imm.
-        int64_t imm = sn->cast_to_sint(64).cast_to<int64_t>() & (finite_width - 1);
-
-        int64_t lb_n = INT64_MIN >> imm;
-        int64_t ub_n = INT64_MAX >> imm;
-        if (left_interval.finite_size()) {
-            number_t lb = left_interval.lb().number().value();
-            number_t ub = left_interval.ub().number().value();
-            if (finite_width == 64) {
-                lb_n = lb.cast_to_sint(64).cast_to<int>() >> imm;
-                ub_n = ub.cast_to_sint(64).cast_to<int>() >> imm;
+    if (auto interval_opt = find_unsigned_interval_value(reg)) {
+        interval_t interval = interval_opt->to_interval();
+        if (interval.finite_size()) {
+            const number_t lb = interval.lb().number().value();
+            const number_t ub = interval.ub().number().value();
+            uint64_t lb_n = lb.cast_to<uint64_t>();
+            uint64_t ub_n = ub.cast_to<uint64_t>();
+            uint64_t uint_max = (finite_width == 64) ? uint64_t{std::numeric_limits<uint64_t>::max()} :
+                    uint64_t{std::numeric_limits<uint32_t>::max()};
+            if (lb_n >> (finite_width - imm) != ub_n >> (finite_width - imm)) {
+                // The bits that will be shifted out to the left are different,
+                // which means all combinations of remaining bits are possible.
+                lb_n = 0;
+                ub_n = uint_max << imm & uint_max;
             } else {
-                number_t lb_w = lb.cast_to_sint(finite_width) >> (int)imm;
-                number_t ub_w = ub.cast_to_sint(finite_width) >> (int)imm;
-                if (lb_w.cast_to_uint(32) <= ub_w.cast_to_uint(32)) {
-                    lb_n = lb_w.cast_to_uint(32).cast_to<int>();
-                    ub_n = ub_w.cast_to_uint(32).cast_to<int>();
-                }
+                // The bits that will be shifted out to the left are identical
+                // for all values in the interval, so we can safely shift left
+                // to get a new interval.
+                lb_n = lb_n << imm & uint_max;
+                ub_n = ub_n << imm & uint_max;
+            }
+            insert_in_registers_unsigned(reg, loc, interval_t{lb_n, ub_n});
+            if (to_signed(ub_n) >= to_signed(lb_n)) {
+                insert_in_registers_signed(reg, loc, interval_t{lb_n, ub_n});
+            } else {
+                insert_in_registers_signed(reg, loc, interval_t::top());
+            }
+            return;
+        }
+    }
+    shl_overflow(reg, number_t{imm}, loc);
+}
+
+void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_width, location_t loc) {
+    // The BPF ISA requires masking the imm.
+    imm &= finite_width - 1;
+
+    if (auto interval_opt = find_unsigned_interval_value(reg)) {
+        interval_t interval = interval_opt->to_interval();
+        number_t lb_n{0};
+        number_t ub_n{std::numeric_limits<uint64_t>::max() >> imm};
+        if (interval.finite_size()) {
+            number_t lb = interval.lb().number().value();
+            number_t ub = interval.ub().number().value();
+            if (finite_width == 64) {
+                lb_n = lb.cast_to<uint64_t>() >> imm;
+                ub_n = ub.cast_to<uint64_t>() >> imm;
+            } else {
+                number_t lb_w = lb.cast_to_sint(finite_width);
+                number_t ub_w = ub.cast_to_sint(finite_width);
+                lb_n = lb_w.cast_to<uint32_t>() >> imm;
+                ub_n = ub_w.cast_to<uint32_t>() >> imm;
+
+                // The interval must be valid since a signed range crossing 0
+                // was earlier converted to a full unsigned range.
+                assert(lb_n <= ub_n);
             }
         }
-        dst_signed = interval_t{number_t{lb_n}, number_t{ub_n}};
-        dst_unsigned = interval_t::top();
-        if ((uint64_t)ub_n >= (uint64_t)lb_n) {
-            dst_unsigned = dst_signed;
+        insert_in_registers_unsigned(reg, loc, interval_t{lb_n, ub_n});
+        if (ub_n.narrow<int64_t>() >= lb_n.narrow<int64_t>()) {
+            insert_in_registers_signed(reg, loc, interval_t{lb_n, ub_n});
+        } else {
+            insert_in_registers_signed(reg, loc, interval_t::top());
         }
         return;
     }
-    dst_signed = interval_t::top();
-    dst_unsigned = interval_t::top();
+    insert_in_registers_unsigned(reg, loc, interval_t::top());
+    insert_in_registers_signed(reg, loc, interval_t::top());
 }
 
 void interval_domain_t::do_bin(const Bin& bin,
@@ -1278,9 +1530,9 @@ void interval_domain_t::do_bin(const Bin& bin,
     auto dst_register = register_t{bin.dst.v};
     auto finite_width = (bin.is64 ? 64 : 32);
 
-    interval_t dst_signed = subtracted;
-    interval_t dst_unsigned = subtracted;
     if (subtracted != interval_t::bottom()) {
+        interval_t dst_signed = subtracted;
+        interval_t dst_unsigned = subtracted;
         if (!(dst_signed <= interval_t::signed_int(64))) {
             dst_signed = dst_signed.truncate_to_sint(64);
         }
@@ -1291,47 +1543,40 @@ void interval_domain_t::do_bin(const Bin& bin,
         insert_in_registers_unsigned(dst_register, loc, dst_unsigned);
         return;
     }
-    if (dst_signed_interval_opt) dst_signed = std::move(*dst_signed_interval_opt);
-    if (dst_unsigned_interval_opt) dst_unsigned = std::move(*dst_unsigned_interval_opt);
 
-    if (std::holds_alternative<Imm>(bin.v)) {
+    if ((!dst_signed_interval_opt && !dst_unsigned_interval_opt) && bin.op != Op::MOV) {
+        operator-=(dst_register);
+        return;
+    }
+
+    if (auto pimm = std::get_if<Imm>(&bin.v)) {
         int64_t imm;
         if (bin.is64) {
             // Use the full signed value.
-            imm = static_cast<int64_t>(std::get<Imm>(bin.v).v);
+            imm = to_signed(pimm->v);
         } else {
             // Use only the low 32 bits of the value.
-            imm = static_cast<int>(std::get<Imm>(bin.v).v);
-            if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                apply_unsigned(dst_signed, dst_unsigned, interval_t{number_t{UINT32_MAX}},
-                        64, dst_unsigned, Op::AND);
-            }
+            imm = gsl::narrow_cast<int32_t>(pimm->v);
+            bitwise_and(dst_register, number_t{std::numeric_limits<uint32_t>::max()}, loc);
         }
-        auto imm_number = number_t{imm};
-        auto imm_interval = interval_t{imm_number};
-        auto imm_unsigned_interval = interval_t{number_t{imm_number.cast_to_uint(64)}};
-        auto imm_int_interval = interval_t{number_t{(int)imm}};
+        auto imm_interval = interval_t{number_t{imm}};
         switch (bin.op) {
             case Op::MOV: {
                 // ra = imm
-                dst_signed = imm_interval;
-                overflow_unsigned(imm_interval, (bin.is64 ? 64 : 32));
-                dst_unsigned = imm_interval;
+                m_signed.insert_in_registers(dst_register, loc, imm_interval);
+                m_unsigned.insert_in_registers(dst_register, loc, imm_interval);
+                overflow(dst_register, finite_width, loc, false);
                 break;
             }
+            case Op::MOVSX8:
+            case Op::MOVSX16:
+            case Op::MOVSX32: m_errors.push_back("MOVSX not implemented"); break;
             case Op::ADD: {
                 // ra += imm
                 if (imm == 0) {
                     return;
                 }
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    auto interval = dst_signed.is_top() ? dst_unsigned : dst_signed;
-                    apply_signed(dst_signed, dst_unsigned, interval, imm_int_interval, finite_width,
-                             arithm_binop_t::ADD);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                add_overflow(dst_register, number_t{gsl::narrow<int>(imm)}, finite_width, loc);
                 break;
             }
             case Op::SUB: {
@@ -1339,119 +1584,74 @@ void interval_domain_t::do_bin(const Bin& bin,
                 if (imm == 0) {
                     return;
                 }
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    auto interval = dst_signed.is_top() ? dst_unsigned : dst_signed;
-                    apply_signed(dst_signed, dst_unsigned, interval, imm_int_interval, finite_width,
-                            arithm_binop_t::SUB);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                add_overflow(dst_register, number_t{gsl::narrow<int>(-imm)}, finite_width, loc);
                 break;
             }
             case Op::MUL: {
                 // ra *= imm
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_signed(dst_signed, dst_unsigned, dst_signed, imm_interval, finite_width,
-                            arithm_binop_t::MUL);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                mul(dst_register, number_t{imm}, finite_width, loc);
                 break;
             }
             case Op::UDIV: {
                 // ra /= imm
-                if (dst_unsigned_interval_opt && dst_signed_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, imm_interval, finite_width,
-                            dst_unsigned, Op::UDIV);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                udiv(dst_register, number_t{imm}, finite_width, loc);
+                break;
+            }
+            case Op::SDIV: {
+                // ra s/= imm
+                sdiv(dst_register, number_t{imm}, finite_width, loc);
                 break;
             }
             case Op::UMOD: {
                 // ra %= imm
-                if (dst_unsigned_interval_opt && dst_signed_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, imm_interval, finite_width,
-                            dst_unsigned, Op::UMOD);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                urem(dst_register, number_t{imm}, finite_width, loc);
+                break;
+            }
+            case Op::SMOD: {
+                // ra s%= imm
+                srem(dst_register, number_t{imm}, finite_width, loc);
                 break;
             }
             case Op::AND: {
                 // ra &= imm
-                // might or might not be needed, but some case occurred where left was negative
-                dst_unsigned = dst_unsigned.truncate_to_uint(finite_width);
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, imm_unsigned_interval, finite_width,
-                            dst_unsigned, Op::AND);
-                    if ((int32_t)imm > 0) {
-                        // AND with immediate is only a 32-bit operation so svalue and uvalue
-                        // are the same.
-                        dst_signed = dst_signed & interval_t{number_t{0}, number_t{imm}};
-                        dst_unsigned = dst_unsigned & interval_t{number_t{0}, number_t{imm}};
-                    }
-                }
-                else {
-                    operator-=(dst_register);
+                bitwise_and(dst_register, number_t{imm}, loc);
+                if (gsl::narrow<int32_t>(imm) > 0) {
+                    // AND with immediate is only a 32-bit operation so svalue and uvalue
+                    // are the same.
+                    auto dst_signed = m_signed.find_interval_value(dst_register)->to_interval();
+                    auto lb = dst_signed.lb().number().value();
+                    auto ub = dst_signed.ub().number().value();
+                    dst_signed = dst_signed & interval_t{number_t{0}, number_t{imm}};
+                    m_signed.insert_in_registers(dst_register, loc, dst_signed);
+                    m_unsigned.insert_in_registers(dst_register, loc, dst_signed);
                 }
                 break;
             }
             case Op::OR: {
                 // ra |= imm
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, imm_unsigned_interval, finite_width,
-                            dst_unsigned, Op::OR);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                bitwise_or(dst_register, number_t{imm}, loc);
                 break;
             }
             case Op::XOR: {
                 // ra ^= imm
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, imm_unsigned_interval, finite_width,
-                            dst_unsigned, Op::XOR);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                bitwise_xor(dst_register, number_t{imm}, loc);
                 break;
             }
             case Op::LSH: {
                 // ra <<= imm
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    shl(dst_register, (int32_t)imm, finite_width, dst_signed, dst_unsigned, loc);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                shl(dst_register, gsl::narrow<int32_t>(imm), finite_width, loc);
                 break;
             }
             case Op::RSH: {
                 // ra >>= imm
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    lshr(dst_register, (int32_t)imm, finite_width, dst_signed, dst_unsigned, loc);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                lshr(dst_register, gsl::narrow<int32_t>(imm), finite_width, loc);
                 break;
             }
             case Op::ARSH: {
                 // ra >>>= imm
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    ashr(dst_register, interval_t{number_t{(int32_t)imm}}, finite_width,
-                            dst_signed, dst_unsigned, loc);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                //ashr(dst_register, gsl::narrow<int32_t>(imm), finite_width, loc);
+                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
+                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
                 break;
             }
             default: {
@@ -1460,166 +1660,129 @@ void interval_domain_t::do_bin(const Bin& bin,
         }
     }
     else {
-        if (!src_signed_interval_opt || !src_unsigned_interval_opt) {
+        if (!src_signed_interval_opt && !src_unsigned_interval_opt) {
             operator-=(dst_register);
             return;
         }
-        interval_t src_signed = *src_signed_interval_opt;
-        interval_t src_unsigned = *src_unsigned_interval_opt;
+        register_t src_register = register_t{std::get<Reg>(bin.v).v};
         switch (bin.op) {
+            case Op::MOVSX8:
+            case Op::MOVSX16:
+            case Op::MOVSX32:
+                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
+                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
+                break;
             case Op::MOV: {
                 // ra = rb
-                dst_signed = src_signed;
-                dst_unsigned = src_unsigned;
+                auto src_signed = m_signed.find_interval_value(src_register)->to_interval();
+                auto src_unsigned = m_unsigned.find_interval_value(src_register)->to_interval();
+                m_signed.insert_in_registers(dst_register, loc, src_signed);
+                m_unsigned.insert_in_registers(dst_register, loc, src_unsigned);
                 break;
             }
             case Op::ADD: {
                 // ra += rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    auto interval = dst_signed.is_top() ? dst_unsigned : dst_signed;
-                    apply_signed(dst_signed, dst_unsigned, interval, src_signed, finite_width,
-                            arithm_binop_t::ADD);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                add_overflow(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::SUB: {
                 // ra -= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    auto interval = dst_signed.is_top() ? dst_unsigned : dst_signed;
-                    apply_signed(dst_signed, dst_unsigned, interval, src_signed, finite_width,
-                            arithm_binop_t::SUB);
+                if (src_register == dst_register) {
+                    // an extra check only to pass a test
+                    m_signed.insert_in_registers(dst_register, loc, interval_t{number_t{0}});
+                    m_unsigned.insert_in_registers(dst_register, loc, interval_t{number_t{0}});
+                    break;
                 }
-                else {
-                    operator-=(dst_register);
-                }
+                apply_signed(arith_binaryop_t::SUB, dst_register, dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::MUL: {
                 // ra *= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_signed(dst_signed, dst_unsigned, dst_signed, src_signed, finite_width,
-                            arithm_binop_t::MUL);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                mul(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::UDIV: {
                 // ra /= rb
-                if (dst_unsigned_interval_opt && dst_signed_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, src_unsigned, finite_width,
-                            dst_unsigned, Op::UDIV);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                udiv(dst_register, src_register, finite_width, loc);
+                break;
+            }
+            case Op::SDIV: {
+                // ra s/= rb
+                sdiv(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::UMOD: {
                 // ra %= rb
-                if (dst_unsigned_interval_opt && dst_signed_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, src_unsigned, finite_width,
-                            dst_unsigned, Op::UMOD);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                urem(dst_register, src_register, finite_width, loc);
+                break;
+            }
+            case Op::SMOD: {
+                // ra s%= rb
+                srem(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::AND: {
                 // ra &= rb
-                // might or might not be needed
-                dst_unsigned = dst_unsigned.truncate_to_uint(finite_width);
-                src_unsigned = src_unsigned.truncate_to_uint(finite_width);
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, src_unsigned, finite_width,
-                            dst_unsigned, Op::AND);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                bitwise_and(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::OR: {
                 // ra |= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, src_unsigned, finite_width,
-                            dst_unsigned, Op::OR);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                bitwise_or(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::XOR: {
                 // ra ^= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    apply_unsigned(dst_signed, dst_unsigned, src_unsigned, finite_width,
-                            dst_unsigned, Op::XOR);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                bitwise_xor(dst_register, src_register, finite_width, loc);
                 break;
             }
             case Op::LSH: {
                 // ra <<= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
+                if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
+                    auto src_unsigned = src_unsigned_interval_opt->to_interval();
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
-                        uint64_t imm = sn->cast_to_uint(64).cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
-                        if (imm <= INT32_MAX) {
+                        uint64_t imm = sn->cast_to<int32_t>() & (bin.is64 ? 63 : 31);
+                        if (imm <= std::numeric_limits<int32_t>::max()) {
                             if (!bin.is64) {
                                 // Use only the low 32 bits of the value.
-                                dst_signed = dst_signed & interval_t{number_t{UINT32_MAX}};
-                                dst_unsigned = dst_unsigned & interval_t{number_t{UINT32_MAX}};
+                                bitwise_and(dst_register, std::numeric_limits<uint32_t>::max(), loc);
                             }
-                            shl(dst_register, (int32_t)imm, finite_width, dst_signed, dst_unsigned, loc);
+                            shl(dst_register, gsl::narrow_cast<int32_t>(imm), finite_width, loc);
                             break;
                         }
                     }
-                    apply_unsigned(dst_signed, dst_unsigned, src_unsigned, 64,
-                            dst_unsigned, Op::LSH);
                 }
-                else {
-                    operator-=(dst_register);
-                }
+                shl_overflow(dst_register, register_t{src_register}, loc);
                 break;
             }
             case Op::RSH: {
                 // ra >>= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
+                if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
+                    auto src_unsigned = src_unsigned_interval_opt->to_interval();
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
-                        uint64_t imm = sn->cast_to_uint(64).cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
-                        if (imm <= INT32_MAX) {
+                        uint64_t imm = sn->cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
+                        if (imm <= std::numeric_limits<int32_t>::max()) {
                             if (!bin.is64) {
                                 // Use only the low 32 bits of the value.
-                                dst_signed = dst_signed & interval_t{number_t{UINT32_MAX}};
-                                dst_unsigned = dst_unsigned & interval_t{number_t{UINT32_MAX}};
+                                bitwise_and(dst_register, std::numeric_limits<uint32_t>::max(), loc);
                             }
-                            lshr(dst_register, (int32_t)imm, finite_width, dst_signed, dst_unsigned, loc);
+                            lshr(dst_register, gsl::narrow_cast<int32_t>(imm), finite_width, loc);
                             break;
                         }
                     }
-                    dst_signed = interval_t::top();
-                    dst_unsigned = interval_t::top();
                 }
-                else {
-                    operator-=(dst_register);
-                }
+                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
+                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
                 break;
             }
             case Op::ARSH: {
                 // ra >>>= rb
-                if (dst_signed_interval_opt && dst_unsigned_interval_opt) {
-                    ashr(dst_register, src_signed, finite_width, dst_signed, dst_unsigned, loc);
-                }
-                else {
-                    operator-=(dst_register);
-                }
+                //if (auto src_signed_interval_opt = find_signed_interval_value(src_register)) {
+                //    ashr(dst_register, src_register, finite_width, loc);
+                //    break;
+                //}
+                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
+                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
                 break;
             }
             default: {
@@ -1627,16 +1790,8 @@ void interval_domain_t::do_bin(const Bin& bin,
             }
         }
     }
-    if (!dst_signed.is_bottom() && !dst_unsigned.is_bottom()) {
-        if (!bin.is64) {
-            apply_unsigned(dst_signed, dst_unsigned, interval_t{number_t{UINT32_MAX}},
-                    finite_width, dst_unsigned, Op::AND);
-        }
-        insert_in_registers_signed(dst_register, loc, dst_signed);
-        insert_in_registers_unsigned(dst_register, loc, dst_unsigned);
-    }
-    else {
-        operator-=(dst_register);
+    if (!bin.is64) {
+        bitwise_and(dst_register, std::numeric_limits<uint32_t>::max(), loc);
     }
 }
 

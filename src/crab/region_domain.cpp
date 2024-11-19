@@ -837,8 +837,6 @@ void region_domain_t::check_type(const TypeConstraint& s,
         }
         else {
             if (s.types == TypeGroup::pointer || s.types == TypeGroup::ptr_or_num) return;
-            // TODO: This needs to be fixed
-            // if (s.types == TypeGroup::non_map_fd) return;
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_type)) {
                 ptr_with_off_t ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd_type);
                 if (ptr_with_off.get_region() == crab::region_t::T_CTX) {
@@ -866,7 +864,6 @@ void region_domain_t::check_type(const TypeConstraint& s,
     }
     else if (interval_opt) {
         if (s.types == TypeGroup::number || s.types == TypeGroup::ptr_or_num
-                // TODO: fix - || s.types == TypeGroup::non_map_fd 
                 || s.types == TypeGroup::mem_or_num)
             return;
     }

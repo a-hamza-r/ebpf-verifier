@@ -9,6 +9,10 @@
 
 namespace crab {
 
+enum class arith_binaryop_t { ADD, SUB, MUL, SDIV, UDIV, SREM, UREM };
+enum class bitwise_binaryop_t { AND, OR, XOR, SHL, LSHR, ASHR };
+using binaryop_t = std::variant<arith_binaryop_t, bitwise_binaryop_t>;
+
 class interval_domain_t final {
     signed_interval_domain_t m_signed;
     unsigned_interval_domain_t m_unsigned;
@@ -50,6 +54,59 @@ class interval_domain_t final {
     // narrowing
     interval_domain_t narrow(const interval_domain_t& other) const;
     void operator-=(register_t reg);
+
+
+    void apply_signed(const binaryop_t&, const register_t&, const register_t&, const number_t&, const int, location_t);
+    void apply_unsigned(const binaryop_t&, const register_t&, const register_t&, const number_t&, const int, location_t);
+    void apply_signed(const binaryop_t&, const register_t&, const register_t&, const register_t&, const int, location_t);
+    void apply_unsigned(const binaryop_t&, const register_t&, const register_t&, const register_t&, const int, location_t);
+
+    void overflow(const register_t&, const int, location_t, bool);
+    void overflow_bounds(const register_t&, number_t, const int, location_t, bool);
+
+    void apply(const bitwise_binaryop_t&, const register_t&, const register_t&, const number_t&, const int, location_t, bool);
+    void apply(const bitwise_binaryop_t&, const register_t&, const register_t&, const register_t&, const int, location_t, bool);
+    void apply(const arith_binaryop_t&, const register_t&, const register_t&, const number_t&, const int, location_t, bool);
+    void apply(const arith_binaryop_t&, const register_t&, const register_t&, const register_t&, const int, location_t, bool);
+
+    void apply(const binaryop_t& op, const register_t& result, const register_t& lhs, const register_t& rhs, const int finite_width, location_t loc, bool is_signed) {
+        std::visit([&](auto top) { apply(top, result, lhs, rhs, finite_width, loc, is_signed); }, op);
+    }
+    void apply(const binaryop_t& op, const register_t& result, const register_t& lhs, const number_t& rhs, const int finite_width, location_t loc, bool is_signed) {
+        std::visit([&](auto top) { apply(top, result, lhs, rhs, finite_width, loc, is_signed); }, op);
+    }
+
+
+    void neg(const register_t&, const int, location_t);
+    void add(const register_t&, const register_t&, location_t);
+    void add(const register_t&, const number_t&, location_t);
+    void sub(const register_t&, const register_t&, location_t);
+    void sub(const register_t&, const number_t&, location_t);
+    void add_overflow(const register_t&, const register_t&, const int, location_t);
+    void add_overflow(const register_t&, const number_t&, const int, location_t);
+    void sub_overflow(const register_t&, const register_t&, const int, location_t);
+    void sub_overflow(const register_t&, const number_t&, const int, location_t);
+    void mul(const register_t&, const register_t&, const int, location_t);
+    void mul(const register_t&, const number_t&, const int, location_t);
+    void udiv(const register_t&, const register_t&, const int, location_t);
+    void udiv(const register_t&, const number_t&, const int, location_t);
+    void sdiv(const register_t&, const register_t&, const int, location_t);
+    void sdiv(const register_t&, const number_t&, const int, location_t);
+    void srem(const register_t&, const register_t&, const int, location_t);
+    void srem(const register_t&, const number_t&, const int, location_t);
+    void urem(const register_t&, const register_t&, const int, location_t);
+    void urem(const register_t&, const number_t&, const int, location_t);
+    void bitwise_and(const register_t&, const register_t&, const int, location_t);
+    void bitwise_and(const register_t&, const number_t&, location_t);
+    void bitwise_or(const register_t&, const register_t&, const int, location_t);
+    void bitwise_or(const register_t&, const number_t&, location_t);
+    void bitwise_xor(const register_t&, const register_t&, const int, location_t);
+    void bitwise_xor(const register_t&, const number_t&, location_t);
+    void shl_overflow(const register_t&, const register_t&, location_t);
+    void shl_overflow(const register_t&, const number_t&, location_t);
+
+    void shl(const register_t&, int, const int, location_t);
+    void lshr(const register_t&, int, const int, location_t);
 
     //// abstract transformers
     void operator()(const Undefined&, location_t loc = boost::none);
