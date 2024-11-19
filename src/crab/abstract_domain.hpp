@@ -31,7 +31,7 @@ class abstract_domain_t {
         virtual std::unique_ptr<abstract_domain_concept> operator&(const abstract_domain_concept& abs) const = 0;
         virtual std::unique_ptr<abstract_domain_concept> widen(const abstract_domain_concept& abs, bool) = 0;
         virtual std::unique_ptr<abstract_domain_concept> narrow(const abstract_domain_concept& abs) const = 0;
-        virtual void operator()(const basic_block_t&, int print = 0) = 0;
+        virtual void operator()(const basic_block_t&) = 0;
         virtual void operator()(const Undefined&, location_t) = 0;
         virtual void operator()(const Bin&, location_t) = 0;
         virtual void operator()(const Un&, location_t) = 0;
@@ -53,6 +53,9 @@ class abstract_domain_t {
         virtual string_invariant to_set() = 0;
         virtual void set_require_check(check_require_func_t f) = 0;
         virtual std::vector<std::string> get_errors() = 0;
+        virtual void print_ctx(std::ostream&) const = 0;
+        virtual void print_stack(std::ostream&) const = 0;
+        virtual void print_annotated_bb(std::ostream&, const basic_block_t& bb) const = 0;
     }; // end class abstract_domain_concept
 
     template <typename Domain>
@@ -74,7 +77,7 @@ class abstract_domain_t {
         std::unique_ptr<abstract_domain_concept> operator&(const abstract_domain_concept& abs) const override;
         std::unique_ptr<abstract_domain_concept> widen(const abstract_domain_concept& abs, bool) override;
         std::unique_ptr<abstract_domain_concept> narrow(const abstract_domain_concept& abs) const override;
-        void operator()(const basic_block_t& bb, int print = 0) override;
+        void operator()(const basic_block_t& bb) override;
         void operator()(const Undefined& s, location_t loc = boost::none) override;
         void operator()(const Bin& s, location_t loc = boost::none) override;
         void operator()(const Un& s, location_t loc = boost::none) override;
@@ -92,6 +95,9 @@ class abstract_domain_t {
         string_invariant to_set() override;
         void set_require_check(check_require_func_t f) override;
         std::vector<std::string> get_errors() override;
+        void print_ctx(std::ostream&) const override;
+        void print_stack(std::ostream&) const override;
+        void print_annotated_bb(std::ostream&, const basic_block_t& bb) const override;
     }; // end class abstract_domain_model
 
     std::unique_ptr<abstract_domain_concept> m_concept;
@@ -117,7 +123,7 @@ class abstract_domain_t {
     abstract_domain_t operator&(const abstract_domain_t& abs) const;
     abstract_domain_t widen(const abstract_domain_t& abs, bool);
     abstract_domain_t narrow(const abstract_domain_t& abs) const;
-    void operator()(const basic_block_t& bb, int print = 0);
+    void operator()(const basic_block_t& bb);
     void operator()(const Undefined& s, location_t loc = boost::none);
     void operator()(const Bin& s, location_t loc = boost::none);
     void operator()(const Un& s, location_t loc = boost::none);
@@ -135,6 +141,9 @@ class abstract_domain_t {
     string_invariant to_set();
     void set_require_check(check_require_func_t f);
     std::vector<std::string> get_errors();
+    void print_ctx(std::ostream&) const;
+    void print_stack(std::ostream&) const;
+    void print_annotated_bb(std::ostream&, const basic_block_t& bb) const;
 
     friend std::ostream& operator<<(std::ostream& o, const abstract_domain_t& dom);
 };

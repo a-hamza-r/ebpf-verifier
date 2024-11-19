@@ -1823,7 +1823,7 @@ void interval_domain_t::operator()(const Assert&, location_t loc) {
     // nothing to do here
 }
 
-void interval_domain_t::operator()(const basic_block_t& bb, int print) {
+void interval_domain_t::operator()(const basic_block_t& bb) {
     // nothing to do here
 }
 void interval_domain_t::set_require_check(check_require_func_t f) {}

@@ -120,7 +120,7 @@ class interval_domain_t final {
     void operator()(const Packet&, location_t loc = boost::none);
     void operator()(const Assume&, location_t loc = boost::none);
     void operator()(const Assert&, location_t loc = boost::none);
-    void operator()(const basic_block_t& bb, int print = 0);
+    void operator()(const basic_block_t& bb);
     void write(std::ostream& os) const {}
     crab::bound_t get_loop_count_upper_bound() const;
     void initialize_loop_counter(const label_t&);
@@ -173,6 +173,9 @@ class interval_domain_t final {
     std::vector<uint64_t> find_overlapping_cells_in_stack(uint64_t, int) const;
     void remove_overlap_in_stack(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values_in_stack(const std::vector<uint64_t>&, uint64_t, int);
+    void print_stack(std::ostream& o) const {};
+    void print_ctx(std::ostream& o) const {};
+    void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {};
     [[nodiscard]] std::vector<std::string>& get_errors() {
         operator+=(m_signed.get_errors());
         operator+=(m_unsigned.get_errors());

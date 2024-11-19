@@ -130,12 +130,10 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, const crab::in
     if (thread_local_options.abstract_domain == abstract_domain_kind::INFERENCE_DOMAIN) {
         db = generate_report_inference_domain(cfg, post_invariants);
         if (thread_local_options.print_invariants) {
-            auto exit_state = post_invariants.at(label_t::exit);
-            // only to print ctx and stack, fix later
-            exit_state(cfg.get_node(label_t::exit), -1);
+            auto final_state = pre_invariants.at(label_t::exit);
+            final_state.print_ctx(std::cout); final_state.print_stack(std::cout);
             for (const label_t& label : cfg.sorted_labels()) {
-                auto post_state = post_invariants.at(label);
-                post_state(cfg.get_node(label), 1);
+                post_invariants.at(label).print_annotated_bb(std::cout, cfg.get_node(label));
             }
         }
     }

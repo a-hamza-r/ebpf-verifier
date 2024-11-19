@@ -113,8 +113,24 @@ abstract_domain_t::abstract_domain_model<Domain>::narrow(const abstract_domain_t
 }
 
 template <typename Domain>
-void abstract_domain_t::abstract_domain_model<Domain>::operator()(const basic_block_t& bb, int print) {
-    m_abs_val.operator()(bb, print);
+void abstract_domain_t::abstract_domain_model<Domain>::print_ctx(std::ostream& o) const {
+    m_abs_val.print_ctx(o);
+}
+
+template <typename Domain>
+void abstract_domain_t::abstract_domain_model<Domain>::print_stack(std::ostream& o) const {
+    m_abs_val.print_stack(o);
+}
+
+template <typename Domain>
+void abstract_domain_t::abstract_domain_model<Domain>::print_annotated_bb(std::ostream& o,
+                                                                const basic_block_t& bb) const {
+    m_abs_val.print_annotated_bb(o, bb);
+}
+
+template <typename Domain>
+void abstract_domain_t::abstract_domain_model<Domain>::operator()(const basic_block_t& bb) {
+    m_abs_val.operator()(bb);
 }
 
 template <typename Domain>
@@ -254,8 +270,8 @@ abstract_domain_t abstract_domain_t::narrow(const abstract_domain_t& abs) const 
     return abstract_domain_t(std::move(m_concept->narrow(*(abs.m_concept))));
 }
 
-void abstract_domain_t::operator()(const basic_block_t& bb, int print) {
-    m_concept->operator()(bb, print);
+void abstract_domain_t::operator()(const basic_block_t& bb) {
+    m_concept->operator()(bb);
 }
 
 void abstract_domain_t::operator()(const Undefined& s, location_t loc) { m_concept->operator()(s, loc); }
@@ -289,6 +305,14 @@ void abstract_domain_t::initialize_loop_counter(const label_t label) { m_concept
 string_invariant abstract_domain_t::to_set() { return m_concept->to_set(); }
 
 void abstract_domain_t::set_require_check(check_require_func_t f) { m_concept->set_require_check(f); }
+
+void abstract_domain_t::print_ctx(std::ostream& o) const { m_concept->print_ctx(o); }
+
+void abstract_domain_t::print_stack(std::ostream& o) const { m_concept->print_stack(o); }
+
+void abstract_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {
+    m_concept->print_annotated_bb(o, bb);
+}
 
 std::vector<std::string> abstract_domain_t::get_errors() { return m_concept->get_errors(); }
 

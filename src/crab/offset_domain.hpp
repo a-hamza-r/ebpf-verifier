@@ -149,7 +149,7 @@ class offset_domain_t final {
     void operator()(const Assume&, location_t loc = boost::none);
     void operator()(const Assert&, location_t loc = boost::none);
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none) {};
-    void operator()(const basic_block_t& bb, int print = 0);
+    void operator()(const basic_block_t& bb);
     void write(std::ostream& os) const;
     std::string domain_name() const;
     crab::bound_t get_loop_count_upper_bound() const;
@@ -177,6 +177,9 @@ class offset_domain_t final {
     void insert_in_registers(register_t, location_t, refinement_t);
     void store_in_stack(uint64_t, refinement_t, int);
     void adjust_bb_for_types(location_t);
+    void print_ctx(std::ostream& o) const {}
+    void print_stack(std::ostream& o) const {}
+    void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {}
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void reset_errors() { m_errors.clear(); }
 }; // end offset_domain_t

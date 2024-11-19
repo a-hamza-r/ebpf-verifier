@@ -26,3 +26,5 @@ void print_annotated(std::ostream&, const LoadMapFd&, std::optional<crab::ptr_or
 void print_annotated(std::ostream&, const Mem&, std::optional<crab::ptr_or_mapfd_t>&,
         std::optional<crab::refinement_t>&, std::optional<crab::mock_interval_t>&, bool);
 void print_annotated(std::ostream&, const Un&, std::optional<crab::mock_interval_t>&, bool);
+void print_bb(std::ostream&, const basic_block_t&);
+void print_instr(std::ostream&, const Instruction&);

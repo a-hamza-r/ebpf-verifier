@@ -52,7 +52,7 @@ class ebpf_domain_t final {
     string_invariant to_set() const;
 
     // abstract transformers
-    void operator()(const basic_block_t& bb, int print = 0);
+    void operator()(const basic_block_t& bb);
 
     void operator()(const Addable&, location_t loc = boost::none);
     void operator()(const Assert&, location_t loc = boost::none);
@@ -81,8 +81,11 @@ class ebpf_domain_t final {
     void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
 
-    // write operation is important to keep in ebpf_domain_t because of the parametric abstract domain
+    // following operations are important to keep in ebpf_domain_t because of the parametric abstract domain
     void write(std::ostream& o) const;
+    void print_ctx(const std::ostream& o) const {}
+    void print_stack(const std::ostream& o) const {}
+    void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {}
 
     void initialize_loop_counter(const label_t& label);
     static ebpf_domain_t calculate_constant_limits();

@@ -188,3 +188,11 @@ void print_annotated(std::ostream& o, const Un& b, std::optional<crab::mock_inte
     print_register(o, b.dst, std::nullopt, std::nullopt, n, is_signed);
     o << " = " << op(b.op) << " " << b.dst << "\n";
 }
+
+void print_bb(std::ostream& o, const basic_block_t& bb) {
+    o << bb << "\n";
+}
+
+void print_instr(std::ostream& o, const Instruction& i) {
+    std::visit([&](auto&& i) { o << "  " << i << "\n"; }, i);
+}

@@ -77,7 +77,7 @@ class inference_domain_t final {
     void operator()(const ValidDivisor&, location_t loc = boost::none);
     void operator()(const FuncConstraint& s, location_t loc = boost::none);
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
-    void operator()(const basic_block_t& bb, int print = 0);
+    void operator()(const basic_block_t& bb);
     void write(std::ostream& os) const;
     friend std::ostream& operator<<(std::ostream& o, const inference_domain_t& dom);
     void initialize_loop_counter(label_t label);
@@ -85,8 +85,9 @@ class inference_domain_t final {
     string_invariant to_set() const;
     void set_require_check(check_require_func_t f) {}
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
-    void print_ctx() const;
-    void print_stack() const;
+    void print_ctx(std::ostream&) const;
+    void print_stack(std::ostream&) const;
+    void print_annotated_bb(std::ostream&, const basic_block_t&) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::refinement_t> find_refinement_at_loc(const crab::reg_with_loc_t&) const;
     std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::reg_with_loc_t&) const;
@@ -118,4 +119,3 @@ class inference_domain_t final {
 
 } // namespace crab
 
-void print_annotated(std::ostream&, const crab::inference_domain_t&, const basic_block_t&, int);

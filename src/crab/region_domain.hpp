@@ -148,7 +148,7 @@ class region_domain_t final {
     void operator()(const TypeConstraint&, location_t loc = boost::none);
     void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
     void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
-    void operator()(const basic_block_t& bb, int print = 0);
+    void operator()(const basic_block_t& bb);
     void write(std::ostream& o) const {}
     crab::bound_t get_loop_count_upper_bound() const;
     void initialize_loop_counter(const label_t&);
@@ -187,6 +187,9 @@ class region_domain_t final {
     [[nodiscard]] std::vector<uint64_t> get_stack_keys() const;
     void set_registers_to_top();
     void adjust_bb_for_types(location_t);
+    void print_ctx(std::ostream& o) const {}
+    void print_stack(std::ostream& o) const {}
+    void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {};
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void reset_errors() { m_errors.clear(); }
 }; // end region_domain_t

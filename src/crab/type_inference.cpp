@@ -687,25 +687,25 @@ void inference_domain_t::operator()(const Mem& b, location_t loc) {
     }
 }
 
-void inference_domain_t::print_ctx() const {
+void inference_domain_t::print_ctx(std::ostream& o) const {
     std::vector<uint64_t> ctx_keys = m_region.get_ctx_keys();
-    std::cout << "\tctx: {\n";
+    o << "\tctx: {";
     for (auto const& k : ctx_keys) {
         auto ptr = m_region.find_in_ctx(k);
         auto dist = m_offset.find_in_ctx(k);
         if (ptr) {
-            std::cout << "\t\t";
-            print_non_numeric_memory_cell(std::cout, k, k+3, *ptr, dist);
-            std::cout << ",\n";
+            o << "\t\t";
+            print_non_numeric_memory_cell(o, k, k+3, *ptr, dist);
+            o << ",\n";
         }
     }
-    std::cout << "\t}\n";
+    o << "\t}\n";
 }
 
-void inference_domain_t::print_stack() const {
+void inference_domain_t::print_stack(std::ostream& o) const {
     std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
     std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
-    std::cout << "\tstack: {\n";
+    o << "\tstack: {\n";
     for (auto const& k : stack_keys_region) {
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
         auto dist = m_offset.find_in_stack(k);
@@ -713,36 +713,36 @@ void inference_domain_t::print_stack() const {
             auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
-            std::cout << "\t\t";
+            o << "\t\t";
             if (dist) {
-                print_non_numeric_memory_cell(std::cout, k, k+width-1, ptr_or_mapfd,
+                print_non_numeric_memory_cell(o, k, k+width-1, ptr_or_mapfd,
                         std::optional<refinement_t>(dist->first));
             }
             else {
-                print_non_numeric_memory_cell(std::cout, k, k+width-1, ptr_or_mapfd);
+                print_non_numeric_memory_cell(o, k, k+width-1, ptr_or_mapfd);
             }
-            std::cout << ",\n";
+            o << ",\n";
         }
     }
     for (auto const& k : stack_keys_interval) {
         auto maybe_signed_interval_cells = m_interval.find_in_stack_signed(k);
         if (maybe_signed_interval_cells) {
             auto interval_cells = maybe_signed_interval_cells.value();
-            std::cout << "\t\t";
-            print_numeric_memory_cell(std::cout, k, k+interval_cells.second-1,
+            o << "\t\t";
+            print_numeric_memory_cell(o, k, k+interval_cells.second-1,
                     interval_cells.first.to_interval(), true);
-            std::cout << ",\n";
+            o << ",\n";
         }
         auto maybe_unsigned_interval_cells = m_interval.find_in_stack_unsigned(k);
         if (maybe_unsigned_interval_cells) {
             auto interval_cells = maybe_unsigned_interval_cells.value();
-            std::cout << "\t\t";
-            print_numeric_memory_cell(std::cout, k, k+interval_cells.second-1,
+            o << "\t\t";
+            print_numeric_memory_cell(o, k, k+interval_cells.second-1,
                     interval_cells.first.to_interval(), false);
-            std::cout << ",\n";
+            o << ",\n";
         }
     }
-    std::cout << "\t}\n";
+    o << "\t}\n";
 }
 
 void inference_domain_t::adjust_bb_for_types(location_t loc) {
@@ -751,12 +751,7 @@ void inference_domain_t::adjust_bb_for_types(location_t loc) {
     m_interval.adjust_bb_for_types(loc);
 }
 
-void inference_domain_t::operator()(const basic_block_t& bb, int print) {
-
-    if (print != 0) {
-        print_annotated(std::cout, *this, bb, print);
-        return;
-    }
+void inference_domain_t::operator()(const basic_block_t& bb) {
 
     // A temporary fix to avoid printing errors for multiple basic blocks
     m_errors.clear();
@@ -767,8 +762,7 @@ void inference_domain_t::operator()(const basic_block_t& bb, int print) {
     auto label = bb.label();
     uint32_t curr_pos = 0;
     location_t loc = location_t(std::make_pair(label, curr_pos));
-    if (print == 0)
-        adjust_bb_for_types(loc);
+    adjust_bb_for_types(loc);
 
     for (const Instruction& statement : bb) {
         loc = location_t(std::make_pair(label, ++curr_pos));
@@ -1050,19 +1044,9 @@ std::ostream& operator<<(std::ostream& o, const inference_domain_t& typ) {
     return o;
 }
 
-} // namespace crab
-
-void print_annotated(std::ostream& o, const crab::inference_domain_t& typ,
-        const basic_block_t& bb, int print) {
-    if (typ.is_bottom()) {
-        o << bb << "\n";
-        return;
-    }
-    if (print < 0) {
-        o << "state of stack and ctx in program:\n";
-        typ.print_ctx();
-        typ.print_stack();
-        o << "\n";
+void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {
+    if (is_bottom()) {
+        print_bb(o, bb);
         return;
     }
 
@@ -1076,21 +1060,21 @@ void print_annotated(std::ostream& o, const crab::inference_domain_t& typ,
         // TODO: print unsigned intervals in a proper way
         if (std::holds_alternative<Call>(statement)) {
             auto r0_reg = crab::reg_with_loc_t(register_t{R0_RETURN_VALUE}, loc);
-            auto region = typ.find_ptr_or_mapfd_at_loc(r0_reg);
-            auto rf = typ.find_refinement_at_loc(r0_reg);
-            auto signed_interval = typ.find_signed_interval_at_loc(r0_reg);
+            auto region = find_ptr_or_mapfd_at_loc(r0_reg);
+            auto rf = find_refinement_at_loc(r0_reg);
+            auto signed_interval = find_signed_interval_at_loc(r0_reg);
             print_annotated(o, std::get<Call>(statement), region, rf, signed_interval, true);
-            auto unsigned_interval = typ.find_unsigned_interval_at_loc(r0_reg);
+            auto unsigned_interval = find_unsigned_interval_at_loc(r0_reg);
             //print_annotated(o, std::get<Call>(statement), region, unsigned_interval, false);
         }
         else if (std::holds_alternative<Bin>(statement)) {
             auto b = std::get<Bin>(statement);
             auto reg_with_loc = crab::reg_with_loc_t(b.dst.v, loc);
-            auto region = typ.find_ptr_or_mapfd_at_loc(reg_with_loc);
-            auto rf = typ.find_refinement_at_loc(reg_with_loc);
-            auto signed_interval = typ.find_signed_interval_at_loc(reg_with_loc);
+            auto region = find_ptr_or_mapfd_at_loc(reg_with_loc);
+            auto rf = find_refinement_at_loc(reg_with_loc);
+            auto signed_interval = find_signed_interval_at_loc(reg_with_loc);
             print_annotated(o, b, region, rf, signed_interval, true);
-            auto unsigned_interval = typ.find_unsigned_interval_at_loc(reg_with_loc);
+            auto unsigned_interval = find_unsigned_interval_at_loc(reg_with_loc);
             //print_annotated(o, b, region, rf, unsigned_interval, false);
         }
         else if (std::holds_alternative<Mem>(statement)) {
@@ -1098,30 +1082,30 @@ void print_annotated(std::ostream& o, const crab::inference_domain_t& typ,
             if (u.is_load) {
                 auto target_reg = std::get<Reg>(u.value);
                 auto target_reg_loc = crab::reg_with_loc_t(target_reg.v, loc);
-                auto region = typ.find_ptr_or_mapfd_at_loc(target_reg_loc);
-                auto rf = typ.find_refinement_at_loc(target_reg_loc);
-                auto signed_interval = typ.find_signed_interval_at_loc(target_reg_loc);
+                auto region = find_ptr_or_mapfd_at_loc(target_reg_loc);
+                auto rf = find_refinement_at_loc(target_reg_loc);
+                auto signed_interval = find_signed_interval_at_loc(target_reg_loc);
                 print_annotated(o, u, region, rf, signed_interval, true);
-                auto unsigned_interval = typ.find_unsigned_interval_at_loc(target_reg_loc);
+                auto unsigned_interval = find_unsigned_interval_at_loc(target_reg_loc);
                 //print_annotated(o, u, region, rf, unsigned_interval, false);
             }
-            else o << "  " << u << "\n";
+            else print_instr(o, u);
         }
         else if (std::holds_alternative<LoadMapFd>(statement)) {
             auto u = std::get<LoadMapFd>(statement);
             auto reg = crab::reg_with_loc_t(u.dst.v, loc);
-            auto region = typ.find_ptr_or_mapfd_at_loc(reg);
+            auto region = find_ptr_or_mapfd_at_loc(reg);
             print_annotated(o, u, region);
         }
         else if (std::holds_alternative<Un>(statement)) {
             auto u = std::get<Un>(statement);
             auto reg = crab::reg_with_loc_t(u.dst.v, loc);
-            auto signed_interval = typ.find_signed_interval_at_loc(reg);
+            auto signed_interval = find_signed_interval_at_loc(reg);
             print_annotated(o, u, signed_interval, true);
-            auto unsigned_interval = typ.find_unsigned_interval_at_loc(reg);
+            auto unsigned_interval = find_unsigned_interval_at_loc(reg);
             print_annotated(o, u, unsigned_interval, false);
         }
-        else o << "  " << statement << "\n";
+        else print_instr(o, statement);
     }
 
     auto [it, et] = bb.next_blocks();
@@ -1140,3 +1124,4 @@ void print_annotated(std::ostream& o, const crab::inference_domain_t& typ,
     o << "\n\n";
 }
 
+} // namespace crab

@@ -521,7 +521,7 @@ void unsigned_interval_domain_t::operator()(const Assert&, location_t loc) {
     // nothing to do here
 }
 
-void unsigned_interval_domain_t::operator()(const basic_block_t& bb, int print) {
+void unsigned_interval_domain_t::operator()(const basic_block_t& bb) {
     // nothing to do here
 }
 

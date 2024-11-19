@@ -1178,7 +1178,7 @@ static linear_constraint_t type_is_not_stack(const reg_pack_t& r) {
     return r.type != T_STACK;
 }
 
-void ebpf_domain_t::operator()(const basic_block_t& bb, int print) {
+void ebpf_domain_t::operator()(const basic_block_t& bb) {
     for (const Instruction& statement : bb) {
         std::visit(*this, statement);
     }

@@ -540,7 +540,7 @@ void region_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     m_errors.push_back("Zero Ctx Offset assertion fail");
 }
 
-void region_domain_t::operator()(const basic_block_t& bb, int print) {
+void region_domain_t::operator()(const basic_block_t& bb) {
     // nothing to do here
 }
 
