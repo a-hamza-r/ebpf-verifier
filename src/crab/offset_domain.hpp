@@ -29,7 +29,7 @@ class registers_state_t {
                 bool is_bottom = false)
             : m_offset_env(offset_env), m_slacks(slacks), m_is_bottom(is_bottom) {
 
-            auto loc = std::make_pair(label_t::entry, (unsigned int)0);
+            auto loc = std::make_pair(label_t::entry, static_cast<unsigned int>(0));
             if (desc->data >= 0) {
                 insert(register_t{12}, loc, refinement_t::begin());
             }
@@ -89,7 +89,7 @@ class ctx_offsets_t {
     int m_size;
 
     public:
-        ctx_offsets_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t>);
+        ctx_offsets_t(const ebpf_context_descriptor_t* desc);
         std::optional<refinement_t> find(int) const;
         int get_size() const;
 };

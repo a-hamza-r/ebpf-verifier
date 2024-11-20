@@ -23,16 +23,16 @@ class expression_t {
 
   public:
     expression_t() : _constant_term(interval_t::top()) {};
-    expression_t(symbol_terms_t symbol_terms, interval_t interval = interval_t{0})
+    expression_t(symbol_terms_t symbol_terms, interval_t interval)
         : _symbol_terms(symbol_terms), _constant_term(interval) {}
-    expression_t(symbol_t symbol, std::shared_ptr<slacks_t> slacks)
+    expression_t(symbol_t symbol, std::shared_ptr<slacks_t> slacks = nullptr)
         : _constant_term(interval_t{0}), _slacks(slacks) {
         _symbol_terms[symbol] = 1;
     }
     expression_t(symbol_terms_t symbol_terms, interval_t interval,
             std::shared_ptr<slacks_t> slacks)
         : _symbol_terms(symbol_terms), _constant_term(interval), _slacks(slacks) {}
-    expression_t(symbol_terms_t symbol_terms, std::shared_ptr<slacks_t> slacks)
+    expression_t(symbol_terms_t symbol_terms, std::shared_ptr<slacks_t> slacks = nullptr)
         : _symbol_terms(symbol_terms), _constant_term{interval_t{0}}, _slacks(slacks) {}
     expression_t(interval_t interval)
         : _constant_term(interval) {}
@@ -66,23 +66,15 @@ class expression_t {
     std::vector<std::pair<symbol_t, interval_t>> get_slack_intervals() const;
 
     static expression_t begin() {
-        return expression_t({std::make_pair(symbol_t::begin(), 1)});
+        return expression_t(symbol_t::begin());
     }
 
     static expression_t end() {
-        return expression_t({std::make_pair(symbol_t::end(), 1)});
+        return expression_t(symbol_t::end());
     }
 
     static expression_t meta() {
-        return expression_t({std::make_pair(symbol_t::meta(), 1)});
-    }
-
-    static expression_t nu() {
-        return expression_t({std::make_pair(symbol_t::nu(), 1)});
-    }
-
-    static expression_t make_slack() {
-        return expression_t({std::make_pair(symbol_t::make(), 1)});
+        return expression_t(symbol_t::meta());
     }
 };
 

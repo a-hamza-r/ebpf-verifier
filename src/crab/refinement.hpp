@@ -6,29 +6,29 @@
 
 namespace crab {
 
-enum class data_type_t {
+enum class refinement_type_t {
     NUM,
     PACKET,
     ANY
 };
 
 class refinement_t {
-    data_type_t _type;
+    refinement_type_t _type;
     expression_t _value;
     std::vector<crab::constraint_t> _constraints;
 
   public:
-    explicit refinement_t(data_type_t type, expression_t value,
+    explicit refinement_t(refinement_type_t type, expression_t value,
             std::vector<crab::constraint_t> constraints = {})
         : _type(type), _value(value) {
         for (auto &&c : constraints) {
             add_constraint(std::move(c));
         }
     }
-    refinement_t() : _type(data_type_t::ANY) {}
+    refinement_t() : _type(refinement_type_t::ANY) {}
  
     bool is_bottom();
-    [[nodiscard]] data_type_t get_type() const { return _type; }
+    [[nodiscard]] refinement_type_t get_type() const { return _type; }
     [[nodiscard]] std::vector<crab::constraint_t> get_constraints() const { return _constraints; }
     [[nodiscard]] expression_t get_value() const { return _value; }
     refinement_t operator+(int n) const;
@@ -47,19 +47,15 @@ class refinement_t {
             const std::vector<constraint_t>&) const;
 
     static refinement_t begin() {
-        return refinement_t(data_type_t::PACKET, expression_t::begin());
+        return refinement_t(refinement_type_t::PACKET, expression_t::begin());
     }
 
     static refinement_t end() {
-        return refinement_t(data_type_t::PACKET, expression_t::end());
+        return refinement_t(refinement_type_t::PACKET, expression_t::end());
     }
 
     static refinement_t meta() {
-        return refinement_t(data_type_t::PACKET, expression_t::meta());
-    }
-
-    static refinement_t make_slack() {
-        return refinement_t(data_type_t::NUM, expression_t::make_slack());
+        return refinement_t(refinement_type_t::PACKET, expression_t::meta());
     }
 };
 

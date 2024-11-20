@@ -70,21 +70,20 @@ bool refinement_t::has_value(refinement_t&& other) const {
 }
 
 void refinement_t::write(std::ostream& o) const {
-    symbol_t nu = symbol_t::nu();
-    o << "{" << nu << " : ";
-    if (_type == data_type_t::NUM) {
+    o << "{" << symbol_t::nu() << " : ";
+    if (_type == refinement_type_t::NUM) {
         o << "num<" << _value << ">";
     }
-    else if (_type == data_type_t::PACKET) {
+    else if (_type == refinement_type_t::PACKET) {
         o << "pkt<" << _value << ">";
     }
     else {
         o << "_";
     }
-    if (_constraints.size() > 0 || _value.get_slack_intervals().size() > 0) {
+    std::vector<std::pair<symbol_t, interval_t>> slack_intervals = _value.get_slack_intervals();
+    if (_constraints.size() > 0 || slack_intervals.size() > 0) {
         o << " | ";
     }
-    std::vector<std::pair<symbol_t, interval_t>> slack_intervals = get_value().get_slack_intervals();
     if (_constraints.size() > 0) {
         for (size_t i = 0; i < _constraints.size(); i++) {
             auto c = _constraints[i];
@@ -131,9 +130,9 @@ refinement_t refinement_t::operator+(const refinement_t &other) const {
     new_constraints.insert(new_constraints.end(), _constraints.begin(), _constraints.end());
     new_constraints.insert(new_constraints.end(),
             other._constraints.begin(), other._constraints.end());
-    data_type_t new_type = (_type == other._type) ? _type
-        : (_type == data_type_t::PACKET || other._type == data_type_t::PACKET) ? data_type_t::PACKET
-        : data_type_t::ANY;
+    refinement_type_t new_type = (_type == other._type) ? _type
+        : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET) ? refinement_type_t::PACKET
+        : refinement_type_t::ANY;
     return refinement_t(new_type, new_value, new_constraints);
 }
 
@@ -201,9 +200,9 @@ refinement_t refinement_t::operator-(const refinement_t &other) const {
     new_constraints.insert(new_constraints.end(), _constraints.begin(), _constraints.end());
     new_constraints.insert(new_constraints.end(),
             other._constraints.begin(), other._constraints.end());
-    data_type_t new_type = (_type == other._type) ? data_type_t::NUM
-        : (_type == data_type_t::PACKET || other._type == data_type_t::PACKET) ? data_type_t::PACKET
-        : data_type_t::ANY;
+    refinement_type_t new_type = (_type == other._type) ? refinement_type_t::NUM
+        : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET) ? refinement_type_t::PACKET
+        : refinement_type_t::ANY;
     return refinement_t(new_type, new_value, new_constraints);
 }
 

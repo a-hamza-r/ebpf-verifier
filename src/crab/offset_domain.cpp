@@ -7,7 +7,6 @@ namespace crab {
 
 void registers_state_t::insert(register_t reg, const location_t& loc, refinement_t&& rf) {
     reg_with_loc_t reg_with_loc{reg, loc};
-    rf.get_value().set_slacks(m_slacks);
     (*m_offset_env)[reg_with_loc] = std::move(rf);
     m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
 }
@@ -126,7 +125,7 @@ void registers_state_t::scratch_caller_saved_registers() {
 void registers_state_t::forget_packet_pointers(location_t loc) {
     for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-1; r++) {
         if (auto it = find(register_t{r})) {
-            if (it->get_type() == data_type_t::PACKET) {
+            if (it->get_type() == refinement_type_t::PACKET) {
                 operator-=(register_t{r});
             }
         }
@@ -209,21 +208,15 @@ stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
     return stack_state_t(std::move(out_stack_rfs));
 }
 
-ctx_offsets_t::ctx_offsets_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t> slacks) {
+ctx_offsets_t::ctx_offsets_t(const ebpf_context_descriptor_t* desc) {
     if (desc->data >= 0) {
-        refinement_t rf = refinement_t(data_type_t::PACKET,
-                expression_t(symbol_t::begin(), slacks));
-        m_rfs[desc->data] = std::move(rf);
+        m_rfs[desc->data] = refinement_t::begin();
     }
     if (desc->end >= 0) {
-        refinement_t rf = refinement_t(data_type_t::PACKET,
-                expression_t(symbol_t::end(), slacks));
-        m_rfs[desc->end] = std::move(rf);
+        m_rfs[desc->end] = refinement_t::end();
     }
     if (desc->meta >= 0) {
-        refinement_t rf = refinement_t(data_type_t::PACKET,
-                expression_t(symbol_t::meta(), slacks));
-        m_rfs[desc->meta] = std::move(rf);
+        m_rfs[desc->meta] = refinement_t::meta();
     }
     if (desc->size >= 0) {
         m_size = desc->size;
@@ -241,13 +234,12 @@ std::optional<refinement_t> ctx_offsets_t::find(int key) const {
 }
 
 offset_domain_t&& offset_domain_t::setup_entry() {
-    auto slacks = std::make_shared<slacks_t>();
-    std::shared_ptr<ctx_offsets_t> ctx
-        = std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor, slacks);
     registers_state_t regs(std::make_shared<global_offset_env_t>(),
-            slacks, global_program_info->type.context_descriptor);
+                      std::make_shared<slacks_t>(),
+                      global_program_info->type.context_descriptor);
 
-    static offset_domain_t off_d(std::move(regs), stack_state_t::top(), ctx);
+    static offset_domain_t off_d(std::move(regs), stack_state_t::top(),
+                      std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor));
     return std::move(off_d);
 }
 
@@ -432,9 +424,9 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
 static void create_numeric_refinement(registers_state_t& reg_state, mock_interval_t&& interval,
         location_t loc, register_t reg) {
     symbol_t s = symbol_t::make();
-    refinement_t rf = refinement_t(data_type_t::NUM, expression_t(s, reg_state.get_slacks()));
-    reg_state.insert(reg, loc, std::move(rf));
     reg_state.insert_slack_value(s, std::move(interval));
+    refinement_t rf = refinement_t(refinement_type_t::NUM, expression_t(s, reg_state.get_slacks()));
+    reg_state.insert(reg, loc, std::move(rf));
 }
 
 void offset_domain_t::do_bin(const Bin& bin,
@@ -457,10 +449,11 @@ void offset_domain_t::do_bin(const Bin& bin,
             // Use only the low 32 bits of the value.
             imm = static_cast<int>(std::get<Imm>(bin.v).v);
         }
-        auto imm_interval = interval_t{number_t{imm}};
+        auto imm_interval = interval_t{imm};
         switch (bin.op) {
             case Op::MOV: {
                 // ra = imm
+                // we just get the value of the immediate as an interval from interval domain
                 create_numeric_refinement(m_reg_state, std::move(interval_result),
                         loc, dst_register);
                 break;
@@ -469,7 +462,7 @@ void offset_domain_t::do_bin(const Bin& bin,
                 // ra += imm
                 if (imm == 0) break;
                 if (auto dst_rf_opt = m_reg_state.find(dst_register)) {
-                    auto rf = *dst_rf_opt + imm;
+                    auto rf = *dst_rf_opt + imm_interval;
                     m_reg_state.insert(dst_register, loc, std::move(rf));
                 }
                 else {
@@ -481,7 +474,7 @@ void offset_domain_t::do_bin(const Bin& bin,
                 // ra -= imm
                 if (imm == 0) break;
                 if (auto dst_rf_opt = m_reg_state.find(dst_register)) {
-                    auto rf = *dst_rf_opt + (-imm);
+                    auto rf = *dst_rf_opt + (-imm_interval);
                     m_reg_state.insert(dst_register, loc, std::move(rf));
                 }
                 else {
@@ -491,11 +484,8 @@ void offset_domain_t::do_bin(const Bin& bin,
             }
             default: {
                 if (dst_signed_interval_opt) {
-                    symbol_t s = symbol_t::make();
-                    refinement_t rf = refinement_t(data_type_t::NUM,
-                            expression_t(s, m_reg_state.get_slacks()));
-                    m_reg_state.insert(dst_register, loc, std::move(rf));
-                    m_reg_state.insert_slack_value(s, interval_result);
+                    create_numeric_refinement(m_reg_state, std::move(interval_result),
+                            loc, dst_register);
                 }
                 else {
                     // no other operations supported for packet pointers in the offset domain
@@ -511,8 +501,7 @@ void offset_domain_t::do_bin(const Bin& bin,
             case Op::MOV: {
                 // ra = rb
                 if (auto src_rf_opt = m_reg_state.find(src.v)) {
-                    auto rf = *src_rf_opt;
-                    m_reg_state.insert(dst_register, loc, std::move(rf));
+                    m_reg_state.insert(dst_register, loc, std::move(*src_rf_opt));
                 }
                 else {
                     m_reg_state -= dst_register;
@@ -679,9 +668,9 @@ void offset_domain_t::do_mem_store(const Mem& b,
     }
     else {
         symbol_t s = symbol_t::make();
-        rf_info = refinement_t(data_type_t::NUM, expression_t(s, m_reg_state.get_slacks()));
-        auto mock_interval = mock_interval_t{bound_t{(uint64_t)std::get<Imm>(b.value).v}};
-        m_reg_state.insert_slack_value(s, std::move(mock_interval));
+        rf_info = refinement_t(refinement_type_t::NUM, expression_t(s, m_reg_state.get_slacks()));
+        interval_t interval = interval_t{number_t{static_cast<uint64_t>(std::get<Imm>(b.value).v)}};
+        m_reg_state.insert_slack_value(s, std::move(interval));
     }
     if (!rf_info) return;
 
