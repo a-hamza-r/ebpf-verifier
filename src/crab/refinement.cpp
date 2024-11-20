@@ -81,10 +81,10 @@ void refinement_t::write(std::ostream& o) const {
         o << "_";
     }
     std::vector<std::pair<symbol_t, interval_t>> slack_intervals = _value.get_slack_intervals();
-    if (_constraints.size() > 0 || slack_intervals.size() > 0) {
+    if (!_constraints.empty() || !slack_intervals.empty()) {
         o << " | ";
     }
-    if (_constraints.size() > 0) {
+    if (!_constraints.empty()) {
         for (size_t i = 0; i < _constraints.size(); i++) {
             auto c = _constraints[i];
             auto c_slack_intervals = c.get_slack_intervals();
@@ -97,8 +97,8 @@ void refinement_t::write(std::ostream& o) const {
         }
     }
     std::set<symbol_t> seen;
-    if (slack_intervals.size() > 0) {
-        if (_constraints.size() > 0) {
+    if (!slack_intervals.empty()) {
+        if (!_constraints.empty()) {
             o << " & ";
         }
         for (auto [s, i] : slack_intervals) {
@@ -131,11 +131,12 @@ refinement_t refinement_t::operator+(const refinement_t &other) const {
     new_constraints.insert(new_constraints.end(),
             other._constraints.begin(), other._constraints.end());
     refinement_type_t new_type = (_type == other._type) ? _type
-        : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET) ? refinement_type_t::PACKET
-        : refinement_type_t::ANY;
+        : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET)
+          ? refinement_type_t::PACKET : refinement_type_t::ANY;
     return refinement_t(new_type, new_value, new_constraints);
 }
 
+// use the constraints to compute a value for the subtraction, if possible
 interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const symbol_t& src,
         const std::vector<constraint_t>& constraints) const {
     bound_t max_packet_size = bound_t{number_t{MAX_PACKET_SIZE}};
@@ -201,8 +202,8 @@ refinement_t refinement_t::operator-(const refinement_t &other) const {
     new_constraints.insert(new_constraints.end(),
             other._constraints.begin(), other._constraints.end());
     refinement_type_t new_type = (_type == other._type) ? refinement_type_t::NUM
-        : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET) ? refinement_type_t::PACKET
-        : refinement_type_t::ANY;
+        : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET)
+          ? refinement_type_t::PACKET : refinement_type_t::ANY;
     return refinement_t(new_type, new_value, new_constraints);
 }
 
