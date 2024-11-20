@@ -19,10 +19,8 @@ void symbol_t::write(std::ostream& o) const {
         o << "meta";
     } else if (is_nu()) {
         o << "v";
-    } else if (is_pkt_symbol()) {
-        o << "i";
     } else {
-        o << "a_" << ((int)_id-4);
+        o << "a_" << ((int64_t)_id-4);
     }
 }
 

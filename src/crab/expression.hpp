@@ -81,10 +81,6 @@ class expression_t {
         return expression_t({std::make_pair(symbol_t::nu(), 1)});
     }
 
-    static expression_t pkt_symbol() {
-        return expression_t({std::make_pair(symbol_t::pkt_symbol(), 1)});
-    }
-
     static expression_t make_slack() {
         return expression_t({std::make_pair(symbol_t::make(), 1)});
     }

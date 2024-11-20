@@ -71,21 +71,21 @@ bool refinement_t::has_value(refinement_t&& other) const {
 
 void refinement_t::write(std::ostream& o) const {
     symbol_t nu = symbol_t::nu();
-    symbol_t i = symbol_t::pkt_symbol();
     o << "{" << nu << " : ";
     if (_type == data_type_t::NUM) {
-        o << "num | " << nu << " = ";
+        o << "num<" << _value << ">";
     }
     else if (_type == data_type_t::PACKET) {
-        o << "pkt<" << i << "> | " << i << " = ";
+        o << "pkt<" << _value << ">";
     }
     else {
         o << "_";
     }
-    o << _value;
+    if (_constraints.size() > 0 || _value.get_slack_intervals().size() > 0) {
+        o << " | ";
+    }
     std::vector<std::pair<symbol_t, interval_t>> slack_intervals = get_value().get_slack_intervals();
     if (_constraints.size() > 0) {
-        o << " & ";
         for (size_t i = 0; i < _constraints.size(); i++) {
             auto c = _constraints[i];
             auto c_slack_intervals = c.get_slack_intervals();
@@ -99,12 +99,14 @@ void refinement_t::write(std::ostream& o) const {
     }
     std::set<symbol_t> seen;
     if (slack_intervals.size() > 0) {
-        o << " & ";
+        if (_constraints.size() > 0) {
+            o << " & ";
+        }
         for (auto [s, i] : slack_intervals) {
             if (seen.find(s) != seen.end()) {
                 continue;
             }
-            o << s << " = " << i;
+            o << s << " in " << i;
             seen.insert(s);
             if (s != slack_intervals.back().first) {
                 o << " & ";

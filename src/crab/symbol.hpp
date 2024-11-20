@@ -20,6 +20,7 @@ class symbol_t final {
     bool operator!=(symbol_t o) const { return (!(operator==(o))); }
     bool operator<(symbol_t o) const { return _id < o._id; }
     bool operator>(symbol_t o) const { return _id > o._id; }
+    operator int64_t() const { return _id; }
 
   private:
     static int64_t count;
@@ -29,14 +30,12 @@ class symbol_t final {
     static symbol_t end()       { return symbol_t(1); }
     static symbol_t meta()      { return symbol_t(2); }
     static symbol_t nu()        { return symbol_t(3); }
-    static symbol_t pkt_symbol()     { return symbol_t(4); }
-    static symbol_t make()      { count++;  return symbol_t(count); }
+    static symbol_t make()      { return symbol_t(count++); }
     bool is_nu() const { return *this == symbol_t::nu(); }
-    bool is_pkt_symbol() const { return *this == symbol_t::pkt_symbol(); }
     bool is_meta() const { return *this == symbol_t::meta(); }
     bool is_end() const { return *this == symbol_t::end(); }
     bool is_begin() const { return *this == symbol_t::begin(); }
-    bool is_slack() const { return _id >= 5; }
+    bool is_slack() const { return _id >= 4; }
     void write(std::ostream& o) const;
 
     struct Hasher {
