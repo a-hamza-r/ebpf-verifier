@@ -16,8 +16,8 @@ class constraint_t {
     constraint_t(expression_t lhs, expression_t rhs)
         : _lhs(lhs), _rhs(rhs) {}
 
-    expression_t get_lhs() const { return _lhs; }
-    expression_t get_rhs() const { return _rhs; }
+    [[nodiscard]] expression_t get_lhs() const { return _lhs; }
+    [[nodiscard]] expression_t get_rhs() const { return _rhs; }
 
     constraint_t operator+(const constraint_t&) const;    
     constraint_t operator+(int) const;

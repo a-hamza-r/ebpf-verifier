@@ -8,6 +8,7 @@ std::ostream &operator<<(std::ostream &o, const constraint_t &c) {
     return o;
 }
 
+// if a certain symbol is present in the constraint
 bool constraint_t::contains(const symbol_t &s) const {
     return _lhs.contains(s) || _rhs.contains(s);
 }
@@ -18,6 +19,7 @@ void constraint_t::normalize() {
     _rhs = expression_t(0);
 }
 
+// get slack intervals for all symbols in the constraint
 std::vector<std::pair<symbol_t, interval_t>> constraint_t::get_slack_intervals() const {
     std::vector<std::pair<symbol_t, interval_t>> result = _lhs.get_slack_intervals();
     auto rhs_intervals = _rhs.get_slack_intervals();
