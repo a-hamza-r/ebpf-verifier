@@ -609,6 +609,10 @@ void signed_interval_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     // nothing to do here
 }
 
+void signed_interval_domain_t::operator()(const LoadVariable& u, location_t loc) {
+    // nothing to do here
+}
+
 void signed_interval_domain_t::operator()(const Packet& u, location_t loc) {
     // nothing to do here
 }

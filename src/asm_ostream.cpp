@@ -192,6 +192,8 @@ struct InstructionPrinterVisitor {
 
     void operator()(LoadMapFd const& b) { os_ << b.dst << " = map_fd " << b.mapfd; }
 
+    void operator()(LoadVariable const& b) { os_ << b.dst << " = var_addr " << b.varfd; }
+
     // llvm-objdump uses "w<number>" for 32-bit operations and "r<number>" for 64-bit operations.
     // We use the same convention here for consistency.
     static std::string reg_name(Reg const& a, bool is64) { return ((is64) ? "r" : "w") + std::to_string(a.v); }
@@ -383,7 +385,7 @@ int size(const Instruction& inst) {
             return 2;
         }
     }
-    if (std::holds_alternative<LoadMapFd>(inst)) {
+    if (std::holds_alternative<LoadMapFd>(inst) || std::holds_alternative<LoadVariable>(inst)) {
         return 2;
     }
     return 1;

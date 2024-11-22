@@ -660,6 +660,10 @@ void interval_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     operator-=(register_t{u.dst.v});
 }
 
+void interval_domain_t::operator()(const LoadVariable& u, location_t loc) {
+    operator-=(register_t{u.dst.v});
+}
+
 void interval_domain_t::scratch_caller_saved_registers() {
     for (uint8_t i = R1_ARG; i <= R5_ARG; i++) {
         operator-=(register_t{i});

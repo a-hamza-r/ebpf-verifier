@@ -126,6 +126,7 @@ class unsigned_interval_domain_t final {
     void operator()(const Bin&, location_t loc = location_t::top());
     void operator()(const Un&, location_t loc = location_t::top());
     void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const LoadVariable&, location_t loc = location_t::top());
     void operator()(const Call&, location_t loc = location_t::top());
     void operator()(const Exit&, location_t loc = location_t::top());
     void operator()(const Jmp&, location_t loc = location_t::top());

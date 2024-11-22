@@ -48,6 +48,8 @@ class AssertExtractor {
 
     vector<Assert> operator()(LoadMapFd const&) const { return {}; }
 
+    vector<Assert> operator()(LoadVariable const&) const { return {}; }
+
     /// Packet access implicitly uses R6, so verify that R6 still has a pointer to the context.
     vector<Assert> operator()(Packet const&) const { return zero_offset_ctx({6}); }
 

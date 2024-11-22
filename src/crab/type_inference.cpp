@@ -174,6 +174,12 @@ void inference_domain_t::operator()(const LoadMapFd& u, location_t loc) {
     m_interval(u, loc);
 }
 
+void inference_domain_t::operator()(const LoadVariable& u, location_t loc) {
+    m_region(u, loc);
+    m_offset(u, loc);
+    m_interval(u, loc);
+}
+
 // Construct a Bin operation that does the main operation that a given Atomic operation does atomically.
 static Bin atomic_to_bin(const Atomic& a) {
     Bin bin{

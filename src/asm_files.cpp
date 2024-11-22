@@ -84,6 +84,18 @@ static std::tuple<ELFIO::Elf64_Addr, unsigned char> get_value(const ELFIO::const
     return {value, type};
 }
 
+static ELFIO::Elf_Xword get_size(const ELFIO::const_symbol_section_accessor& symbols, const ELFIO::Elf_Xword index) {
+    string symbol_name;
+    ELFIO::Elf64_Addr value{};
+    ELFIO::Elf_Xword size{};
+    unsigned char bind{};
+    unsigned char type{};
+    ELFIO::Elf_Half section_index{};
+    unsigned char other{};
+    symbols.get_symbol(index, symbol_name, value, size, bind, type, section_index, other);
+    return size;
+}
+
 // parse_maps_sections processes all maps sections in the provided ELF file by calling the platform-specific maps'
 // parser. The section index of each maps section is inserted into section_indices.
 static size_t parse_map_sections(const ebpf_verifier_options_t* options, const ebpf_platform_t* platform,
@@ -277,6 +289,22 @@ std::map<std::string, size_t> parse_map_section(const libbtf::btf_type_data& btf
     return map_offsets;
 }
 
+// For indirect relocations, i.e., for static data, we need to find the size of the actual data.
+ELFIO::Elf_Xword get_size_for_indirect_relocation(const ELFIO::Elf64_Addr& offset_in_section,
+                                                  const ELFIO::Elf_Word lookup_section_index,
+                                                  const ELFIO::const_symbol_section_accessor& symbols) {
+    for (ELFIO::Elf_Xword i = 0; i < symbols.get_symbols_num(); i++) {
+        auto [name, current_symbol_section_index] = get_symbol_name_and_section_index(symbols, i);
+        if (current_symbol_section_index == lookup_section_index) {
+            auto [relocation_offset, relocation_type] = get_value(symbols, i);
+            if (relocation_type == ELFIO::STT_OBJECT && relocation_offset == offset_in_section) {
+                return get_size(symbols, i);
+            }
+        }
+    }
+    return 0;
+}
+
 vector<raw_program> read_elf(std::istream& input_stream, const std::string& path, const std::string& desired_section,
                              const ebpf_verifier_options_t* options, const ebpf_platform_t* platform) {
     if (options == nullptr) {
@@ -396,6 +424,7 @@ vector<raw_program> read_elf(std::istream& input_stream, const std::string& path
                 }
                 ELFIO::const_relocation_section_accessor reloc{reader, prelocs};
 
+                int relocation_fd = 0;
                 // Fetch and store relocation count locally to permit static
                 // analysis tools to correctly reason about the code below.
                 for (ELFIO::Elf_Xword i = 0; i < reloc.get_entries_num(); i++) {
@@ -431,6 +460,29 @@ vector<raw_program> read_elf(std::istream& input_stream, const std::string& path
                     // Perform relocation for symbols located in the maps section.
                     if (map_section_indices.contains(symbol_section_index)) {
                         relocate_map(inst, symbol_name, map_record_size_or_map_offsets, info, offset, index, symbols);
+                        continue;
+                    }
+
+                    // Checking relocations for global/rodata variables (aka platform variables).
+                    auto [relocation_offset, relocation_type] = get_value(symbols, index);
+                    // We currently handle only relocations to objects (single data items),
+                    // which includes indirect relocations for static data.
+                    if (relocation_type == ELFIO::STT_SECTION || relocation_type == ELFIO::STT_OBJECT) {
+                        ELFIO::Elf_Xword relocation_size = get_size(symbols, index);
+                        // indirect relocations for static data
+                        if (relocation_type == ELFIO::STT_SECTION) {
+                            // relocation_offset represents the offset of the section.
+                            // inst.imm represents the offset into the section for the specific relocation.
+                            relocation_size = get_size_for_indirect_relocation(
+                                                                    relocation_offset + inst.imm,
+                                                                    symbol_section_index, symbols);
+                        }
+                        prog.info.relocation_descriptors.push_back({
+                            .original_fd = relocation_fd,
+                            .value_size = relocation_size
+                        });
+                        inst.imm = relocation_fd++;
+                        inst.src = 3; // magic number for LoadVariable
                         continue;
                     }
 

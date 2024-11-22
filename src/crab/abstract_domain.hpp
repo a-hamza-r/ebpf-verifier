@@ -38,6 +38,7 @@ class abstract_domain_t {
         virtual void operator()(const Bin&, location_t) = 0;
         virtual void operator()(const Un&, location_t) = 0;
         virtual void operator()(const LoadMapFd&, location_t) = 0;
+        virtual void operator()(const LoadVariable&, location_t) = 0;
         virtual void operator()(const Call&, location_t) = 0;
         virtual void operator()(const Exit&, location_t) = 0;
         virtual void operator()(const Jmp&, location_t) = 0;
@@ -84,6 +85,7 @@ class abstract_domain_t {
         void operator()(const Bin& s, location_t loc = location_t::top()) override;
         void operator()(const Un& s, location_t loc = location_t::top()) override;
         void operator()(const LoadMapFd& s, location_t loc = location_t::top()) override;
+        void operator()(const LoadVariable& s, location_t loc = location_t::top()) override;
         void operator()(const Call& s, location_t loc = location_t::top()) override;
         void operator()(const Exit& s, location_t loc = location_t::top()) override;
         void operator()(const Jmp& s, location_t loc = location_t::top()) override;
@@ -130,6 +132,7 @@ class abstract_domain_t {
     void operator()(const Bin& s, location_t loc = location_t::top());
     void operator()(const Un& s, location_t loc = location_t::top());
     void operator()(const LoadMapFd& s, location_t loc = location_t::top());
+    void operator()(const LoadVariable& s, location_t loc = location_t::top());
     void operator()(const Call& s, location_t loc = location_t::top());
     void operator()(const Exit& s, location_t loc = location_t::top());
     void operator()(const Jmp& s, location_t loc = location_t::top());

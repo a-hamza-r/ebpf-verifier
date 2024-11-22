@@ -65,6 +65,7 @@ class ebpf_domain_t final {
     void operator()(const FuncConstraint&, location_t loc = location_t::top());
     void operator()(const Jmp&, location_t loc = location_t::top());
     void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const LoadVariable&, location_t loc = location_t::top());
     void operator()(const Atomic&, location_t loc = location_t::top());
     void operator()(const Mem&, location_t loc = location_t::top());
     void operator()(const ValidDivisor&, location_t loc = location_t::top());

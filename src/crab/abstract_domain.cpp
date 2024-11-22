@@ -154,6 +154,11 @@ void abstract_domain_t::abstract_domain_model<Domain>::operator()(const LoadMapF
 }
 
 template <typename Domain>
+void abstract_domain_t::abstract_domain_model<Domain>::operator()(const LoadVariable& s, location_t loc) {
+    m_abs_val.operator()(s, loc);
+}
+
+template <typename Domain>
 void abstract_domain_t::abstract_domain_model<Domain>::operator()(const Call& s, location_t loc) {
     m_abs_val.operator()(s, loc);
 }
@@ -281,6 +286,8 @@ void abstract_domain_t::operator()(const Bin& s, location_t loc) { m_concept->op
 void abstract_domain_t::operator()(const Un& s, location_t loc) { m_concept->operator()(s, loc); }
 
 void abstract_domain_t::operator()(const LoadMapFd& s, location_t loc) { m_concept->operator()(s, loc); }
+
+void abstract_domain_t::operator()(const LoadVariable& s, location_t loc) { m_concept->operator()(s, loc); }
 
 void abstract_domain_t::operator()(const Call& s, location_t loc) { m_concept->operator()(s, loc); }
 

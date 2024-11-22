@@ -153,6 +153,13 @@ struct LoadMapFd {
     constexpr bool operator==(const LoadMapFd&) const = default;
 };
 
+/// This instruction is encoded similarly to LDDW.
+struct LoadVariable {
+    Reg dst;
+    int32_t varfd{};
+    constexpr bool operator==(const LoadVariable&) const = default;
+};
+
 struct Condition {
     enum class Op {
         EQ,
@@ -400,7 +407,7 @@ struct IncrementLoopCounter {
 };
 
 using Instruction = std::variant<Undefined, Bin, Un, LoadMapFd, Call, CallLocal, Callx, Exit, Jmp, Mem, Packet, Atomic,
-                                 Assume, Assert, IncrementLoopCounter>;
+                                 Assume, Assert, IncrementLoopCounter, LoadVariable>;
 
 using LabeledInstruction = std::tuple<label_t, Instruction, std::optional<btf_line_info_t>>;
 using InstructionSeq = std::vector<LabeledInstruction>;

@@ -2254,6 +2254,10 @@ void ebpf_domain_t::do_load_mapfd(const Reg& dst_reg, const int mapfd, const boo
 
 void ebpf_domain_t::operator()(const LoadMapFd& ins, location_t loc) { do_load_mapfd(ins.dst, ins.mapfd, false); }
 
+void ebpf_domain_t::operator()(const LoadVariable& ins, location_t loc) {
+    /* WARNING: Not implemented yet */
+}
+
 void ebpf_domain_t::assign_valid_ptr(const Reg& dst_reg, const bool maybe_null) {
     using namespace crab::dsl_syntax;
     const reg_pack_t& reg = reg_pack(dst_reg);

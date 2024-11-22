@@ -428,7 +428,7 @@ struct Unmarshaller {
         if (next.opcode != 0 || next.dst != 0 || next.src != 0 || next.offset != 0) {
             throw InvalidInstruction(pc, "invalid lddw");
         }
-        if (inst.src > 1) {
+        if (inst.src != 0 && inst.src != 1 && inst.src != 3) {
             throw InvalidInstruction(pc, make_opcode_message("bad instruction", inst.opcode));
         }
         if (inst.offset != 0) {
@@ -445,6 +445,13 @@ struct Unmarshaller {
                 throw InvalidInstruction(pc, "lddw uses reserved fields");
             }
             return LoadMapFd{.dst = Reg{inst.dst}, .mapfd = inst.imm};
+        }
+        if (inst.src == 3) {
+            // magic number, we are loading a variable
+            if (next.imm != 0) {
+                throw InvalidInstruction(pc, "lddw uses reserved fields");
+            }
+            return LoadVariable{.dst = Reg{inst.dst}, .varfd = inst.imm};
         }
 
         return Bin{

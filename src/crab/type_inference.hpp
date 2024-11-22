@@ -80,6 +80,7 @@ class inference_domain_t final {
     void operator()(const Bin&, location_t loc = location_t::top());
     void operator()(const Un&, location_t loc = location_t::top());
     void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const LoadVariable&, location_t loc = location_t::top());
     void operator()(const Atomic&, location_t loc = location_t::top());
     void operator()(const Call&, location_t loc = location_t::top());
     void operator()(const CallLocal&, location_t loc = location_t::top()) {}

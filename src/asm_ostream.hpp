@@ -56,6 +56,7 @@ inline std::ostream& operator<<(std::ostream& os, Value const& a) {
 
 inline std::ostream& operator<<(std::ostream& os, Undefined const& a) { return os << Instruction{a}; }
 inline std::ostream& operator<<(std::ostream& os, LoadMapFd const& a) { return os << Instruction{a}; }
+inline std::ostream& operator<<(std::ostream& os, LoadVariable const& a) { return os << Instruction{a}; }
 inline std::ostream& operator<<(std::ostream& os, Bin const& a) { return os << Instruction{a}; }
 inline std::ostream& operator<<(std::ostream& os, Un const& a) { return os << Instruction{a}; }
 inline std::ostream& operator<<(std::ostream& os, Call const& a) { return os << Instruction{a}; }

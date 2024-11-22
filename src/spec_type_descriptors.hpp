@@ -30,6 +30,11 @@ struct EbpfMapDescriptor {
     unsigned int inner_map_fd;
 };
 
+struct EbpfRelocationDescriptor {
+    int original_fd;
+    long unsigned int value_size;
+};
+
 constexpr unsigned int DEFAULT_MAP_FD = 0xffffffff;
 
 struct EbpfProgramType {
@@ -50,6 +55,7 @@ struct program_info {
     std::vector<EbpfMapDescriptor> map_descriptors{};
     EbpfProgramType type{};
     std::map<EquivalenceKey, int> cache{};
+    std::vector<EbpfRelocationDescriptor> relocation_descriptors{};
 };
 
 struct btf_line_info_t {

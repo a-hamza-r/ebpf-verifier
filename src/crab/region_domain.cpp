@@ -793,6 +793,30 @@ void region_domain_t::operator()(const LoadMapFd &u, location_t loc) {
     do_load_mapfd((register_t)u.dst.v, u.mapfd, loc);
 }
 
+static EbpfRelocationDescriptor* find_relocation_descriptor(const int relocation_fd) {
+    for (EbpfRelocationDescriptor& relocation : global_program_info->relocation_descriptors) {
+        if (relocation.original_fd == relocation_fd) {
+            return &relocation;
+        }
+    }
+    return nullptr;
+}
+
+
+void region_domain_t::operator()(const LoadVariable& u, location_t loc) {
+    const EbpfRelocationDescriptor* desc = find_relocation_descriptor(u.varfd);
+    if (desc == nullptr) {
+        throw std::runtime_error(std::string("relocation_fd not found"));
+        m_registers -= u.dst.v;
+        return;
+    } else {
+        // TODO: verify if the pointer can be null
+        auto type = ptr_with_off_t(region_t::R_SHARED, -1, interval_t{number_t{0}},
+                              nullness_t::NOT_NULL, interval_t{number_t{desc->value_size}});
+        m_registers.insert(u.dst.v, loc, type);
+    }
+}
+
 void region_domain_t::set_aliases(int v, ptr_with_off_t& ptr) {
     size_t i = 0;
     for (; i < m_shared_ptr_aliases.size(); i++) {
