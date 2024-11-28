@@ -87,7 +87,7 @@ void register_types_t::scratch_caller_saved_registers() {
 }
 
 void register_types_t::forget_packet_ptrs() {
-    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-1; r++) {
+    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-2; r++) {
         if (is_packet_ptr(find(register_t{r}))) {
             operator-=(register_t{r});
         }
@@ -106,9 +106,9 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     // in join, we do not know the label of the bb, hence we store the information
     // at a bb that is not used anywhere else in the program, and later when we know
     // the bb label, we can fix
-    location_t loc = location_t{std::make_pair(label_t(-2, -2), 0)};
+    location_t loc = location_t::top();
 
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto maybe_ptr1 = find(register_t{i});
         auto maybe_ptr2 = other.find(register_t{i});
@@ -167,12 +167,12 @@ bool register_types_t::is_top() const {
 }
 
 void register_types_t::insert(register_t reg, const location_t& loc, const ptr_or_mapfd_t& type) {
-    reg_with_loc_t reg_with_loc = reg_with_loc_t{reg, loc};
-    (*m_region_env)[reg_with_loc] = type;
-    m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
+    register_location_t register_location = register_location_t{reg, loc};
+    (*m_region_env)[register_location] = type;
+    m_cur_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
-std::optional<ptr_or_mapfd_t> register_types_t::find(reg_with_loc_t reg) const {
+std::optional<ptr_or_mapfd_t> register_types_t::find(register_location_t reg) const {
     auto it = m_region_env->find(reg);
     if (it == m_region_env->end()) return {};
     return it->second;
@@ -184,7 +184,7 @@ std::optional<ptr_or_mapfd_t> register_types_t::find(register_t key) const {
 }
 
 void register_types_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, *it);
         }
@@ -353,7 +353,7 @@ void region_domain_t::set_to_top() {
     m_registers.set_to_top();
 }
 
-std::optional<ptr_or_mapfd_t> region_domain_t::find_ptr_or_mapfd_at_loc(const reg_with_loc_t& reg) const {
+std::optional<ptr_or_mapfd_t> region_domain_t::find_ptr_or_mapfd_at_loc(const register_location_t& reg) const {
     return m_registers.find(reg);
 }
 
@@ -700,7 +700,7 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
                         goto out;
                     }
                 } else {
-                    auto type = ptr_with_off_t(region_t::T_SHARED, -1,
+                    auto type = ptr_with_off_t(region_t::R_SHARED, -1,
                             interval_t{number_t{0}}, nullness_t::MAYBE_NULL,
                             get_map_value_size(*maybe_fd_reg));
                     set_aliases((int)r0, type);
@@ -709,7 +709,7 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
             }
         }
         else {
-            auto type = ptr_with_off_t(region_t::T_SHARED, -1, interval_t{number_t{0}},
+            auto type = ptr_with_off_t(region_t::R_SHARED, -1, interval_t{number_t{0}},
                     nullness_t::MAYBE_NULL);
             set_aliases((int)r0, type);
             m_registers.insert(r0, loc, type);
@@ -754,12 +754,12 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
             auto offset_to_check = offset.to_interval()+interval_t{s.offset};
             auto offset_lb = offset_to_check.lb();
             auto offset_plus_width_ub = offset_to_check.ub()+bound_t{width};
-            if (ptr_with_off_type.get_region() == region_t::T_STACK) {
+            if (ptr_with_off_type.get_region() == region_t::R_STACK) {
                 if (bound_t{STACK_BEGIN} <= offset_lb
                         && offset_plus_width_ub <= bound_t{EBPF_STACK_SIZE})
                     return;
             }
-            else if (ptr_with_off_type.get_region() == region_t::T_CTX) {
+            else if (ptr_with_off_type.get_region() == region_t::R_CTX) {
                 if (bound_t{CTX_BEGIN} <= offset_lb
                         && offset_plus_width_ub <= bound_t{ctx_size()})
                     return;
@@ -805,12 +805,12 @@ region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
 
     register_types_t typ(std::make_shared<global_region_env_t>());
 
-    auto loc = std::make_pair(label_t::entry, (unsigned int)0);
+    location_t loc{label_t::entry, 0};
     if (init_r1) {
-        auto ctx_ptr_r1 = ptr_with_off_t(region_t::T_CTX, -1, mock_interval_t{number_t{0}});
+        auto ctx_ptr_r1 = ptr_with_off_t(region_t::R_CTX, -1, mock_interval_t{number_t{0}});
         typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
     }
-    auto stack_ptr_r10 = ptr_with_off_t(region_t::T_STACK, -1,  mock_interval_t{number_t{512}});
+    auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
     static region_domain_t inv(std::move(typ), stack_t::top(), ctx);
@@ -839,13 +839,13 @@ void region_domain_t::check_type(const TypeConstraint& s,
             if (s.types == TypeGroup::pointer || s.types == TypeGroup::ptr_or_num) return;
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd_type)) {
                 ptr_with_off_t ptr_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd_type);
-                if (ptr_with_off.get_region() == crab::region_t::T_CTX) {
+                if (ptr_with_off.get_region() == crab::region_t::R_CTX) {
                     if (s.types == TypeGroup::singleton_ptr) return;
                     if (s.types == TypeGroup::ctx) return;
                 }
                 else {
                     if (s.types == TypeGroup::mem || s.types == TypeGroup::mem_or_num) return;
-                    if (ptr_with_off.get_region() == crab::region_t::T_SHARED) {
+                    if (ptr_with_off.get_region() == crab::region_t::R_SHARED) {
                         if (s.types == TypeGroup::shared) return;
                     }
                     else {

@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "crab/common.hpp"
 #include "crab/offset_domain.hpp"
 
 void print_numeric_register(std::ostream&, Reg, crab::interval_t, bool);

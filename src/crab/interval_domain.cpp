@@ -99,12 +99,12 @@ std::optional<mock_interval_t> interval_domain_t::find_unsigned_interval_value(r
 }
 
 std::optional<mock_interval_t> interval_domain_t::find_signed_interval_at_loc(
-        const reg_with_loc_t reg) const {
+        const register_location_t reg) const {
     return m_signed.find_interval_at_loc(reg);
 }
 
 std::optional<mock_interval_t> interval_domain_t::find_unsigned_interval_at_loc(
-        const reg_with_loc_t reg) const {
+        const register_location_t reg) const {
     return m_unsigned.find_interval_at_loc(reg);
 }
 
@@ -116,7 +116,7 @@ void interval_domain_t::insert_in_registers(register_t reg, location_t loc, inte
 void interval_domain_t::insert_in_registers_signed(register_t reg, location_t loc,
         interval_t interval) {
     m_signed.insert_in_registers(reg, loc, interval);
-    //auto v = m_unsigned.find_interval_at_loc(reg_with_loc_t{reg, loc});
+    //auto v = m_unsigned.find_interval_at_loc(register_location_t{reg, loc});
     //if (!v) {
     //    m_unsigned.insert_in_registers(reg, loc, interval_t::top());
     //}
@@ -125,7 +125,7 @@ void interval_domain_t::insert_in_registers_signed(register_t reg, location_t lo
 void interval_domain_t::insert_in_registers_unsigned(register_t reg, location_t loc,
         interval_t interval) {
     m_unsigned.insert_in_registers(reg, loc, interval);
-    //auto v = m_signed.find_interval_at_loc(reg_with_loc_t{reg, loc});
+    //auto v = m_signed.find_interval_at_loc(register_location_t{reg, loc});
     //if (!v) {
     //    m_signed.insert_in_registers(reg, loc, interval_t::top());
     //}

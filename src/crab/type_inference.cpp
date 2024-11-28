@@ -105,7 +105,7 @@ crab::bound_t inference_domain_t::get_loop_count_upper_bound() const {
 string_invariant inference_domain_t::to_set() const {
     if (is_top()) return string_invariant::top();
     std::set<std::string> result;
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(register_t{i});
         auto maybe_rf = m_offset.find_refinement_info(register_t{i});
         if (maybe_ptr_or_mapfd.has_value()) {
@@ -330,6 +330,7 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
         const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
         const auto& maybe_right_interval = m_interval.find_interval_value(right_reg.v);
         assert(!maybe_right_type.has_value() || !maybe_right_interval.has_value());
+        // TODO: it does not handle for mapfd yet
         if (same_type(maybe_left_type, maybe_right_type,
                     maybe_left_interval, maybe_right_interval)) {
             if (maybe_left_interval) {
@@ -456,8 +457,7 @@ void inference_domain_t::operator()(const Comparable& u, location_t loc) {
     assert(!maybe_ptr_or_mapfd2.has_value() || !maybe_num_type2.has_value());
     if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
         if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
-        if (!is_shared_ptr(maybe_ptr_or_mapfd1)
-                && same_region(*maybe_ptr_or_mapfd1, *maybe_ptr_or_mapfd2)) return;
+        if (same_region(*maybe_ptr_or_mapfd1, *maybe_ptr_or_mapfd2)) return;
     }
     else if (!maybe_ptr_or_mapfd2) {
         // TODO: interval check here
@@ -628,8 +628,7 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
                     subtracted = m_offset.compute_packet_subtraction(dst_reg, src_reg);
                 }
                 else {
-                    // Assertions should make sure we only perform this on
-                    // non-shared pointers, hence this should not happen
+                    // This should not happen as same_region only allows non-shared pointers
                     m_errors.push_back("subtraction between pointers of different region");
                 }
             }
@@ -761,11 +760,11 @@ void inference_domain_t::operator()(const basic_block_t& bb) {
 
     auto label = bb.label();
     uint32_t curr_pos = 0;
-    location_t loc = location_t(std::make_pair(label, curr_pos));
+    location_t loc{label, curr_pos};
     adjust_bb_for_types(loc);
 
     for (const Instruction& statement : bb) {
-        loc = location_t(std::make_pair(label, ++curr_pos));
+        loc = location_t(label, ++curr_pos);
         std::visit([this, loc](const auto& v) { std::apply(*this, std::make_tuple(v, loc)); }, statement);
     }
 
@@ -775,31 +774,31 @@ void inference_domain_t::operator()(const basic_block_t& bb) {
 }
 
 std::optional<crab::ptr_or_mapfd_t>
-inference_domain_t::find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_ptr_or_mapfd_at_loc(const crab::register_location_t& loc) const {
     return m_region.find_ptr_or_mapfd_at_loc(loc);
 }
 
 std::optional<crab::refinement_t>
-inference_domain_t::find_refinement_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_refinement_at_loc(const crab::register_location_t& loc) const {
     return m_offset.find_refinement_at_loc(loc);
 }
 
 std::optional<crab::mock_interval_t>
-inference_domain_t::find_signed_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_signed_interval_at_loc(const crab::register_location_t& loc) const {
     return m_interval.find_signed_interval_at_loc(loc);
 }
 
 std::optional<crab::mock_interval_t>
-inference_domain_t::find_unsigned_interval_at_loc(const crab::reg_with_loc_t& loc) const {
+inference_domain_t::find_unsigned_interval_at_loc(const crab::register_location_t& loc) const {
     return m_interval.find_unsigned_interval_at_loc(loc);
 }
 
 static inline region_t string_to_region(const std::string& s) {
     static std::map<std::string, region_t> string_to_region{
-        {std::string("ctx"), region_t::T_CTX},
-        {std::string("stack"), region_t::T_STACK},
-        {std::string("packet"), region_t::T_PACKET},
-        {std::string("shared"), region_t::T_SHARED},
+        {std::string("ctx"), region_t::R_CTX},
+        {std::string("stack"), region_t::R_STACK},
+        {std::string("packet"), region_t::R_PACKET},
+        {std::string("shared"), region_t::R_SHARED},
     };
     if (string_to_region.count(s)) {
         return string_to_region[s];
@@ -945,7 +944,7 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
     else {
         typ.set_to_top();
     }
-    auto loc = location_t{std::make_pair(label_t::entry, 0)};
+    location_t loc{label_t::entry, 0};
     for (const auto& t : types) {
         std::smatch m;
         if (regex_match(t, m, regex(REG ":" CTX_OR_STACK_PTR))) {
@@ -1055,11 +1054,11 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
     // TODO: add support for printing unsigned intervals as well
     for (const Instruction& statement : bb) {
         ++curr_pos;
-        crab::location_t loc = crab::location_t(std::make_pair(bb.label(), curr_pos));
+        crab::location_t loc{bb.label(), curr_pos};
         o << "   " << curr_pos << ".";
         // TODO: print unsigned intervals in a proper way
         if (std::holds_alternative<Call>(statement)) {
-            auto r0_reg = crab::reg_with_loc_t(register_t{R0_RETURN_VALUE}, loc);
+            auto r0_reg = crab::register_location_t(register_t{R0_RETURN_VALUE}, loc);
             auto region = find_ptr_or_mapfd_at_loc(r0_reg);
             auto rf = find_refinement_at_loc(r0_reg);
             auto signed_interval = find_signed_interval_at_loc(r0_reg);
@@ -1069,19 +1068,19 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
         }
         else if (std::holds_alternative<Bin>(statement)) {
             auto b = std::get<Bin>(statement);
-            auto reg_with_loc = crab::reg_with_loc_t(b.dst.v, loc);
-            auto region = find_ptr_or_mapfd_at_loc(reg_with_loc);
-            auto rf = find_refinement_at_loc(reg_with_loc);
-            auto signed_interval = find_signed_interval_at_loc(reg_with_loc);
+            auto register_location = crab::register_location_t(b.dst.v, loc);
+            auto region = find_ptr_or_mapfd_at_loc(register_location);
+            auto rf = find_refinement_at_loc(register_location);
+            auto signed_interval = find_signed_interval_at_loc(register_location);
             print_annotated(o, b, region, rf, signed_interval, true);
-            auto unsigned_interval = find_unsigned_interval_at_loc(reg_with_loc);
+            auto unsigned_interval = find_unsigned_interval_at_loc(register_location);
             //print_annotated(o, b, region, rf, unsigned_interval, false);
         }
         else if (std::holds_alternative<Mem>(statement)) {
             auto u = std::get<Mem>(statement);
             if (u.is_load) {
                 auto target_reg = std::get<Reg>(u.value);
-                auto target_reg_loc = crab::reg_with_loc_t(target_reg.v, loc);
+                auto target_reg_loc = crab::register_location_t(target_reg.v, loc);
                 auto region = find_ptr_or_mapfd_at_loc(target_reg_loc);
                 auto rf = find_refinement_at_loc(target_reg_loc);
                 auto signed_interval = find_signed_interval_at_loc(target_reg_loc);
@@ -1093,13 +1092,13 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
         }
         else if (std::holds_alternative<LoadMapFd>(statement)) {
             auto u = std::get<LoadMapFd>(statement);
-            auto reg = crab::reg_with_loc_t(u.dst.v, loc);
+            auto reg = crab::register_location_t(u.dst.v, loc);
             auto region = find_ptr_or_mapfd_at_loc(reg);
             print_annotated(o, u, region);
         }
         else if (std::holds_alternative<Un>(statement)) {
             auto u = std::get<Un>(statement);
-            auto reg = crab::reg_with_loc_t(u.dst.v, loc);
+            auto reg = crab::register_location_t(u.dst.v, loc);
             auto signed_interval = find_signed_interval_at_loc(reg);
             print_annotated(o, u, signed_interval, true);
             auto unsigned_interval = find_unsigned_interval_at_loc(reg);

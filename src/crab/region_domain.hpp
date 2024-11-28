@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include "crab/common.hpp"
-
+#include "array_domain.hpp"
+#include "types.hpp"
 #include "platform.hpp"
 
 namespace crab {
 
+using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
 using shared_ptr_aliases_t = std::vector<std::set<int>>;
 
 class ctx_t {
@@ -53,8 +54,8 @@ class stack_t {
     size_t size() const;
 };
 
-using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS>;
-using global_region_env_t = std::unordered_map<reg_with_loc_t, ptr_or_mapfd_t>;
+using live_registers_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
+using global_region_env_t = std::unordered_map<register_location_t, ptr_or_mapfd_t>;
 
 class register_types_t {
 
@@ -79,7 +80,7 @@ class register_types_t {
     bool is_bottom() const;
     bool is_top() const;
     void insert(register_t, const location_t&, const ptr_or_mapfd_t&);
-    std::optional<ptr_or_mapfd_t> find(reg_with_loc_t reg) const;
+    std::optional<ptr_or_mapfd_t> find(register_location_t reg) const;
     std::optional<ptr_or_mapfd_t> find(register_t key) const;
     [[nodiscard]] live_registers_t &get_vars() { return m_cur_def; }
     void forget_packet_ptrs();
@@ -132,22 +133,22 @@ class region_domain_t final {
     void operator-=(register_t var) { m_registers -= var; }
 
     //// abstract transformers
-    void operator()(const Undefined&, location_t loc = boost::none);
-    void operator()(const Bin&, location_t loc = boost::none);
-    void operator()(const Un&, location_t loc = boost::none);
-    void operator()(const LoadMapFd&, location_t loc = boost::none);
-    void operator()(const Atomic&, location_t loc = boost::none);
-    void operator()(const Call&, location_t loc = boost::none);
-    void operator()(const Exit&, location_t loc = boost::none);
-    void operator()(const Jmp&, location_t loc = boost::none);
-    void operator()(const Mem&, location_t loc = boost::none);
-    void operator()(const Packet&, location_t loc = boost::none);
-    void operator()(const Assume&, location_t loc = boost::none);
-    void operator()(const Assert&, location_t loc = boost::none);
-    void operator()(const ValidAccess&, location_t loc = boost::none);
-    void operator()(const TypeConstraint&, location_t loc = boost::none);
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
-    void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
+    void operator()(const Undefined&, location_t loc = location_t::top());
+    void operator()(const Bin&, location_t loc = location_t::top());
+    void operator()(const Un&, location_t loc = location_t::top());
+    void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const Atomic&, location_t loc = location_t::top());
+    void operator()(const Call&, location_t loc = location_t::top());
+    void operator()(const Exit&, location_t loc = location_t::top());
+    void operator()(const Jmp&, location_t loc = location_t::top());
+    void operator()(const Mem&, location_t loc = location_t::top());
+    void operator()(const Packet&, location_t loc = location_t::top());
+    void operator()(const Assume&, location_t loc = location_t::top());
+    void operator()(const Assert&, location_t loc = location_t::top());
+    void operator()(const ValidAccess&, location_t loc = location_t::top());
+    void operator()(const TypeConstraint&, location_t loc = location_t::top());
+    void operator()(const ZeroCtxOffset&, location_t loc = location_t::top());
+    void operator()(const IncrementLoopCounter&, location_t loc = location_t::top());
     void operator()(const basic_block_t& bb);
     void write(std::ostream& o) const {}
     crab::bound_t get_loop_count_upper_bound() const;
@@ -180,7 +181,7 @@ class region_domain_t final {
     std::optional<crab::packet_ptr_t> find_in_ctx(uint64_t key) const;
     [[nodiscard]] std::vector<uint64_t> get_ctx_keys() const;
     std::optional<crab::ptr_or_mapfd_cells_t> find_in_stack(uint64_t key) const;
-    std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
+    std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::register_location_t&) const;
     void insert_in_registers(register_t, location_t, const ptr_or_mapfd_t&);
     void store_in_stack(uint64_t, ptr_or_mapfd_t, int);
     void set_aliases(int, ptr_with_off_t&);

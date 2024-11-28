@@ -1,36 +1,23 @@
 // Copyright (c) Prevail Verifier contributors.
 // SPDX-License-Identifier: MIT
 
-#include "crab/common.hpp"
-
-/*
-namespace std {
-    crab::ptr_t get_ptr(const crab::ptr_or_mapfd_t& t) {
-    return std::visit( overloaded
-               {
-                   []( const crab::ptr_with_off_t& x ){ return crab::ptr_t{x};},
-                   []( const crab::packet_ptr_t& x ){ return crab::ptr_t{x};},
-                   []( auto& ) { return crab::ptr_t{};}
-                }, t
-            );
-    }
-} // namespace std
-*/
+#include "types.hpp"
 
 namespace crab {
 
-inline std::string get_reg_ptr(const region_t& r) noexcept {
+inline std::string region_to_string(const region_t& r) noexcept {
     switch (r) {
-        case region_t::T_CTX:
+        case region_t::R_CTX:
             return "ctx_p";
-        case region_t::T_STACK:
+        case region_t::R_STACK:
             return "stack_p";
-        case region_t::T_SHARED:
+        case region_t::R_SHARED:
             return "shared_p";
-        default:
+        case region_t::R_PACKET:
             return "packet_p";
+        default:
+            __builtin_unreachable();
     }
-    __builtin_unreachable();
 }
 
 bool mock_interval_t::operator==(const mock_interval_t& other) const {
@@ -43,14 +30,6 @@ bool ptr_with_off_t::operator==(const ptr_with_off_t& other) const {
 }
 
 bool ptr_with_off_t::operator!=(const ptr_with_off_t& other) const {
-    return !(*this == other);
-}
-
-bool packet_ptr_t::operator==(const packet_ptr_t& other) const {
-    return (m_r == other.m_r);
-}
-
-bool packet_ptr_t::operator!=(const packet_ptr_t& other) const {
     return !(*this == other);
 }
 
@@ -107,33 +86,8 @@ void mapfd_t::write(std::ostream& o) const {
     }
 }
 
-void reg_with_loc_t::write(std::ostream& o) const {
-    o << "r" << static_cast<unsigned int>(m_reg) << "@" << m_loc->second << " in " << m_loc->first << " ";
-}
-
-std::ostream& operator<<(std::ostream& o, const reg_with_loc_t& reg) {
-    reg.write(o);
-    return o;
-}
-
-bool reg_with_loc_t::operator==(const reg_with_loc_t& other) const {
-    return (m_reg == other.m_reg && m_loc == other.m_loc);
-}
-
-std::size_t reg_with_loc_t::hash() const {
-    // Similar to boost::hash_combine
-    using std::hash;
-
-    std::size_t seed = hash<register_t>()(m_reg);
-    seed ^= hash<int>()(m_loc->first.from) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= hash<int>()(m_loc->first.to) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= hash<int>()(m_loc->second) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-
-    return seed;
-}
-
 void ptr_with_off_t::write(std::ostream& o) const {
-    o << get_reg_ptr(m_r);
+    o << region_to_string(m_r);
     auto offset = m_offset.to_interval();
     auto region_size = m_region_size.to_interval();
     if (!offset.is_top()) {

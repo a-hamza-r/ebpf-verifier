@@ -17,7 +17,6 @@
 namespace crab {
 
 class ebpf_domain_t final {
-  using location_t = boost::optional<std::pair<label_t, uint32_t>>;
   public:
     ebpf_domain_t();
     ebpf_domain_t(NumAbsDomain inv, domains::array_domain_t stack);
@@ -54,32 +53,32 @@ class ebpf_domain_t final {
     // abstract transformers
     void operator()(const basic_block_t& bb);
 
-    void operator()(const Addable&, location_t loc = boost::none);
-    void operator()(const Assert&, location_t loc = boost::none);
-    void operator()(const Assume&, location_t loc = boost::none);
-    void operator()(const Bin&, location_t loc = boost::none);
-    void operator()(const Call&, location_t loc = boost::none);
-    void operator()(const CallLocal&, location_t loc = boost::none);
-    void operator()(const Callx&, location_t loc = boost::none);
-    void operator()(const Comparable&, location_t loc = boost::none);
-    void operator()(const Exit&, location_t loc = boost::none);
-    void operator()(const FuncConstraint&, location_t loc = boost::none);
-    void operator()(const Jmp&, location_t loc = boost::none);
-    void operator()(const LoadMapFd&, location_t loc = boost::none);
-    void operator()(const Atomic&, location_t loc = boost::none);
-    void operator()(const Mem&, location_t loc = boost::none);
-    void operator()(const ValidDivisor&, location_t loc = boost::none);
-    void operator()(const Packet&, location_t loc = boost::none);
-    void operator()(const TypeConstraint&, location_t loc = boost::none);
-    void operator()(const Un&, location_t loc = boost::none);
-    void operator()(const Undefined&, location_t loc = boost::none);
-    void operator()(const ValidAccess&, location_t loc = boost::none);
-    void operator()(const ValidCall&, location_t loc = boost::none);
-    void operator()(const ValidMapKeyValue&, location_t loc = boost::none);
-    void operator()(const ValidSize&, location_t loc = boost::none);
-    void operator()(const ValidStore&, location_t loc = boost::none);
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
-    void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
+    void operator()(const Addable&, location_t loc = location_t::top());
+    void operator()(const Assert&, location_t loc = location_t::top());
+    void operator()(const Assume&, location_t loc = location_t::top());
+    void operator()(const Bin&, location_t loc = location_t::top());
+    void operator()(const Call&, location_t loc = location_t::top());
+    void operator()(const CallLocal&, location_t loc = location_t::top());
+    void operator()(const Callx&, location_t loc = location_t::top());
+    void operator()(const Comparable&, location_t loc = location_t::top());
+    void operator()(const Exit&, location_t loc = location_t::top());
+    void operator()(const FuncConstraint&, location_t loc = location_t::top());
+    void operator()(const Jmp&, location_t loc = location_t::top());
+    void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const Atomic&, location_t loc = location_t::top());
+    void operator()(const Mem&, location_t loc = location_t::top());
+    void operator()(const ValidDivisor&, location_t loc = location_t::top());
+    void operator()(const Packet&, location_t loc = location_t::top());
+    void operator()(const TypeConstraint&, location_t loc = location_t::top());
+    void operator()(const Un&, location_t loc = location_t::top());
+    void operator()(const Undefined&, location_t loc = location_t::top());
+    void operator()(const ValidAccess&, location_t loc = location_t::top());
+    void operator()(const ValidCall&, location_t loc = location_t::top());
+    void operator()(const ValidMapKeyValue&, location_t loc = location_t::top());
+    void operator()(const ValidSize&, location_t loc = location_t::top());
+    void operator()(const ValidStore&, location_t loc = location_t::top());
+    void operator()(const ZeroCtxOffset&, location_t loc = location_t::top());
+    void operator()(const IncrementLoopCounter&, location_t loc = location_t::top());
 
     // following operations are important to keep in ebpf_domain_t because of the parametric abstract domain
     void write(std::ostream& o) const;

@@ -31,12 +31,12 @@ void registers_signed_state_t::set_to_bottom() {
 }
 
 void registers_signed_state_t::insert(register_t reg, const location_t& loc, interval_t interval) {
-    auto reg_with_loc = reg_with_loc_t{reg, loc};
-    (*m_interval_env)[reg_with_loc] = mock_interval_t{interval};
-    m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
+    auto register_location = register_location_t{reg, loc};
+    (*m_interval_env)[register_location] = mock_interval_t{interval};
+    m_cur_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
-std::optional<mock_interval_t> registers_signed_state_t::find(reg_with_loc_t reg) const {
+std::optional<mock_interval_t> registers_signed_state_t::find(register_location_t reg) const {
     auto it = m_interval_env->find(reg);
     if (it == m_interval_env->end()) return {};
     return it->second;
@@ -44,7 +44,7 @@ std::optional<mock_interval_t> registers_signed_state_t::find(reg_with_loc_t reg
 
 std::optional<mock_interval_t> registers_signed_state_t::find(register_t key) const {
     if (m_cur_def[key] == nullptr) return {};
-    const reg_with_loc_t& reg = *(m_cur_def[key]);
+    const register_location_t& reg = *(m_cur_def[key]);
     return find(reg);
 }
 
@@ -55,8 +55,8 @@ registers_signed_state_t registers_signed_state_t::operator|(const registers_sig
         return *this;
     }
     registers_signed_state_t intervals_joined(m_interval_env);
-    location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    location_t loc = location_t::top();
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
@@ -70,7 +70,7 @@ registers_signed_state_t registers_signed_state_t::operator|(const registers_sig
 }
 
 void registers_signed_state_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, it->to_interval());
         }
@@ -339,7 +339,7 @@ std::optional<mock_interval_t> signed_interval_domain_t::find_interval_value(reg
 }
 
 std::optional<mock_interval_t> signed_interval_domain_t::find_interval_at_loc(
-        const reg_with_loc_t reg) const {
+        const register_location_t reg) const {
     return m_registers_values.find(reg);
 }
 

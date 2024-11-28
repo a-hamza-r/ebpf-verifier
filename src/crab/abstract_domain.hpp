@@ -1,13 +1,15 @@
+// Copyright (c) Prevail Verifier contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
-#include <boost/optional/optional.hpp>
 #include "cfg.hpp"
-#include "linear_constraint.hpp"
-#include "string_constraints.hpp"
+#include "register_utils.hpp"
 
 #include "array_domain.hpp"
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
-using location_t = boost::optional<std::pair<label_t, uint32_t>>;
+using crab::location_t;
+
 class abstract_domain_t {
   private:
     class abstract_domain_concept {
@@ -78,17 +80,17 @@ class abstract_domain_t {
         std::unique_ptr<abstract_domain_concept> widen(const abstract_domain_concept& abs, bool) override;
         std::unique_ptr<abstract_domain_concept> narrow(const abstract_domain_concept& abs) const override;
         void operator()(const basic_block_t& bb) override;
-        void operator()(const Undefined& s, location_t loc = boost::none) override;
-        void operator()(const Bin& s, location_t loc = boost::none) override;
-        void operator()(const Un& s, location_t loc = boost::none) override;
-        void operator()(const LoadMapFd& s, location_t loc = boost::none) override;
-        void operator()(const Call& s, location_t loc = boost::none) override;
-        void operator()(const Exit& s, location_t loc = boost::none) override;
-        void operator()(const Jmp& s, location_t loc = boost::none) override;
-        void operator()(const Mem& s, location_t loc = boost::none) override;
-        void operator()(const Packet& s, location_t loc = boost::none) override;
-        void operator()(const Assume& s, location_t loc = boost::none) override;
-        void operator()(const Assert& s, location_t loc = boost::none) override;
+        void operator()(const Undefined& s, location_t loc = location_t::top()) override;
+        void operator()(const Bin& s, location_t loc = location_t::top()) override;
+        void operator()(const Un& s, location_t loc = location_t::top()) override;
+        void operator()(const LoadMapFd& s, location_t loc = location_t::top()) override;
+        void operator()(const Call& s, location_t loc = location_t::top()) override;
+        void operator()(const Exit& s, location_t loc = location_t::top()) override;
+        void operator()(const Jmp& s, location_t loc = location_t::top()) override;
+        void operator()(const Mem& s, location_t loc = location_t::top()) override;
+        void operator()(const Packet& s, location_t loc = location_t::top()) override;
+        void operator()(const Assume& s, location_t loc = location_t::top()) override;
+        void operator()(const Assert& s, location_t loc = location_t::top()) override;
         void write(std::ostream& os) const override;
         void initialize_loop_counter(const label_t) override;
         crab::bound_t get_loop_count_upper_bound() const override;
@@ -124,17 +126,17 @@ class abstract_domain_t {
     abstract_domain_t widen(const abstract_domain_t& abs, bool);
     abstract_domain_t narrow(const abstract_domain_t& abs) const;
     void operator()(const basic_block_t& bb);
-    void operator()(const Undefined& s, location_t loc = boost::none);
-    void operator()(const Bin& s, location_t loc = boost::none);
-    void operator()(const Un& s, location_t loc = boost::none);
-    void operator()(const LoadMapFd& s, location_t loc = boost::none);
-    void operator()(const Call& s, location_t loc = boost::none);
-    void operator()(const Exit& s, location_t loc = boost::none);
-    void operator()(const Jmp& s, location_t loc = boost::none);
-    void operator()(const Mem& s, location_t loc = boost::none);
-    void operator()(const Packet& s, location_t loc = boost::none);
-    void operator()(const Assume& s, location_t loc = boost::none);
-    void operator()(const Assert& s, location_t loc = boost::none);
+    void operator()(const Undefined& s, location_t loc = location_t::top());
+    void operator()(const Bin& s, location_t loc = location_t::top());
+    void operator()(const Un& s, location_t loc = location_t::top());
+    void operator()(const LoadMapFd& s, location_t loc = location_t::top());
+    void operator()(const Call& s, location_t loc = location_t::top());
+    void operator()(const Exit& s, location_t loc = location_t::top());
+    void operator()(const Jmp& s, location_t loc = location_t::top());
+    void operator()(const Mem& s, location_t loc = location_t::top());
+    void operator()(const Packet& s, location_t loc = location_t::top());
+    void operator()(const Assume& s, location_t loc = location_t::top());
+    void operator()(const Assert& s, location_t loc = location_t::top());
     void write(std::ostream& os) const;
     crab::bound_t get_loop_count_upper_bound() const;
     void initialize_loop_counter(const label_t);

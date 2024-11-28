@@ -1,21 +1,21 @@
 // Copyright (c) Prevail Verifier contributors.
 // SPDX-License-Identifier: MIT
 
-#include "crab/offset_domain.hpp"
+#include "offset_domain.hpp"
 
 namespace crab {
 
 void registers_state_t::insert(register_t reg, const location_t& loc, refinement_t&& rf) {
-    reg_with_loc_t reg_with_loc{reg, loc};
-    (*m_offset_env)[reg_with_loc] = std::move(rf);
-    m_cur_def[reg] = std::make_shared<reg_with_loc_t>(reg_with_loc);
+    register_location_t register_location{reg, loc};
+    (*m_offset_env)[register_location] = std::move(rf);
+    m_cur_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
 void registers_state_t::insert_slack_value(symbol_t sym, mock_interval_t in) {
     (*m_slacks)[sym] = std::move(in);
 }
 
-std::optional<refinement_t> registers_state_t::find(reg_with_loc_t reg) const {
+std::optional<refinement_t> registers_state_t::find(register_location_t reg) const {
     auto it = m_offset_env->find(reg);
     if (it == m_offset_env->end()) return {};
     return it->second;
@@ -92,9 +92,9 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
     }
 
     registers_state_t joined_state(m_offset_env, m_slacks);
-    location_t loc = location_t(std::make_pair(label_t(-2, -2), 0));
+    location_t loc = location_t::top();
 
-    for (uint8_t i = 0; i < NUM_REGISTERS+1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
         auto it1 = find(*(m_cur_def[i]));
         auto it2 = other.find(*(other.m_cur_def[i]));
@@ -109,7 +109,7 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
 }
 
 void registers_state_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS+1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, std::move(*it));
         }
@@ -123,7 +123,7 @@ void registers_state_t::scratch_caller_saved_registers() {
 }
 
 void registers_state_t::forget_packet_pointers(location_t loc) {
-    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-1; r++) {
+    for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-2; r++) {
         if (auto it = find(register_t{r})) {
             if (it->get_type() == refinement_type_t::PACKET) {
                 operator-=(register_t{r});
@@ -739,7 +739,7 @@ void offset_domain_t::operator()(const Mem& b, location_t loc) {
     // nothing to do here
 }
 
-std::optional<refinement_t> offset_domain_t::find_refinement_at_loc(const reg_with_loc_t reg) const {
+std::optional<refinement_t> offset_domain_t::find_refinement_at_loc(const register_location_t reg) const {
     return m_reg_state.find(reg);
 }
 

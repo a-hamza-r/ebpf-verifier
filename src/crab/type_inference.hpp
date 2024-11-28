@@ -6,7 +6,6 @@
 #include "crab/region_domain.hpp"
 #include "crab/interval_domain.hpp"
 #include "crab/offset_domain.hpp"
-#include "crab/common.hpp"
 #include "crab/type_ostream.hpp"
 
 namespace crab {
@@ -51,32 +50,32 @@ class inference_domain_t final {
     inference_domain_t narrow(const inference_domain_t& other) const;
 
     //// abstract transformers
-    void operator()(const Undefined&, location_t loc = boost::none);
-    void operator()(const Bin&, location_t loc = boost::none);
-    void operator()(const Un&, location_t loc = boost::none);
-    void operator()(const LoadMapFd&, location_t loc = boost::none);
-    void operator()(const Atomic&, location_t loc = boost::none);
-    void operator()(const Call&, location_t loc = boost::none);
-    void operator()(const CallLocal&, location_t loc = boost::none) {}
-    void operator()(const Callx&, location_t loc = boost::none);
-    void operator()(const Exit&, location_t loc = boost::none);
-    void operator()(const Jmp&, location_t loc = boost::none);
-    void operator()(const Mem&, location_t loc = boost::none);
-    void operator()(const Packet&, location_t loc = boost::none);
-    void operator()(const Assume&, location_t loc = boost::none);
-    void operator()(const Assert&, location_t loc = boost::none);
-    void operator()(const ValidAccess&, location_t loc = boost::none);
-    void operator()(const Comparable&, location_t loc = boost::none);
-    void operator()(const Addable&, location_t loc = boost::none);
-    void operator()(const ValidStore&, location_t loc = boost::none);
-    void operator()(const TypeConstraint&, location_t loc = boost::none);
-    void operator()(const ValidSize&, location_t loc = boost::none);
-    void operator()(const ValidCall&, location_t loc = boost::none) {}
-    void operator()(const ValidMapKeyValue&, location_t loc = boost::none);
-    void operator()(const ZeroCtxOffset&, location_t loc = boost::none);
-    void operator()(const ValidDivisor&, location_t loc = boost::none);
-    void operator()(const FuncConstraint& s, location_t loc = boost::none);
-    void operator()(const IncrementLoopCounter&, location_t loc = boost::none);
+    void operator()(const Undefined&, location_t loc = location_t::top());
+    void operator()(const Bin&, location_t loc = location_t::top());
+    void operator()(const Un&, location_t loc = location_t::top());
+    void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const Atomic&, location_t loc = location_t::top());
+    void operator()(const Call&, location_t loc = location_t::top());
+    void operator()(const CallLocal&, location_t loc = location_t::top()) {}
+    void operator()(const Callx&, location_t loc = location_t::top());
+    void operator()(const Exit&, location_t loc = location_t::top());
+    void operator()(const Jmp&, location_t loc = location_t::top());
+    void operator()(const Mem&, location_t loc = location_t::top());
+    void operator()(const Packet&, location_t loc = location_t::top());
+    void operator()(const Assume&, location_t loc = location_t::top());
+    void operator()(const Assert&, location_t loc = location_t::top());
+    void operator()(const ValidAccess&, location_t loc = location_t::top());
+    void operator()(const Comparable&, location_t loc = location_t::top());
+    void operator()(const Addable&, location_t loc = location_t::top());
+    void operator()(const ValidStore&, location_t loc = location_t::top());
+    void operator()(const TypeConstraint&, location_t loc = location_t::top());
+    void operator()(const ValidSize&, location_t loc = location_t::top());
+    void operator()(const ValidCall&, location_t loc = location_t::top()) {}
+    void operator()(const ValidMapKeyValue&, location_t loc = location_t::top());
+    void operator()(const ZeroCtxOffset&, location_t loc = location_t::top());
+    void operator()(const ValidDivisor&, location_t loc = location_t::top());
+    void operator()(const FuncConstraint& s, location_t loc = location_t::top());
+    void operator()(const IncrementLoopCounter&, location_t loc = location_t::top());
     void operator()(const basic_block_t& bb);
     void write(std::ostream& os) const;
     friend std::ostream& operator<<(std::ostream& o, const inference_domain_t& dom);
@@ -88,10 +87,10 @@ class inference_domain_t final {
     void print_ctx(std::ostream&) const;
     void print_stack(std::ostream&) const;
     void print_annotated_bb(std::ostream&, const basic_block_t&) const;
-    std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::reg_with_loc_t&) const;
-    std::optional<crab::refinement_t> find_refinement_at_loc(const crab::reg_with_loc_t&) const;
-    std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::reg_with_loc_t&) const;
-    std::optional<crab::mock_interval_t> find_unsigned_interval_at_loc(const crab::reg_with_loc_t&) const;
+    std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::register_location_t&) const;
+    std::optional<crab::refinement_t> find_refinement_at_loc(const crab::register_location_t&) const;
+    std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::register_location_t&) const;
+    std::optional<crab::mock_interval_t> find_unsigned_interval_at_loc(const crab::register_location_t&) const;
     static inference_domain_t from_predefined_types(const std::set<std::string>&, bool);
     void insert_in_registers_in_region_domain(register_t, location_t, const ptr_or_mapfd_t&);
     void store_in_stack_in_region_domain(uint64_t, ptr_or_mapfd_t, int);

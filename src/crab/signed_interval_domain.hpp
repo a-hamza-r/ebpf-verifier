@@ -3,12 +3,14 @@
 
 #pragma once
 
-#include "crab/common.hpp"
+#include "array_domain.hpp"
+#include "types.hpp"
 
 namespace crab {
 
-using live_registers_t = std::array<std::shared_ptr<reg_with_loc_t>, NUM_REGISTERS>;
-using global_interval_env_t = std::unordered_map<reg_with_loc_t, mock_interval_t>;
+using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
+using live_registers_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
+using global_interval_env_t = std::unordered_map<register_location_t, mock_interval_t>;
 
 class registers_signed_state_t {
 
@@ -22,7 +24,7 @@ class registers_signed_state_t {
         void set_to_bottom();
         void set_to_top();
         void set_registers_to_bottom();
-        std::optional<mock_interval_t> find(reg_with_loc_t reg) const;
+        std::optional<mock_interval_t> find(register_location_t reg) const;
         std::optional<mock_interval_t> find(register_t key) const;
         void insert(register_t, const location_t&, interval_t);
         void operator-=(register_t);
@@ -112,19 +114,19 @@ class signed_interval_domain_t final {
     void operator-=(register_t reg) { m_registers_values -= reg; }
 
     //// abstract transformers
-    void operator()(const Undefined&, location_t loc = boost::none);
-    void operator()(const Bin&, location_t loc = boost::none);
-    void operator()(const Un&, location_t loc = boost::none);
-    void operator()(const LoadMapFd&, location_t loc = boost::none);
-    void operator()(const Atomic&, location_t loc = boost::none) {}
-    void operator()(const Call&, location_t loc = boost::none);
-    void operator()(const Exit&, location_t loc = boost::none);
-    void operator()(const Jmp&, location_t loc = boost::none);
-    void operator()(const Mem&, location_t loc = boost::none);
-    void operator()(const Packet&, location_t loc = boost::none);
-    void operator()(const Assume&, location_t loc = boost::none);
-    void operator()(const Assert&, location_t loc = boost::none);
-    void operator()(const IncrementLoopCounter&, location_t loc = boost::none) {}
+    void operator()(const Undefined&, location_t loc = location_t::top());
+    void operator()(const Bin&, location_t loc = location_t::top());
+    void operator()(const Un&, location_t loc = location_t::top());
+    void operator()(const LoadMapFd&, location_t loc = location_t::top());
+    void operator()(const Atomic&, location_t loc = location_t::top()) {}
+    void operator()(const Call&, location_t loc = location_t::top());
+    void operator()(const Exit&, location_t loc = location_t::top());
+    void operator()(const Jmp&, location_t loc = location_t::top());
+    void operator()(const Mem&, location_t loc = location_t::top());
+    void operator()(const Packet&, location_t loc = location_t::top());
+    void operator()(const Assume&, location_t loc = location_t::top());
+    void operator()(const Assert&, location_t loc = location_t::top());
+    void operator()(const IncrementLoopCounter&, location_t loc = location_t::top()) {}
     void operator()(const basic_block_t& bb);
     void write(std::ostream& os) const {}
     crab::bound_t get_loop_count_upper_bound() const;
@@ -134,7 +136,7 @@ class signed_interval_domain_t final {
 
     void check_valid_access(const ValidAccess&, interval_t&&, int, bool);
     std::optional<mock_interval_t> find_interval_value(register_t) const;
-    std::optional<mock_interval_t> find_interval_at_loc(const reg_with_loc_t reg) const;
+    std::optional<mock_interval_t> find_interval_at_loc(const register_location_t reg) const;
     std::optional<interval_cells_t> find_in_stack(uint64_t) const;
     void insert_in_registers(register_t, location_t, interval_t);
     void store_in_stack(uint64_t, mock_interval_t, int);

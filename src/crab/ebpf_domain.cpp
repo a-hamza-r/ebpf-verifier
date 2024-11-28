@@ -19,6 +19,7 @@
 #include "dsl_syntax.hpp"
 #include "platform.hpp"
 #include "string_constraints.hpp"
+#include "register_utils.hpp"
 
 using crab::domains::NumAbsDomain;
 namespace crab {

@@ -5,8 +5,7 @@
 #include <map>
 #include <cassert>
 #include "symbol.hpp"
-#include "interval.hpp"
-#include "common.hpp"
+#include "types.hpp"
 
 namespace crab {
 // An expression is of form: Ax + By + Cz + ... + I.
