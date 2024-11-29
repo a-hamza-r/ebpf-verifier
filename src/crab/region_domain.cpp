@@ -48,38 +48,6 @@ static inline std::vector<std::set<int>> join_shared_ptr_aliases(
     return result;
 }
 
-ctx_t::ctx_t(const ebpf_context_descriptor_t* desc)
-{
-    if (desc->data >= 0) {
-        m_packet_ptrs[desc->data] = std::move(crab::packet_ptr_t{});
-    }
-    if (desc->end >= 0) {
-        m_packet_ptrs[desc->end] = std::move(crab::packet_ptr_t{});
-    }
-    if (desc->meta >= 0) {
-        m_packet_ptrs[desc->meta] = std::move(crab::packet_ptr_t{});
-    }
-    if (desc->size >= 0) {
-        size = desc->size;
-    }
-}
-
-std::vector<uint64_t> ctx_t::get_keys() const {
-    std::vector<uint64_t> keys;
-    keys.reserve(size);
-
-    for (auto const&kv : m_packet_ptrs) {
-        keys.push_back(kv.first);
-    }
-    return keys;
-}
-
-std::optional<packet_ptr_t> ctx_t::find(uint64_t key) const {
-    auto it = m_packet_ptrs.find(key);
-    if (it == m_packet_ptrs.end()) return {};
-    return it->second;
-}
-
 void register_types_t::scratch_caller_saved_registers() {
     for (uint8_t r = R1_ARG; r <= R5_ARG; r++) {
         operator-=(register_t{r});
@@ -312,6 +280,14 @@ std::vector<uint64_t> stack_t::find_overlapping_cells(uint64_t start, int width)
     return overlapping_cells;
 }
 
+void region_domain_t::compute_ctx_size(const ebpf_context_descriptor_t* desc) {
+    ctx_size = std::max(0, desc->size);
+}
+
+size_t region_domain_t::get_ctx_size() const {
+    return ctx_size;
+}
+
 std::optional<ptr_or_mapfd_t> region_domain_t::find_ptr_or_mapfd_type(register_t reg) const {
     return m_registers.find(reg);
 }
@@ -361,20 +337,8 @@ void region_domain_t::set_registers_to_top() {
     m_registers.set_to_top();
 }
 
-size_t region_domain_t::ctx_size() const {
-    return m_ctx->get_size();
-}
-
-std::vector<uint64_t> region_domain_t::get_ctx_keys() const {
-    return m_ctx->get_keys();
-}
-
 std::vector<uint64_t> region_domain_t::get_stack_keys() const {
     return m_stack.get_keys();
-}
-
-std::optional<packet_ptr_t> region_domain_t::find_in_ctx(uint64_t key) const {
-    return m_ctx->find(key);
 }
 
 std::optional<ptr_or_mapfd_cells_t> region_domain_t::find_in_stack(uint64_t key) const {
@@ -407,7 +371,7 @@ region_domain_t region_domain_t::operator|(const region_domain_t& other) const {
         return *this;
     }
     auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
-    return region_domain_t(m_registers | other.m_registers, m_stack | other.m_stack, other.m_ctx,
+    return region_domain_t(m_registers | other.m_registers, m_stack | other.m_stack,
             std::move(aliases));
 }
 
@@ -420,7 +384,7 @@ region_domain_t region_domain_t::operator|(region_domain_t&& other) const {
     }
     auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
     return region_domain_t(m_registers | std::move(other.m_registers),
-            m_stack | std::move(other.m_stack), other.m_ctx, std::move(aliases));
+            m_stack | std::move(other.m_stack), std::move(aliases));
 }
 
 region_domain_t region_domain_t::operator&(const region_domain_t& abs) const {
@@ -761,7 +725,7 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
             }
             else if (ptr_with_off_type.get_region() == region_t::R_CTX) {
                 if (bound_t{CTX_BEGIN} <= offset_lb
-                        && offset_plus_width_ub <= bound_t{ctx_size()})
+                        && offset_plus_width_ub <= bound_t{get_ctx_size()})
                     return;
             }
             else { // shared
@@ -799,10 +763,6 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
 }
 
 region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
-
-    std::shared_ptr<ctx_t> ctx
-        = std::make_shared<ctx_t>(global_program_info.get().type.context_descriptor);
-
     register_types_t typ(std::make_shared<global_region_env_t>());
 
     location_t loc{label_t::entry, 0};
@@ -813,7 +773,8 @@ region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
     auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
-    static region_domain_t inv(std::move(typ), stack_t::top(), ctx);
+    static region_domain_t inv(std::move(typ), stack_t::top());
+    inv.compute_ctx_size(global_program_info.get().type.context_descriptor);
     return std::move(inv);
 }
 
@@ -1057,77 +1018,38 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
     auto p_offset = type_with_off.get_offset();
     auto offset_singleton = p_offset.to_interval().singleton();
 
+    if (!offset_singleton) {
+        m_registers -= target_register;
+        return;
+    }
     if (is_stack_p) {
-        if (!offset_singleton) {
-            for (auto const& k : m_stack.get_keys()) {
-                auto start = p_offset.lb();
-                auto end = p_offset.ub()+number_t{offset+width-1};
-                interval_t range{start, end};
-                // TODO: fix this
-                /*
-                if (range[number_t{(int)k}]) {
-                    //std::cout << "stack load at unknown offset, and offset range contains pointers\n";
-                    m_errors.push_back("stack load at unknown offset, and offset range contains pointers");
-                    break;
-                }
-                */
-            }
+        if (width != 1 && width != 2 && width != 4 && width != 8) {
             m_registers -= target_register;
+            return;
+        }
+        auto ptr_offset = offset_singleton.value();
+        auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
+
+        auto loaded = m_stack.find(load_at);
+        if (!loaded) {
+            // no field at loaded offset in stack
+            m_registers -= target_register;
+            return;
+        }
+        auto ptr_or_mapfd = loaded->first;
+        if (is_shared_ptr(ptr_or_mapfd)) {
+            auto shared_ptr = std::get<ptr_with_off_t>(ptr_or_mapfd);
+            set_aliases((int)target_register, shared_ptr);
+            m_registers.insert(target_register, loc, shared_ptr);
         }
         else {
-            if (width != 1 && width != 2 && width != 4 && width != 8) {
-                m_registers -= target_register;
-                return;
-            }
-            auto ptr_offset = offset_singleton.value();
-            auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
-
-            auto loaded = m_stack.find(load_at);
-            if (!loaded) {
-                // no field at loaded offset in stack
-                m_registers -= target_register;
-                return;
-            }
-            auto ptr_or_mapfd = loaded->first;
-            if (is_shared_ptr(ptr_or_mapfd)) {
-                auto shared_ptr = std::get<ptr_with_off_t>(ptr_or_mapfd);
-                set_aliases((int)target_register, shared_ptr);
-                m_registers.insert(target_register, loc, shared_ptr);
-            }
-            else {
-                m_registers.insert(target_register, loc, ptr_or_mapfd);
-            }
+            m_registers.insert(target_register, loc, ptr_or_mapfd);
         }
     }
     else {
-        if (!offset_singleton) {
-            for (auto const& k : m_ctx->get_keys()) {
-                auto start = p_offset.lb();
-                auto end = p_offset.ub()+crab::bound_t{offset+width-1};
-                interval_t range{start, end};
-                // TODO: fix this
-                /*
-                if (range[number_t{(int)k}]) {
-                    //std::cout << "ctx load at unknown offset, and offset range contains pointers\n";
-                    m_errors.push_back("ctx load at unknown offset, and offset range contains pointers");
-                    break;
-                }
-                */
-            }
-            m_registers -= target_register;
-        }
-        else {
-            auto ptr_offset = offset_singleton.value();
-            auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
-
-            auto loaded = m_ctx->find(load_at);
-            if (!loaded) {
-                // no field at loaded offset in ctx
-                m_registers -= target_register;
-                return;
-            }
-            m_registers.insert(target_register, loc, *loaded);
-        }
+        // TODO: better reasoning needed here: in case there was an unsuccessful load in offset
+        // domain, we should not be loading from ctx
+        m_registers.insert(target_register, loc, packet_ptr_t{});
     }
 }
 

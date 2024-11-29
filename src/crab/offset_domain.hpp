@@ -82,17 +82,19 @@ class stack_state_t {
         explicit stack_state_t(stack_slot_refinements_t&& stack_rfs, bool is_bottom = false)
             : m_slot_rfs(std::move(stack_rfs)), m_is_bottom(is_bottom) {}
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
+        std::vector<uint64_t> get_keys() const;
 };
 
 class ctx_offsets_t {
-    using ctx_refinements_t = std::unordered_map<int, refinement_t>;    // represents `cp[n] = rf;`
+    using ctx_refinements_t = std::unordered_map<uint64_t, refinement_t>;    // represents `cp[n] = rf;`
     ctx_refinements_t m_rfs;
     int m_size;
 
     public:
         ctx_offsets_t(const ebpf_context_descriptor_t* desc);
-        std::optional<refinement_t> find(int) const;
+        std::optional<refinement_t> find(uint64_t) const;
         int get_size() const;
+        std::vector<uint64_t> get_keys() const;
 };
 
 class offset_domain_t final {
@@ -171,6 +173,7 @@ class offset_domain_t final {
     void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&, int);
     interval_t compute_packet_subtraction(register_t, register_t) const;
 
+    std::vector<uint64_t> get_ctx_keys() const;
     std::optional<refinement_t> find_in_ctx(int) const;
     std::optional<refinement_cells_t> find_in_stack(int) const;
     std::optional<refinement_t> find_refinement_at_loc(const register_location_t) const;

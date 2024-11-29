@@ -139,11 +139,11 @@ string_invariant inference_domain_t::to_set() const {
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
             elem << "stack";
             if (rf) {
-                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd,
+                print_non_numeric_memory_cell(elem, k, k+width-1, std::move(ptr_or_mapfd),
                         std::optional<refinement_t>(rf->first));
             }
             else {
-                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd);
+                print_non_numeric_memory_cell(elem, k, k+width-1, std::move(ptr_or_mapfd));
             }
         }
         result.insert(elem.str());
@@ -663,6 +663,7 @@ void inference_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unkno
 
 void inference_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt) {
     m_region.do_mem_store(b);
+    // TODO: Before storing into interval domain, check if there is no overlap with packet pointers
     m_interval.do_mem_store(b, basereg_opt);
     m_offset.do_mem_store(b, basereg_opt);
 }
@@ -687,14 +688,13 @@ void inference_domain_t::operator()(const Mem& b, location_t loc) {
 }
 
 void inference_domain_t::print_ctx(std::ostream& o) const {
-    std::vector<uint64_t> ctx_keys = m_region.get_ctx_keys();
+    std::vector<uint64_t> ctx_keys = m_offset.get_ctx_keys();
     o << "\tctx: {";
     for (auto const& k : ctx_keys) {
-        auto ptr = m_region.find_in_ctx(k);
         auto dist = m_offset.find_in_ctx(k);
-        if (ptr) {
+        if (dist) {
             o << "\t\t";
-            print_non_numeric_memory_cell(o, k, k+3, *ptr, dist);
+            print_non_numeric_memory_cell(o, k, k+3, packet_ptr_t{}, dist);
             o << ",\n";
         }
     }
@@ -714,11 +714,11 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
             o << "\t\t";
             if (dist) {
-                print_non_numeric_memory_cell(o, k, k+width-1, ptr_or_mapfd,
+                print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd),
                         std::optional<refinement_t>(dist->first));
             }
             else {
-                print_non_numeric_memory_cell(o, k, k+width-1, ptr_or_mapfd);
+                print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd));
             }
             o << ",\n";
         }

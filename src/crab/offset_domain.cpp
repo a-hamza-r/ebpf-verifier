@@ -167,6 +167,16 @@ void stack_state_t::store(uint64_t key, refinement_t d, int width) {
     m_slot_rfs[key] = std::make_pair(d, width);
 }
 
+std::vector<uint64_t> stack_state_t::get_keys() const {
+    std::vector<uint64_t> keys;
+    keys.reserve(m_slot_rfs.size());
+
+    for (auto const& kv : m_slot_rfs) {
+        keys.push_back(kv.first);
+    }
+    return keys;
+}
+
 void stack_state_t::operator-=(uint64_t to_erase) {
     if (is_bottom()) {
         return;
@@ -227,7 +237,17 @@ int ctx_offsets_t::get_size() const {
     return m_size;
 }
 
-std::optional<refinement_t> ctx_offsets_t::find(int key) const {
+std::vector<uint64_t> ctx_offsets_t::get_keys() const {
+    std::vector<uint64_t> keys;
+    keys.reserve(m_rfs.size());
+
+    for (auto const& kv : m_rfs) {
+        keys.push_back(kv.first);
+    }
+    return keys;
+}
+
+std::optional<refinement_t> ctx_offsets_t::find(uint64_t key) const {
     auto it = m_rfs.find(key);
     if (it == m_rfs.end()) return {};
     return it->second;
@@ -706,37 +726,83 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
         return;
     }
 
+    int width = b.access.width;
     int offset = b.access.offset;
     auto type_with_off = std::get<ptr_with_off_t>(*basereg_type);
     auto p_offset = type_with_off.get_offset();
     auto offset_singleton = p_offset.to_interval().singleton();
-    if (!offset_singleton) {
-        m_reg_state -= target_register;
-        return;
-    }
-    auto ptr_offset = *offset_singleton;
-    auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
-
     if (is_stack_p) {
-        auto it = m_stack_state.find(load_at);
-        if (!it) {
+        if (!offset_singleton) {
+            for (auto const& k : m_stack_state.get_keys()) {
+                auto start = p_offset.lb();
+                auto end = p_offset.ub()+number_t{offset+width-1};
+                interval_t range{start, end};
+                // TODO: fix this
+                /*
+                if (range[number_t{(int)k}]) {
+                    //std::cout << "stack load at unknown offset, and offset range contains pointers\n";
+                    m_errors.push_back("stack load at unknown offset, and offset range contains pointers");
+                    break;
+                }
+                */
+            }
             m_reg_state -= target_register;
-            return;
         }
-        m_reg_state.insert(target_register, loc, std::move(it->first));
+        else {
+            if (width != 1 && width != 2 && width != 4 && width != 8) {
+                m_reg_state -= target_register;
+                return;
+            }
+            auto ptr_offset = offset_singleton.value();
+            auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
+
+            auto loaded = m_stack_state.find(load_at);
+            if (!loaded) {
+                // no field at loaded offset in stack
+                m_reg_state -= target_register;
+                return;
+            }
+            m_reg_state.insert(target_register, loc, std::move(loaded->first));
+        }
     }
-    else if (is_ctx_p) {
-        auto it = m_ctx_rfs->find(load_at);
-        if (!it) {
+    else {
+        if (!offset_singleton) {
+            for (auto const& k : m_ctx_rfs->get_keys()) {
+                auto start = p_offset.lb();
+                auto end = p_offset.ub()+crab::bound_t{offset+width-1};
+                interval_t range{start, end};
+                // TODO: fix this
+                /*
+                if (range[number_t{(int)k}]) {
+                    //std::cout << "ctx load at unknown offset, and offset range contains pointers\n";
+                    m_errors.push_back("ctx load at unknown offset, and offset range contains pointers");
+                    break;
+                }
+                */
+            }
             m_reg_state -= target_register;
-            return;
         }
-        m_reg_state.insert(target_register, loc, std::move(*it));
+        else {
+            auto ptr_offset = offset_singleton.value();
+            auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
+
+            auto loaded = m_ctx_rfs->find(load_at);
+            if (!loaded) {
+                // no field at loaded offset in ctx
+                m_reg_state -= target_register;
+                return;
+            }
+            m_reg_state.insert(target_register, loc, std::move(*loaded));
+        }
     }
 }
 
 void offset_domain_t::operator()(const Mem& b, location_t loc) {
     // nothing to do here
+}
+
+std::vector<uint64_t> offset_domain_t::get_ctx_keys() const {
+    return m_ctx_rfs->get_keys();
 }
 
 std::optional<refinement_t> offset_domain_t::find_refinement_at_loc(const register_location_t reg) const {

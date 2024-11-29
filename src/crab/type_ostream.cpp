@@ -4,7 +4,7 @@
 #include "crab/type_ostream.hpp"
 
 void print_non_numeric_memory_cell(std::ostream& o, int start, int end,
-        const crab::ptr_or_mapfd_t& ptr, std::optional<crab::refinement_t> d) {
+        crab::ptr_or_mapfd_t&& ptr, std::optional<crab::refinement_t> d) {
     if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
         o << "[" << start << "-" << end << "] : " << std::get<crab::ptr_with_off_t>(ptr);
     }
@@ -61,7 +61,10 @@ void print_memory_cell(std::ostream& o, int start, int end,
     if (unsigned_interval) {
         print_numeric_memory_cell(o, start, end, unsigned_interval->to_interval(), false);
     }
-    else if (p) print_non_numeric_memory_cell(o, start, end, *p, d);
+    else if (p) {
+        crab::ptr_or_mapfd_t ptr = *p;
+        print_non_numeric_memory_cell(o, start, end, std::move(ptr), d);
+    }
 }
 
 void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd_t& ptr,

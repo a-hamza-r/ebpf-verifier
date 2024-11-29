@@ -9,7 +9,7 @@ void print_numeric_register(std::ostream&, Reg, crab::interval_t, bool);
 void print_numeric_memory_cell(std::ostream&, int, int, crab::interval_t, bool);
 void print_non_numeric_register(std::ostream&, Reg, const crab::ptr_or_mapfd_t& ptr,
         std::optional<crab::refinement_t> = std::nullopt);
-void print_non_numeric_memory_cell(std::ostream&, int, int, const crab::ptr_or_mapfd_t& ptr,
+void print_non_numeric_memory_cell(std::ostream&, int, int, crab::ptr_or_mapfd_t&& ptr,
         std::optional<crab::refinement_t> = std::nullopt);
 void print_register(std::ostream&, Reg, const std::optional<crab::ptr_or_mapfd_t>&,
         std::optional<crab::refinement_t>, std::optional<crab::mock_interval_t>, bool);

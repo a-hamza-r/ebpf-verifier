@@ -12,19 +12,6 @@ namespace crab {
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
 using shared_ptr_aliases_t = std::vector<std::set<int>>;
 
-class ctx_t {
-    using ptr_types_t = std::unordered_map<uint64_t, packet_ptr_t>;
-
-    ptr_types_t m_packet_ptrs;
-    size_t size = 0;
-
-  public:
-    ctx_t(const ebpf_context_descriptor_t* desc);
-    constexpr size_t get_size() const { return size; }
-    std::vector<uint64_t> get_keys() const;
-    std::optional<packet_ptr_t> find(uint64_t key) const;
-};
-
 using ptr_or_mapfd_cells_t = std::pair<ptr_or_mapfd_t, int>;
 using ptr_or_mapfd_types_t = std::map<uint64_t, ptr_or_mapfd_cells_t>;
 
@@ -93,7 +80,8 @@ class region_domain_t final {
     bool m_is_bottom = false;
     crab::stack_t m_stack;
     crab::register_types_t m_registers;
-    std::shared_ptr<crab::ctx_t> m_ctx;
+    // for ctx, we only keep the size of the context
+    size_t ctx_size = 0;
     shared_ptr_aliases_t m_shared_ptr_aliases;
     std::vector<std::string> m_errors;
 
@@ -105,8 +93,8 @@ class region_domain_t final {
     region_domain_t& operator=(region_domain_t&& o) = default;
     region_domain_t& operator=(const region_domain_t& o) = default;
     region_domain_t(crab::register_types_t&& _types, crab::stack_t&& _st,
-            std::shared_ptr<crab::ctx_t> _ctx, shared_ptr_aliases_t&& _shared_ptr_aliases = {})
-            : m_stack(std::move(_st)), m_registers(std::move(_types)), m_ctx(_ctx),
+            shared_ptr_aliases_t&& _shared_ptr_aliases = {})
+            : m_stack(std::move(_st)), m_registers(std::move(_types)),
             m_shared_ptr_aliases(std::move(_shared_ptr_aliases)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static region_domain_t&& setup_entry(bool);
@@ -177,7 +165,8 @@ class region_domain_t final {
             const crab::location_t&, register_t);
 
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_type(register_t) const;
-    [[nodiscard]] size_t ctx_size() const;
+    void compute_ctx_size(const ebpf_context_descriptor_t*);
+    [[nodiscard]] size_t get_ctx_size() const;
     std::optional<crab::packet_ptr_t> find_in_ctx(uint64_t key) const;
     [[nodiscard]] std::vector<uint64_t> get_ctx_keys() const;
     std::optional<crab::ptr_or_mapfd_cells_t> find_in_stack(uint64_t key) const;
