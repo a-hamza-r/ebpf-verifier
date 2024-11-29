@@ -11,56 +11,54 @@ namespace crab {
 
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
 using shared_ptr_aliases_t = std::vector<std::set<int>>;
+using ptr_or_mapfd_stack_cell_t = std::pair<ptr_or_mapfd_t, int>;
 
-using ptr_or_mapfd_cells_t = std::pair<ptr_or_mapfd_t, int>;
-using ptr_or_mapfd_types_t = std::map<uint64_t, ptr_or_mapfd_cells_t>;
-
-class stack_t {
-    ptr_or_mapfd_types_t m_ptrs;
+class region_stack_t {
+    using ptr_or_mapfd_stack_cells_t = std::map<uint64_t, ptr_or_mapfd_stack_cell_t>;
+    ptr_or_mapfd_stack_cells_t m_cells;
     bool m_is_bottom;
 
   public:
-    stack_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
-    stack_t(ptr_or_mapfd_types_t && ptrs, bool is_bottom)
-    : m_ptrs(std::move(ptrs)) , m_is_bottom(is_bottom) {}
+    region_stack_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
+    region_stack_t(ptr_or_mapfd_stack_cells_t&& cells, bool is_bottom)
+    : m_cells(std::move(cells)) , m_is_bottom(is_bottom) {}
     
-    stack_t operator|(const stack_t& other) const;
+    region_stack_t operator|(const region_stack_t& other) const;
     void operator-=(uint64_t);
     void operator-=(const std::vector<uint64_t>&);
     void set_to_bottom();
     void set_to_top();
-    static stack_t bottom();
-    static stack_t top();
+    static region_stack_t bottom();
+    static region_stack_t top();
     bool is_bottom() const;
     bool is_top() const;
-    const ptr_or_mapfd_types_t &get_ptrs() { return m_ptrs; }
+    const ptr_or_mapfd_stack_cells_t &get_cells() { return m_cells; }
     void store(uint64_t, ptr_or_mapfd_t, int);
-    std::optional<ptr_or_mapfd_cells_t> find(uint64_t) const;
+    std::optional<ptr_or_mapfd_stack_cell_t> find(uint64_t) const;
     std::vector<uint64_t> get_keys() const;
     std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
     size_t size() const;
 };
 
-using live_registers_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
-using global_region_env_t = std::unordered_map<register_location_t, ptr_or_mapfd_t>;
+using global_env_region_registers_t = std::unordered_map<register_location_t, ptr_or_mapfd_t>;
 
-class register_types_t {
+class region_registers_t {
 
-    live_registers_t m_cur_def;
-    std::shared_ptr<global_region_env_t> m_region_env;
+    live_registers_t m_cur_register_def;
+    std::shared_ptr<global_env_region_registers_t> m_registers_env;
     bool m_is_bottom = false;
 
   public:
-    register_types_t(bool is_bottom = false) : m_region_env(nullptr), m_is_bottom(is_bottom) {}
-    explicit register_types_t(live_registers_t&& vars,
-            std::shared_ptr<global_region_env_t> reg_type_env, bool is_bottom = false)
-        : m_cur_def(std::move(vars)), m_region_env(reg_type_env), m_is_bottom(is_bottom) {}
+    region_registers_t(bool is_bottom = false) : m_registers_env(nullptr), m_is_bottom(is_bottom) {}
+    explicit region_registers_t(live_registers_t&& vars,
+            std::shared_ptr<global_env_region_registers_t> registers_env, bool is_bottom = false)
+        : m_cur_register_def(std::move(vars)), m_registers_env(registers_env), m_is_bottom(is_bottom) {}
 
-    explicit register_types_t(std::shared_ptr<global_region_env_t> reg_type_env,
+    explicit region_registers_t(std::shared_ptr<global_env_region_registers_t> registers_env,
             bool is_bottom = false)
-        : m_region_env(reg_type_env), m_is_bottom(is_bottom) {}
+        : m_registers_env(registers_env), m_is_bottom(is_bottom) {}
 
-    register_types_t operator|(const register_types_t& other) const;
+    region_registers_t operator|(const region_registers_t& other) const;
     void operator-=(register_t var);
     void set_to_bottom();
     void set_to_top();
@@ -69,7 +67,7 @@ class register_types_t {
     void insert(register_t, const location_t&, const ptr_or_mapfd_t&);
     std::optional<ptr_or_mapfd_t> find(register_location_t reg) const;
     std::optional<ptr_or_mapfd_t> find(register_t key) const;
-    [[nodiscard]] live_registers_t &get_vars() { return m_cur_def; }
+    [[nodiscard]] live_registers_t &get_vars() { return m_cur_register_def; }
     void forget_packet_ptrs();
     void scratch_caller_saved_registers();
     void adjust_bb_for_registers(location_t loc);
@@ -78,8 +76,8 @@ class register_types_t {
 class region_domain_t final {
 
     bool m_is_bottom = false;
-    crab::stack_t m_stack;
-    crab::register_types_t m_registers;
+    crab::region_stack_t m_stack;
+    crab::region_registers_t m_registers;
     // for ctx, we only keep the size of the context
     size_t ctx_size = 0;
     shared_ptr_aliases_t m_shared_ptr_aliases;
@@ -92,7 +90,7 @@ class region_domain_t final {
     region_domain_t(const region_domain_t& o) = default;
     region_domain_t& operator=(region_domain_t&& o) = default;
     region_domain_t& operator=(const region_domain_t& o) = default;
-    region_domain_t(crab::register_types_t&& _types, crab::stack_t&& _st,
+    explicit region_domain_t(crab::region_registers_t&& _types, crab::region_stack_t&& _st,
             shared_ptr_aliases_t&& _shared_ptr_aliases = {})
             : m_stack(std::move(_st)), m_registers(std::move(_types)),
             m_shared_ptr_aliases(std::move(_shared_ptr_aliases)) {}
@@ -169,7 +167,7 @@ class region_domain_t final {
     [[nodiscard]] size_t get_ctx_size() const;
     std::optional<crab::packet_ptr_t> find_in_ctx(uint64_t key) const;
     [[nodiscard]] std::vector<uint64_t> get_ctx_keys() const;
-    std::optional<crab::ptr_or_mapfd_cells_t> find_in_stack(uint64_t key) const;
+    std::optional<crab::ptr_or_mapfd_stack_cell_t> find_in_stack(uint64_t key) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::register_location_t&) const;
     void insert_in_registers(register_t, location_t, const ptr_or_mapfd_t&);
     void store_in_stack(uint64_t, ptr_or_mapfd_t, int);

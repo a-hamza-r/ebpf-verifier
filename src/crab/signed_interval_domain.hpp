@@ -9,13 +9,12 @@
 namespace crab {
 
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
-using live_registers_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
-using global_interval_env_t = std::unordered_map<register_location_t, mock_interval_t>;
+using global_env_signed_registers_t = std::unordered_map<register_location_t, mock_interval_t>;
 
-class registers_signed_state_t {
+class signed_interval_registers_t {
 
-    live_registers_t m_cur_def;
-    std::shared_ptr<global_interval_env_t> m_interval_env;
+    live_registers_t m_cur_register_def;
+    std::shared_ptr<global_env_signed_registers_t> m_registers_env;
     bool m_is_bottom = false;
 
     public:
@@ -28,24 +27,24 @@ class registers_signed_state_t {
         std::optional<mock_interval_t> find(register_t key) const;
         void insert(register_t, const location_t&, interval_t);
         void operator-=(register_t);
-        registers_signed_state_t operator|(const registers_signed_state_t& other) const;
-        registers_signed_state_t(bool is_bottom = false) : m_interval_env(nullptr),
+        signed_interval_registers_t operator|(const signed_interval_registers_t& other) const;
+        signed_interval_registers_t(bool is_bottom = false) : m_registers_env(nullptr),
             m_is_bottom(is_bottom) {}
-        explicit registers_signed_state_t(live_registers_t&& vars,
-                std::shared_ptr<global_interval_env_t> interval_env, bool is_bottom = false)
-            : m_cur_def(std::move(vars)), m_interval_env(interval_env), m_is_bottom(is_bottom) {}
-        explicit registers_signed_state_t(std::shared_ptr<global_interval_env_t> interval_env,
+        explicit signed_interval_registers_t(live_registers_t&& vars,
+                std::shared_ptr<global_env_signed_registers_t> registers_env, bool is_bottom = false)
+            : m_cur_register_def(std::move(vars)), m_registers_env(registers_env), m_is_bottom(is_bottom) {}
+        explicit signed_interval_registers_t(std::shared_ptr<global_env_signed_registers_t> registers_env,
                 bool is_bottom = false)
-            : m_interval_env(interval_env), m_is_bottom(is_bottom) {}
+            : m_registers_env(registers_env), m_is_bottom(is_bottom) {}
         void adjust_bb_for_registers(location_t);
 };
 
-using interval_cells_t = std::pair<mock_interval_t, int>;    // intervals with width
-using interval_values_stack_t = std::map<uint64_t, interval_cells_t>;
+using signed_interval_stack_cell_t = std::pair<mock_interval_t, int>;    // intervals with width
+using signed_interval_stack_cells_t = std::map<uint64_t, signed_interval_stack_cell_t>;
 
 class stack_slots_signed_state_t {
 
-    interval_values_stack_t m_interval_values;
+    signed_interval_stack_cells_t m_cells;
     bool m_is_bottom = false;
 
     public:
@@ -54,15 +53,15 @@ class stack_slots_signed_state_t {
         void set_to_bottom();
         void set_to_top();
         static stack_slots_signed_state_t top();
-        std::optional<interval_cells_t> find(uint64_t) const;
+        std::optional<signed_interval_stack_cell_t> find(uint64_t) const;
         void store(uint64_t, mock_interval_t, int);
         void operator-=(uint64_t);
         bool all_numeric(uint64_t, int) const;
         stack_slots_signed_state_t operator|(const stack_slots_signed_state_t& other) const;
         stack_slots_signed_state_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
-        explicit stack_slots_signed_state_t(interval_values_stack_t&& interval_values,
+        explicit stack_slots_signed_state_t(signed_interval_stack_cells_t&& interval_values,
                 bool is_bottom = false)
-            : m_interval_values(std::move(interval_values)), m_is_bottom(is_bottom) {}
+            : m_cells(std::move(interval_values)), m_is_bottom(is_bottom) {}
         std::vector<uint64_t> get_keys() const;
         size_t size() const;
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
@@ -71,8 +70,8 @@ class stack_slots_signed_state_t {
 };
 
 class signed_interval_domain_t final {
-    registers_signed_state_t m_registers_values;
-    stack_slots_signed_state_t m_stack_slots_values;
+    signed_interval_registers_t m_registers;
+    stack_slots_signed_state_t m_stack;
     std::vector<std::string> m_errors;
     bool m_is_bottom = false;
 
@@ -81,9 +80,9 @@ class signed_interval_domain_t final {
     signed_interval_domain_t() = default;
     signed_interval_domain_t(signed_interval_domain_t&& o) = default;
     signed_interval_domain_t(const signed_interval_domain_t& o) = default;
-    explicit signed_interval_domain_t(registers_signed_state_t&& consts_regs,
-            stack_slots_signed_state_t&& interval_stack_slots, bool is_bottom = false) :
-        m_registers_values(std::move(consts_regs)), m_stack_slots_values(std::move(interval_stack_slots)),
+    explicit signed_interval_domain_t(signed_interval_registers_t&& register_values,
+            stack_slots_signed_state_t&& stack, bool is_bottom = false) :
+        m_registers(std::move(register_values)), m_stack(std::move(stack)),
         m_is_bottom(is_bottom) {}
     signed_interval_domain_t& operator=(signed_interval_domain_t&& o) = default;
     signed_interval_domain_t& operator=(const signed_interval_domain_t& o) = default;
@@ -111,7 +110,7 @@ class signed_interval_domain_t final {
     // narrowing
     signed_interval_domain_t narrow(const signed_interval_domain_t& other) const;
     //forget
-    void operator-=(register_t reg) { m_registers_values -= reg; }
+    void operator-=(register_t reg) { m_registers -= reg; }
 
     //// abstract transformers
     void operator()(const Undefined&, location_t loc = location_t::top());
@@ -137,7 +136,7 @@ class signed_interval_domain_t final {
     void check_valid_access(const ValidAccess&, interval_t&&, int, bool);
     std::optional<mock_interval_t> find_interval_value(register_t) const;
     std::optional<mock_interval_t> find_interval_at_loc(const register_location_t reg) const;
-    std::optional<interval_cells_t> find_in_stack(uint64_t) const;
+    std::optional<signed_interval_stack_cell_t> find_in_stack(uint64_t) const;
     void insert_in_registers(register_t, location_t, interval_t);
     void store_in_stack(uint64_t, mock_interval_t, int);
     void adjust_bb_for_types(location_t);

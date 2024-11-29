@@ -5,47 +5,47 @@
 
 namespace crab {
 
-void registers_state_t::insert(register_t reg, const location_t& loc, refinement_t&& rf) {
+void offset_registers_t::insert(register_t reg, const location_t& loc, refinement_t&& rf) {
     register_location_t register_location{reg, loc};
-    (*m_offset_env)[register_location] = std::move(rf);
-    m_cur_def[reg] = std::make_shared<register_location_t>(register_location);
+    (*m_registers_env)[register_location] = std::move(rf);
+    m_cur_register_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
-void registers_state_t::insert_slack_value(symbol_t sym, mock_interval_t in) {
+void offset_registers_t::insert_slack_value(symbol_t sym, mock_interval_t in) {
     (*m_slacks)[sym] = std::move(in);
 }
 
-std::optional<refinement_t> registers_state_t::find(register_location_t reg) const {
-    auto it = m_offset_env->find(reg);
-    if (it == m_offset_env->end()) return {};
+std::optional<refinement_t> offset_registers_t::find(register_location_t reg) const {
+    auto it = m_registers_env->find(reg);
+    if (it == m_registers_env->end()) return {};
     return it->second;
 }
 
-std::optional<mock_interval_t> registers_state_t::find_slack_value(symbol_t sym) const {
+std::optional<mock_interval_t> offset_registers_t::find_slack_value(symbol_t sym) const {
     auto it = m_slacks->find(sym);
     if (it == m_slacks->end()) return {};
     return it->second;
 }
 
-std::optional<refinement_t> registers_state_t::find(register_t key) const {
-    if (m_cur_def[key] == nullptr) return {};
-    return find(*(m_cur_def[key]));
+std::optional<refinement_t> offset_registers_t::find(register_t key) const {
+    if (m_cur_register_def[key] == nullptr) return {};
+    return find(*(m_cur_register_def[key]));
 }
 
-std::vector<uint64_t> stack_state_t::find_overlapping_cells(uint64_t start, int width) const {
+std::vector<uint64_t> offset_stack_t::find_overlapping_cells(uint64_t start, int width) const {
     std::vector<uint64_t> overlapping_cells;
-    auto it = m_slot_rfs.begin();
-    while (it != m_slot_rfs.end() && it->first < start) {
+    auto it = m_stack_cells.begin();
+    while (it != m_stack_cells.end() && it->first < start) {
         it++;
     }
-    if (it != m_slot_rfs.begin()) {
+    if (it != m_stack_cells.begin()) {
         it--;
         auto key = it->first;
         auto width_key = it->second.second;
         if (key < start && key+width_key > start) overlapping_cells.push_back(key);
     }
 
-    for (; it != m_slot_rfs.end(); it++) {
+    for (; it != m_stack_cells.end(); it++) {
         auto key = it->first;
         if (key >= start && key < start+width) overlapping_cells.push_back(key);
         if (key >= start+width) break;
@@ -53,51 +53,51 @@ std::vector<uint64_t> stack_state_t::find_overlapping_cells(uint64_t start, int 
     return overlapping_cells;
 }
 
-void registers_state_t::set_to_top() {
-    m_offset_env = std::make_shared<global_offset_env_t>();
-    m_cur_def = live_refinements_t{nullptr};
+void offset_registers_t::set_to_top() {
+    m_registers_env = std::make_shared<global_env_offset_registers_t>();
+    m_cur_register_def = live_registers_t{nullptr};
     m_is_bottom = false;
 }
 
-void registers_state_t::set_to_bottom() {
-    m_cur_def = live_refinements_t{nullptr};
+void offset_registers_t::set_to_bottom() {
+    m_cur_register_def = live_registers_t{nullptr};
     m_is_bottom = true;
 }
 
-bool registers_state_t::is_top() const {
+bool offset_registers_t::is_top() const {
     if (m_is_bottom) return false;
-    if (m_offset_env == nullptr) return true;
-    for (auto &it : m_cur_def) {
+    if (m_registers_env == nullptr) return true;
+    for (auto &it : m_cur_register_def) {
         if (it != nullptr) return false;
     }
     return true;
 }
 
-bool registers_state_t::is_bottom() const {
+bool offset_registers_t::is_bottom() const {
     return m_is_bottom;
 }
 
-void registers_state_t::operator-=(register_t to_forget) {
+void offset_registers_t::operator-=(register_t to_forget) {
     if (is_bottom()) {
         return;
     }
-    m_cur_def[to_forget] = nullptr;
+    m_cur_register_def[to_forget] = nullptr;
 }
 
-registers_state_t registers_state_t::operator|(const registers_state_t& other) const {
+offset_registers_t offset_registers_t::operator|(const offset_registers_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
 
-    registers_state_t joined_state(m_offset_env, m_slacks);
+    offset_registers_t joined_state(m_registers_env, m_slacks);
     location_t loc = location_t::top();
 
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
-        if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
-        auto it1 = find(*(m_cur_def[i]));
-        auto it2 = other.find(*(other.m_cur_def[i]));
+        if (m_cur_register_def[i] == nullptr || other.m_cur_register_def[i] == nullptr) continue;
+        auto it1 = find(*(m_cur_register_def[i]));
+        auto it2 = other.find(*(other.m_cur_register_def[i]));
         if (it1 && it2) {
             auto rf1 = *it1, rf2 = *it2;
             if (rf1.same_type(rf2)) {
@@ -108,7 +108,7 @@ registers_state_t registers_state_t::operator|(const registers_state_t& other) c
     return joined_state;
 }
 
-void registers_state_t::adjust_bb_for_registers(location_t loc) {
+void offset_registers_t::adjust_bb_for_registers(location_t loc) {
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, std::move(*it));
@@ -116,13 +116,13 @@ void registers_state_t::adjust_bb_for_registers(location_t loc) {
     }
 }
 
-void registers_state_t::scratch_caller_saved_registers() {
+void offset_registers_t::scratch_caller_saved_registers() {
     for (uint8_t r = R1_ARG; r <= R5_ARG; r++) {
         operator-=(register_t{r});
     }
 }
 
-void registers_state_t::forget_packet_pointers(location_t loc) {
+void offset_registers_t::forget_packet_pointers(location_t loc) {
     for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-2; r++) {
         if (auto it = find(register_t{r})) {
             if (it->get_type() == refinement_type_t::PACKET) {
@@ -134,72 +134,72 @@ void registers_state_t::forget_packet_pointers(location_t loc) {
     // TODO: verify if this is all needed
 }
 
-void stack_state_t::set_to_top() {
-    m_slot_rfs.clear();
+void offset_stack_t::set_to_top() {
+    m_stack_cells.clear();
     m_is_bottom = false;
 }
 
-void stack_state_t::set_to_bottom() {
-    m_slot_rfs.clear();
+void offset_stack_t::set_to_bottom() {
+    m_stack_cells.clear();
     m_is_bottom = true;
 }
 
-bool stack_state_t::is_top() const {
+bool offset_stack_t::is_top() const {
     if (m_is_bottom) return false;
-    return m_slot_rfs.empty();
+    return m_stack_cells.empty();
 }
 
-bool stack_state_t::is_bottom() const {
+bool offset_stack_t::is_bottom() const {
     return m_is_bottom;
 }
 
-stack_state_t stack_state_t::top() {
-    return stack_state_t(false);
+offset_stack_t offset_stack_t::top() {
+    return offset_stack_t(false);
 }
 
-std::optional<refinement_cells_t> stack_state_t::find(uint64_t key) const {
-    auto it = m_slot_rfs.find(key);
-    if (it == m_slot_rfs.end()) return {};
+std::optional<refinement_stack_cell_t> offset_stack_t::find(uint64_t key) const {
+    auto it = m_stack_cells.find(key);
+    if (it == m_stack_cells.end()) return {};
     return it->second;
 }
 
-void stack_state_t::store(uint64_t key, refinement_t d, int width) {
-    m_slot_rfs[key] = std::make_pair(d, width);
+void offset_stack_t::store(uint64_t key, refinement_t d, int width) {
+    m_stack_cells[key] = std::make_pair(d, width);
 }
 
-std::vector<uint64_t> stack_state_t::get_keys() const {
+std::vector<uint64_t> offset_stack_t::get_keys() const {
     std::vector<uint64_t> keys;
-    keys.reserve(m_slot_rfs.size());
+    keys.reserve(m_stack_cells.size());
 
-    for (auto const& kv : m_slot_rfs) {
+    for (auto const& kv : m_stack_cells) {
         keys.push_back(kv.first);
     }
     return keys;
 }
 
-void stack_state_t::operator-=(uint64_t to_erase) {
+void offset_stack_t::operator-=(uint64_t to_erase) {
     if (is_bottom()) {
         return;
     }
-    m_slot_rfs.erase(to_erase);
+    m_stack_cells.erase(to_erase);
 }
 
-void stack_state_t::operator-=(const std::vector<uint64_t>& keys) {
+void offset_stack_t::operator-=(const std::vector<uint64_t>& keys) {
     for (auto &key : keys) {
        *this -= key;
     }
 }
 
-stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
+offset_stack_t offset_stack_t::operator|(const offset_stack_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
 
-    stack_slot_refinements_t out_stack_rfs;
+    refinement_stack_cells_t out_stack_rfs;
     // We do not join rf cells because different rf values different types of offsets
-    for (auto const&kv: m_slot_rfs) {
+    for (auto const&kv: m_stack_cells) {
         auto maybe_rf_cells = other.find(kv.first);
         if (maybe_rf_cells) {
             auto rf_cells1 = kv.second;
@@ -215,51 +215,45 @@ stack_state_t stack_state_t::operator|(const stack_state_t& other) const {
             }
         }
     }
-    return stack_state_t(std::move(out_stack_rfs));
+    return offset_stack_t(std::move(out_stack_rfs));
 }
 
-ctx_offsets_t::ctx_offsets_t(const ebpf_context_descriptor_t* desc) {
+offset_ctx_t::offset_ctx_t(const ebpf_context_descriptor_t* desc) {
     if (desc->data >= 0) {
-        m_rfs[desc->data] = refinement_t::begin();
+        m_ctx_cells[desc->data] = refinement_t::begin();
     }
     if (desc->end >= 0) {
-        m_rfs[desc->end] = refinement_t::end();
+        m_ctx_cells[desc->end] = refinement_t::end();
     }
     if (desc->meta >= 0) {
-        m_rfs[desc->meta] = refinement_t::meta();
+        m_ctx_cells[desc->meta] = refinement_t::meta();
     }
-    if (desc->size >= 0) {
-        m_size = desc->size;
-    }
+    m_size = std::max(0, desc->size);
 }
 
-int ctx_offsets_t::get_size() const {
-    return m_size;
-}
-
-std::vector<uint64_t> ctx_offsets_t::get_keys() const {
+std::vector<uint64_t> offset_ctx_t::get_keys() const {
     std::vector<uint64_t> keys;
-    keys.reserve(m_rfs.size());
+    keys.reserve(m_ctx_cells.size());
 
-    for (auto const& kv : m_rfs) {
+    for (auto const& kv : m_ctx_cells) {
         keys.push_back(kv.first);
     }
     return keys;
 }
 
-std::optional<refinement_t> ctx_offsets_t::find(uint64_t key) const {
-    auto it = m_rfs.find(key);
-    if (it == m_rfs.end()) return {};
+std::optional<refinement_t> offset_ctx_t::find(uint64_t key) const {
+    auto it = m_ctx_cells.find(key);
+    if (it == m_ctx_cells.end()) return {};
     return it->second;
 }
 
 offset_domain_t&& offset_domain_t::setup_entry() {
-    registers_state_t regs(std::make_shared<global_offset_env_t>(),
+    offset_registers_t regs(std::make_shared<global_env_offset_registers_t>(),
                       std::make_shared<slacks_t>(),
                       global_program_info->type.context_descriptor);
 
-    static offset_domain_t off_d(std::move(regs), stack_state_t::top(),
-                      std::make_shared<ctx_offsets_t>(global_program_info->type.context_descriptor));
+    static offset_domain_t off_d(std::move(regs), offset_stack_t::top(),
+                      std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor));
     return std::move(off_d);
 }
 
@@ -270,25 +264,25 @@ offset_domain_t offset_domain_t::bottom() {
 }
 
 void offset_domain_t::set_to_top() {
-    m_reg_state.set_to_top();
-    m_stack_state.set_to_top();
+    m_registers.set_to_top();
+    m_stack.set_to_top();
     m_is_bottom = false;
 }
 
 void offset_domain_t::set_to_bottom() {
     m_is_bottom = true;
-    m_reg_state.set_to_bottom();
-    m_stack_state.set_to_bottom();
+    m_registers.set_to_bottom();
+    m_stack.set_to_bottom();
 }
 
 bool offset_domain_t::is_bottom() const {
     if (m_is_bottom) return true;
-    return (m_reg_state.is_bottom() || m_stack_state.is_bottom());
+    return (m_registers.is_bottom() || m_stack.is_bottom());
 }
 
 bool offset_domain_t::is_top() const {
     if (m_is_bottom) return false;
-    return (m_reg_state.is_top() && m_stack_state.is_top());
+    return (m_registers.is_top() && m_stack.is_top());
 }
 
 // inclusion
@@ -316,9 +310,9 @@ offset_domain_t offset_domain_t::operator|(const offset_domain_t& other) const {
         return *this;
     }
     return offset_domain_t(
-            m_reg_state | other.m_reg_state,
-            m_stack_state | other.m_stack_state,
-            m_ctx_rfs
+            m_registers | other.m_registers,
+            m_stack | other.m_stack,
+            m_ctx
     );
 }
 
@@ -330,9 +324,9 @@ offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
         return *this;
     }
     return offset_domain_t(
-            m_reg_state | std::move(other.m_reg_state),
-            m_stack_state | std::move(other.m_stack_state),
-            m_ctx_rfs
+            m_registers | std::move(other.m_registers),
+            m_stack | std::move(other.m_stack),
+            m_ctx
     );
 }
 
@@ -375,8 +369,8 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
     Condition cond = b.cond;
     if (std::holds_alternative<Reg>(cond.right)) {
         auto right_reg = std::get<Reg>(cond.right).v;
-        auto rf_left = m_reg_state.find(cond.left.v);
-        auto rf_right = m_reg_state.find(right_reg);
+        auto rf_left = m_registers.find(cond.left.v);
+        auto rf_right = m_registers.find(right_reg);
         if (!rf_left || !rf_right) {
             // this should not happen, comparison between a packet pointer and either
             // other region's pointers or numbers; possibly raise type error
@@ -384,7 +378,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             return;
         }
         if (cond.op == Condition::Op::LE) {
-            auto b = m_reg_state.find(register_t{12});
+            auto b = m_registers.find(register_t{12});
             auto le_rf = *rf_left <= *rf_right;
             if (b) {
                 b->add_constraint(std::move(le_rf));
@@ -395,12 +389,12 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
                     set_to_bottom();
                 }
                 else {
-                    m_reg_state.insert(register_t{12}, loc, std::move(*b));
+                    m_registers.insert(register_t{12}, loc, std::move(*b));
                 }
             }
         }
         else if (cond.op == Condition::Op::GT) {
-            auto b = m_reg_state.find(register_t{12});
+            auto b = m_registers.find(register_t{12});
             auto gt_rf = *rf_left > *rf_right;
             if (b) {
                 b->add_constraint(std::move(gt_rf));
@@ -409,7 +403,7 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
                     set_to_bottom();
                 }
                 else {
-                    m_reg_state.insert(register_t{12}, loc, std::move(*b));
+                    m_registers.insert(register_t{12}, loc, std::move(*b));
                 }
             }
 
@@ -419,8 +413,8 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
 }
 
 interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_t src) const {
-    auto dst_rf = m_reg_state.find(dst);
-    auto src_rf = m_reg_state.find(src);
+    auto dst_rf = m_registers.find(dst);
+    auto src_rf = m_registers.find(src);
     if (!dst_rf || !src_rf) return interval_t::bottom();
     expression_t dst_expr = dst_rf->get_value();
     expression_t src_expr = src_rf->get_value();
@@ -434,14 +428,14 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     if (!dst_expr.is_singleton() || !src_expr.is_singleton()) return interval_t::top();
     auto dst_symbol = dst_expr.get_singleton();
     auto src_symbol = src_expr.get_singleton();
-    std::optional<refinement_t> begin_rf = m_reg_state.find(register_t{12});
+    std::optional<refinement_t> begin_rf = m_registers.find(register_t{12});
     if (!begin_rf) return interval_t::top();
     interval_t result_interval = result_rf.simplify_for_subtraction(dst_symbol, src_symbol,
             begin_rf->get_constraints());
     return result_interval;
 }
 
-static void create_numeric_refinement(registers_state_t& reg_state, mock_interval_t&& interval,
+static void create_numeric_refinement(offset_registers_t& reg_state, mock_interval_t&& interval,
         location_t loc, register_t reg) {
     symbol_t s = symbol_t::make();
     reg_state.insert_slack_value(s, std::move(interval));
@@ -474,42 +468,42 @@ void offset_domain_t::do_bin(const Bin& bin,
             case Op::MOV: {
                 // ra = imm
                 // we just get the value of the immediate as an interval from interval domain
-                create_numeric_refinement(m_reg_state, std::move(interval_result),
+                create_numeric_refinement(m_registers, std::move(interval_result),
                         loc, dst_register);
                 break;
             }
             case Op::ADD: {
                 // ra += imm
                 if (imm == 0) break;
-                if (auto dst_rf_opt = m_reg_state.find(dst_register)) {
+                if (auto dst_rf_opt = m_registers.find(dst_register)) {
                     auto rf = *dst_rf_opt + imm_interval;
-                    m_reg_state.insert(dst_register, loc, std::move(rf));
+                    m_registers.insert(dst_register, loc, std::move(rf));
                 }
                 else {
-                    m_reg_state -= dst_register;
+                    m_registers -= dst_register;
                 }
                 break;
             }
             case Op::SUB: {
                 // ra -= imm
                 if (imm == 0) break;
-                if (auto dst_rf_opt = m_reg_state.find(dst_register)) {
+                if (auto dst_rf_opt = m_registers.find(dst_register)) {
                     auto rf = *dst_rf_opt + (-imm_interval);
-                    m_reg_state.insert(dst_register, loc, std::move(rf));
+                    m_registers.insert(dst_register, loc, std::move(rf));
                 }
                 else {
-                    m_reg_state -= dst_register;
+                    m_registers -= dst_register;
                 }
                 break;
             }
             default: {
                 if (dst_signed_interval_opt) {
-                    create_numeric_refinement(m_reg_state, std::move(interval_result),
+                    create_numeric_refinement(m_registers, std::move(interval_result),
                             loc, dst_register);
                 }
                 else {
                     // no other operations supported for packet pointers in the offset domain
-                    m_reg_state -= dst_register;
+                    m_registers -= dst_register;
                 }
                 break;
             }
@@ -520,11 +514,11 @@ void offset_domain_t::do_bin(const Bin& bin,
         switch (bin.op) {
             case Op::MOV: {
                 // ra = rb
-                if (auto src_rf_opt = m_reg_state.find(src.v)) {
-                    m_reg_state.insert(dst_register, loc, std::move(*src_rf_opt));
+                if (auto src_rf_opt = m_registers.find(src.v)) {
+                    m_registers.insert(dst_register, loc, std::move(*src_rf_opt));
                 }
                 else {
-                    m_reg_state -= dst_register;
+                    m_registers -= dst_register;
                 }
                 break;
             }
@@ -535,17 +529,17 @@ void offset_domain_t::do_bin(const Bin& bin,
                     set_to_bottom();
                 }
                 else {
-                    if (auto src_rf_opt = m_reg_state.find(src.v)) {
-                        if (auto dst_rf_opt = m_reg_state.find(dst_register)) {
+                    if (auto src_rf_opt = m_registers.find(src.v)) {
+                        if (auto dst_rf_opt = m_registers.find(dst_register)) {
                             auto rf = *dst_rf_opt + *src_rf_opt;
-                            m_reg_state.insert(dst_register, loc, std::move(rf));
+                            m_registers.insert(dst_register, loc, std::move(rf));
                         }
                         else {
-                            m_reg_state -= dst_register;
+                            m_registers -= dst_register;
                         }
                     }
                     else {
-                        m_reg_state -= dst_register;
+                        m_registers -= dst_register;
                     }
                 }
                 break;
@@ -553,22 +547,22 @@ void offset_domain_t::do_bin(const Bin& bin,
             case Op::SUB: {
                 // ra -= rb
                 if (is_packet_ptr(src_ptr_or_mapfd_opt) && is_packet_ptr(dst_ptr_or_mapfd_opt)) {
-                    create_numeric_refinement(m_reg_state, std::move(interval_result),
+                    create_numeric_refinement(m_registers, std::move(interval_result),
                             loc, dst_register);
                     return;
                 }
                 else {
-                    if (auto src_rf_opt = m_reg_state.find(src.v)) {
-                        if (auto dst_rf_opt = m_reg_state.find(dst_register)) {
+                    if (auto src_rf_opt = m_registers.find(src.v)) {
+                        if (auto dst_rf_opt = m_registers.find(dst_register)) {
                             auto rf = *dst_rf_opt - *src_rf_opt;
-                            m_reg_state.insert(dst_register, loc, std::move(rf));
+                            m_registers.insert(dst_register, loc, std::move(rf));
                         }
                         else {
-                            m_reg_state -= dst_register;
+                            m_registers -= dst_register;
                         }
                     }
                     else {
-                        m_reg_state -= dst_register;
+                        m_registers -= dst_register;
                     }
                 }
                 break;
@@ -576,10 +570,10 @@ void offset_domain_t::do_bin(const Bin& bin,
             default: {
                 if (dst_ptr_or_mapfd_opt || src_ptr_or_mapfd_opt) {
                     // no other operations supported for packet pointers in the offset domain
-                    m_reg_state -= dst_register;
+                    m_registers -= dst_register;
                 }
                 else {
-                    create_numeric_refinement(m_reg_state, std::move(interval_result),
+                    create_numeric_refinement(m_registers, std::move(interval_result),
                             loc, dst_register);
                 }
                 break;
@@ -602,36 +596,36 @@ void offset_domain_t::operator()(const Un& u, location_t loc) {
 
 void offset_domain_t::do_un(const Un& u, interval_t interval, location_t loc) {
     if (interval == interval_t::bottom()) {
-        m_reg_state -= u.dst.v;
+        m_registers -= u.dst.v;
     }
     else {
-        create_numeric_refinement(m_reg_state, std::move(interval), loc, register_t{u.dst.v});
+        create_numeric_refinement(m_registers, std::move(interval), loc, register_t{u.dst.v});
     }
 }
 
 void offset_domain_t::operator()(const LoadMapFd& u, location_t loc) {
-    m_reg_state -= u.dst.v;
+    m_registers -= u.dst.v;
 }
 
 void offset_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {
     for (const auto& kv : cells) {
         auto rf = kv.first;
         auto width = kv.second;
-        auto overlapping_cells = m_stack_state.find_overlapping_cells(rf, width);
-        m_stack_state -= overlapping_cells;
+        auto overlapping_cells = m_stack.find_overlapping_cells(rf, width);
+        m_stack -= overlapping_cells;
     }
-    m_reg_state.scratch_caller_saved_registers();
+    m_registers.scratch_caller_saved_registers();
     register_t r0{R0_RETURN_VALUE};
     if (u.reallocate_packet) {
-        m_reg_state -= r0;
-        m_reg_state.forget_packet_pointers(loc);
+        m_registers -= r0;
+        m_registers.forget_packet_pointers(loc);
     }
     else if (u.is_map_lookup) {
-        m_reg_state -= r0;
+        m_registers -= r0;
     }
     else {
         // slack needs to be fixed, as it can have any value
-        create_numeric_refinement(m_reg_state, mock_interval_t::top(), loc, r0);
+        create_numeric_refinement(m_registers, mock_interval_t::top(), loc, r0);
     }
 }
 
@@ -645,16 +639,16 @@ void offset_domain_t::operator()(const Jmp& u, location_t loc) {
 }
 
 void offset_domain_t::operator()(const Packet& u, location_t loc) {
-    create_numeric_refinement(m_reg_state, mock_interval_t::top(), loc,
+    create_numeric_refinement(m_registers, mock_interval_t::top(), loc,
             register_t{R0_RETURN_VALUE});
-    m_reg_state.scratch_caller_saved_registers();
+    m_registers.scratch_caller_saved_registers();
 }
 
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
         bool is_comparison_check) const {
-    auto begin = m_reg_state.find(register_t{12});
+    auto begin = m_registers.find(register_t{12});
     if (!begin) return false;
-    auto reg = m_reg_state.find(r.v);
+    auto reg = m_registers.find(r.v);
     if (!reg) return false;
     auto toCheck = *reg + (offset+width);
     return toCheck.is_safe_with(*begin, is_comparison_check);
@@ -684,13 +678,13 @@ void offset_domain_t::do_mem_store(const Mem& b,
 
     if (std::holds_alternative<Reg>(b.value)) {
         auto target_reg = std::get<Reg>(b.value);
-        rf_info = m_reg_state.find(target_reg.v);
+        rf_info = m_registers.find(target_reg.v);
     }
     else {
         symbol_t s = symbol_t::make();
-        rf_info = refinement_t(refinement_type_t::NUM, expression_t(s, m_reg_state.get_slacks()));
+        rf_info = refinement_t(refinement_type_t::NUM, expression_t(s, m_registers.get_slacks()));
         interval_t interval = interval_t{number_t{static_cast<uint64_t>(std::get<Imm>(b.value).v)}};
-        m_reg_state.insert_slack_value(s, std::move(interval));
+        m_registers.insert_slack_value(s, std::move(interval));
     }
     if (!rf_info) return;
 
@@ -700,9 +694,9 @@ void offset_domain_t::do_mem_store(const Mem& b,
     auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
     if (!basereg_off_singleton) return;
     auto store_at = (*basereg_off_singleton + offset).cast_to<uint64_t>();
-    auto overlapping_cells = m_stack_state.find_overlapping_cells(store_at, width);
-    m_stack_state -= overlapping_cells;
-    m_stack_state.store(store_at, *rf_info, width);
+    auto overlapping_cells = m_stack.find_overlapping_cells(store_at, width);
+    m_stack -= overlapping_cells;
+    m_stack.store(store_at, *rf_info, width);
 }
 
 void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
@@ -715,14 +709,14 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
 
     if (interval_result != interval_t::bottom()) {
         if (is_ctx_p || is_shared_p || is_packet_p) {
-            create_numeric_refinement(m_reg_state, std::move(interval_result), loc,
+            create_numeric_refinement(m_registers, std::move(interval_result), loc,
                     target_register);
             return;
         }
     }
 
     if (!is_stack_p && !is_ctx_p) {
-        m_reg_state -= target_register;
+        m_registers -= target_register;
         return;
     }
 
@@ -733,7 +727,7 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
     auto offset_singleton = p_offset.to_interval().singleton();
     if (is_stack_p) {
         if (!offset_singleton) {
-            for (auto const& k : m_stack_state.get_keys()) {
+            for (auto const& k : m_stack.get_keys()) {
                 auto start = p_offset.lb();
                 auto end = p_offset.ub()+number_t{offset+width-1};
                 interval_t range{start, end};
@@ -746,28 +740,28 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
                 }
                 */
             }
-            m_reg_state -= target_register;
+            m_registers -= target_register;
         }
         else {
             if (width != 1 && width != 2 && width != 4 && width != 8) {
-                m_reg_state -= target_register;
+                m_registers -= target_register;
                 return;
             }
             auto ptr_offset = offset_singleton.value();
             auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
 
-            auto loaded = m_stack_state.find(load_at);
+            auto loaded = m_stack.find(load_at);
             if (!loaded) {
                 // no field at loaded offset in stack
-                m_reg_state -= target_register;
+                m_registers -= target_register;
                 return;
             }
-            m_reg_state.insert(target_register, loc, std::move(loaded->first));
+            m_registers.insert(target_register, loc, std::move(loaded->first));
         }
     }
     else {
         if (!offset_singleton) {
-            for (auto const& k : m_ctx_rfs->get_keys()) {
+            for (auto const& k : m_ctx->get_keys()) {
                 auto start = p_offset.lb();
                 auto end = p_offset.ub()+crab::bound_t{offset+width-1};
                 interval_t range{start, end};
@@ -780,19 +774,19 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
                 }
                 */
             }
-            m_reg_state -= target_register;
+            m_registers -= target_register;
         }
         else {
             auto ptr_offset = offset_singleton.value();
             auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
 
-            auto loaded = m_ctx_rfs->find(load_at);
+            auto loaded = m_ctx->find(load_at);
             if (!loaded) {
                 // no field at loaded offset in ctx
-                m_reg_state -= target_register;
+                m_registers -= target_register;
                 return;
             }
-            m_reg_state.insert(target_register, loc, std::move(*loaded));
+            m_registers.insert(target_register, loc, std::move(*loaded));
         }
     }
 }
@@ -802,35 +796,35 @@ void offset_domain_t::operator()(const Mem& b, location_t loc) {
 }
 
 std::vector<uint64_t> offset_domain_t::get_ctx_keys() const {
-    return m_ctx_rfs->get_keys();
+    return m_ctx->get_keys();
 }
 
 std::optional<refinement_t> offset_domain_t::find_refinement_at_loc(const register_location_t reg) const {
-    return m_reg_state.find(reg);
+    return m_registers.find(reg);
 }
 
 std::optional<refinement_t> offset_domain_t::find_in_ctx(int key) const {
-    return m_ctx_rfs->find(key);
+    return m_ctx->find(key);
 }
 
-std::optional<refinement_cells_t> offset_domain_t::find_in_stack(int key) const {
-    return m_stack_state.find(key);
+std::optional<refinement_stack_cell_t> offset_domain_t::find_in_stack(int key) const {
+    return m_stack.find(key);
 }
 
 std::optional<refinement_t> offset_domain_t::find_refinement_info(register_t reg) const {
-    return m_reg_state.find(reg);
+    return m_registers.find(reg);
 }
 
 void offset_domain_t::insert_in_registers(register_t reg, location_t loc, refinement_t rf) {
-    m_reg_state.insert(reg, loc, std::move(rf));
+    m_registers.insert(reg, loc, std::move(rf));
 }
 
 void offset_domain_t::store_in_stack(uint64_t key, refinement_t d, int width) {
-    m_stack_state.store(key, d, width);
+    m_stack.store(key, d, width);
 }
 
 void offset_domain_t::adjust_bb_for_types(location_t loc) {
-    m_reg_state.adjust_bb_for_registers(loc);
+    m_registers.adjust_bb_for_registers(loc);
 }
 
 } // namespace crab

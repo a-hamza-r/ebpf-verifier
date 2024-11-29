@@ -48,13 +48,13 @@ static inline std::vector<std::set<int>> join_shared_ptr_aliases(
     return result;
 }
 
-void register_types_t::scratch_caller_saved_registers() {
+void region_registers_t::scratch_caller_saved_registers() {
     for (uint8_t r = R1_ARG; r <= R5_ARG; r++) {
         operator-=(register_t{r});
     }
 }
 
-void register_types_t::forget_packet_ptrs() {
+void region_registers_t::forget_packet_ptrs() {
     for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-2; r++) {
         if (is_packet_ptr(find(register_t{r}))) {
             operator-=(register_t{r});
@@ -62,13 +62,13 @@ void register_types_t::forget_packet_ptrs() {
     }
 }
 
-register_types_t register_types_t::operator|(const register_types_t& other) const {
+region_registers_t region_registers_t::operator|(const region_registers_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    register_types_t joined_reg_types(m_region_env);
+    region_registers_t joined_reg_types(m_registers_env);
 
     // a hack to store region information at the start of a joined basic block
     // in join, we do not know the label of the bb, hence we store the information
@@ -77,7 +77,7 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     location_t loc = location_t::top();
 
     for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
-        if (m_cur_def[i] == nullptr || other.m_cur_def[i] == nullptr) continue;
+        if (m_cur_register_def[i] == nullptr || other.m_cur_register_def[i] == nullptr) continue;
         auto maybe_ptr1 = find(register_t{i});
         auto maybe_ptr2 = other.find(register_t{i});
         if (maybe_ptr1 && maybe_ptr2) {
@@ -106,52 +106,52 @@ register_types_t register_types_t::operator|(const register_types_t& other) cons
     return joined_reg_types;
 }
 
-void register_types_t::operator-=(register_t var) {
+void region_registers_t::operator-=(register_t var) {
     if (is_bottom()) {
         return;
     }
-    m_cur_def[var] = nullptr;
+    m_cur_register_def[var] = nullptr;
 }
 
-void register_types_t::set_to_bottom() {
+void region_registers_t::set_to_bottom() {
     m_is_bottom = true;
 }
 
-void register_types_t::set_to_top() {
-    m_region_env = std::make_shared<global_region_env_t>();
-    m_cur_def = live_registers_t{nullptr};
+void region_registers_t::set_to_top() {
+    m_registers_env = std::make_shared<global_env_region_registers_t>();
+    m_cur_register_def = live_registers_t{nullptr};
     m_is_bottom = false;
 }
 
-bool register_types_t::is_bottom() const { return m_is_bottom; }
+bool region_registers_t::is_bottom() const { return m_is_bottom; }
 
-bool register_types_t::is_top() const {
+bool region_registers_t::is_top() const {
     if (m_is_bottom) { return false; }
-    if (m_region_env == nullptr) return true;
-    for (auto &it : m_cur_def) {
+    if (m_registers_env == nullptr) return true;
+    for (auto &it : m_cur_register_def) {
         if (it != nullptr) return false;
     }
     return true;
 }
 
-void register_types_t::insert(register_t reg, const location_t& loc, const ptr_or_mapfd_t& type) {
+void region_registers_t::insert(register_t reg, const location_t& loc, const ptr_or_mapfd_t& type) {
     register_location_t register_location = register_location_t{reg, loc};
-    (*m_region_env)[register_location] = type;
-    m_cur_def[reg] = std::make_shared<register_location_t>(register_location);
+    (*m_registers_env)[register_location] = type;
+    m_cur_register_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
-std::optional<ptr_or_mapfd_t> register_types_t::find(register_location_t reg) const {
-    auto it = m_region_env->find(reg);
-    if (it == m_region_env->end()) return {};
+std::optional<ptr_or_mapfd_t> region_registers_t::find(register_location_t reg) const {
+    auto it = m_registers_env->find(reg);
+    if (it == m_registers_env->end()) return {};
     return it->second;
 }
 
-std::optional<ptr_or_mapfd_t> register_types_t::find(register_t key) const {
-    if (m_cur_def[key] == nullptr) return {};
-    return find(*(m_cur_def[key]));
+std::optional<ptr_or_mapfd_t> region_registers_t::find(register_t key) const {
+    if (m_cur_register_def[key] == nullptr) return {};
+    return find(*(m_cur_register_def[key]));
 }
 
-void register_types_t::adjust_bb_for_registers(location_t loc) {
+void region_registers_t::adjust_bb_for_registers(location_t loc) {
     for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, *it);
@@ -159,22 +159,22 @@ void register_types_t::adjust_bb_for_registers(location_t loc) {
     }
 }
 
-stack_t stack_t::operator|(const stack_t& other) const {
+region_stack_t region_stack_t::operator|(const region_stack_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    stack_t joined_stack;
-    for (auto const&kv: m_ptrs) {
-        auto maybe_ptr_or_mapfd_cells = other.find(kv.first);
-        if (maybe_ptr_or_mapfd_cells) {
-            auto ptr_or_mapfd_cells1 = kv.second;
-            auto ptr_or_mapfd_cells2 = *maybe_ptr_or_mapfd_cells;
-            auto ptr_or_mapfd1 = ptr_or_mapfd_cells1.first;
-            auto ptr_or_mapfd2 = ptr_or_mapfd_cells2.first;
-            int width1 = ptr_or_mapfd_cells1.second;
-            int width2 = ptr_or_mapfd_cells2.second;
+    region_stack_t joined_stack;
+    for (auto const&kv: m_cells) {
+        auto maybe_ptr_or_mapfd_stack_cell = other.find(kv.first);
+        if (maybe_ptr_or_mapfd_stack_cell) {
+            auto ptr_or_mapfd_stack_cell1 = kv.second;
+            auto ptr_or_mapfd_stack_cell2 = *maybe_ptr_or_mapfd_stack_cell;
+            auto ptr_or_mapfd1 = ptr_or_mapfd_stack_cell1.first;
+            auto ptr_or_mapfd2 = ptr_or_mapfd_stack_cell2.first;
+            int width1 = ptr_or_mapfd_stack_cell1.second;
+            int width2 = ptr_or_mapfd_stack_cell2.second;
             int width_joined = std::min(width1, width2);
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
@@ -200,79 +200,79 @@ stack_t stack_t::operator|(const stack_t& other) const {
     return joined_stack;
 }
 
-void stack_t::operator-=(uint64_t key) {
+void region_stack_t::operator-=(uint64_t key) {
     auto it = find(key);
     if (it)
-        m_ptrs.erase(key);
+        m_cells.erase(key);
 }
 
-void stack_t::operator-=(const std::vector<uint64_t>& keys) {
+void region_stack_t::operator-=(const std::vector<uint64_t>& keys) {
     for (auto &key : keys) {
        *this -= key;
     }
 }
 
-void stack_t::set_to_bottom() {
-    m_ptrs.clear();
+void region_stack_t::set_to_bottom() {
+    m_cells.clear();
     m_is_bottom = true;
 }
 
-void stack_t::set_to_top() {
-    m_ptrs.clear();
+void region_stack_t::set_to_top() {
+    m_cells.clear();
     m_is_bottom = false;
 }
 
-stack_t stack_t::bottom() { return stack_t(true); }
+region_stack_t region_stack_t::bottom() { return region_stack_t(true); }
 
-stack_t stack_t::top() { return stack_t(false); }
+region_stack_t region_stack_t::top() { return region_stack_t(false); }
 
-bool stack_t::is_bottom() const { return m_is_bottom; }
+bool region_stack_t::is_bottom() const { return m_is_bottom; }
 
-bool stack_t::is_top() const {
+bool region_stack_t::is_top() const {
     if (m_is_bottom)
         return false;
-    return m_ptrs.empty();
+    return m_cells.empty();
 }
 
-void stack_t::store(uint64_t key, ptr_or_mapfd_t value, int width) {
-    m_ptrs[key] = std::make_pair(value, width);
+void region_stack_t::store(uint64_t key, ptr_or_mapfd_t value, int width) {
+    m_cells[key] = std::make_pair(value, width);
 }
 
-size_t stack_t::size() const {
-    return m_ptrs.size();
+size_t region_stack_t::size() const {
+    return m_cells.size();
 }
 
-std::vector<uint64_t> stack_t::get_keys() const {
+std::vector<uint64_t> region_stack_t::get_keys() const {
     std::vector<uint64_t> keys;
     keys.reserve(size());
 
-    for (auto const&kv : m_ptrs) {
+    for (auto const&kv : m_cells) {
         keys.push_back(kv.first);
     }
     return keys;
 }
 
 
-std::optional<ptr_or_mapfd_cells_t> stack_t::find(uint64_t key) const {
-    auto it = m_ptrs.find(key);
-    if (it == m_ptrs.end()) return {};
+std::optional<ptr_or_mapfd_stack_cell_t> region_stack_t::find(uint64_t key) const {
+    auto it = m_cells.find(key);
+    if (it == m_cells.end()) return {};
     return it->second;
 }
 
-std::vector<uint64_t> stack_t::find_overlapping_cells(uint64_t start, int width) const {
+std::vector<uint64_t> region_stack_t::find_overlapping_cells(uint64_t start, int width) const {
     std::vector<uint64_t> overlapping_cells;
-    auto it = m_ptrs.begin();
-    while (it != m_ptrs.end() && it->first < start) {
+    auto it = m_cells.begin();
+    while (it != m_cells.end() && it->first < start) {
         it++;
     }
-    if (it != m_ptrs.begin()) {
+    if (it != m_cells.begin()) {
         it--;
         auto key = it->first;
         auto width_key = it->second.second;
         if (key < start && key+width_key > start) overlapping_cells.push_back(key);
     }
 
-    for (; it != m_ptrs.end(); it++) {
+    for (; it != m_cells.end(); it++) {
         auto key = it->first;
         if (key >= start && key < start+width) overlapping_cells.push_back(key);
         if (key >= start+width) break;
@@ -341,7 +341,7 @@ std::vector<uint64_t> region_domain_t::get_stack_keys() const {
     return m_stack.get_keys();
 }
 
-std::optional<ptr_or_mapfd_cells_t> region_domain_t::find_in_stack(uint64_t key) const {
+std::optional<ptr_or_mapfd_stack_cell_t> region_domain_t::find_in_stack(uint64_t key) const {
     return m_stack.find(key);
 }
 
@@ -763,7 +763,7 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
 }
 
 region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
-    register_types_t typ(std::make_shared<global_region_env_t>());
+    region_registers_t typ(std::make_shared<global_env_region_registers_t>());
 
     location_t loc{label_t::entry, 0};
     if (init_r1) {
@@ -773,7 +773,7 @@ region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
     auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
-    static region_domain_t inv(std::move(typ), stack_t::top());
+    static region_domain_t inv(std::move(typ), region_stack_t::top());
     inv.compute_ctx_size(global_program_info.get().type.context_descriptor);
     return std::move(inv);
 }

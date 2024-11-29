@@ -22,11 +22,11 @@ class inference_domain_t final {
     inference_domain_t() = default;
     inference_domain_t(inference_domain_t&& o) = default;
     inference_domain_t(const inference_domain_t& o) = default;
-    explicit inference_domain_t(region_domain_t&& reg, offset_domain_t&& off,
-            interval_domain_t&& interval, bool is_bottom = false) :
-        m_region(reg), m_offset(off), m_interval(interval), m_is_bottom(is_bottom) {}
     inference_domain_t& operator=(inference_domain_t&& o) = default;
     inference_domain_t& operator=(const inference_domain_t& o) = default;
+    explicit inference_domain_t(region_domain_t region, offset_domain_t offset,
+            interval_domain_t interval) :
+        m_region(std::move(region)), m_offset(std::move(offset)), m_interval(std::move(interval)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static inference_domain_t setup_entry(bool);
     // bottom/top

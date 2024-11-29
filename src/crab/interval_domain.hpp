@@ -159,8 +159,8 @@ class interval_domain_t final {
     std::optional<mock_interval_t> find_unsigned_interval_value(register_t) const;
     std::optional<mock_interval_t> find_signed_interval_at_loc(const register_location_t reg) const;
     std::optional<mock_interval_t> find_unsigned_interval_at_loc(const register_location_t reg) const;
-    std::optional<interval_cells_t> find_in_stack_signed(uint64_t) const;
-    std::optional<interval_cells_t> find_in_stack_unsigned(uint64_t) const;
+    std::optional<signed_interval_stack_cell_t> find_in_stack_signed(uint64_t) const;
+    std::optional<unsigned_interval_stack_cell_t> find_in_stack_unsigned(uint64_t) const;
     void insert_in_registers(register_t, location_t, interval_t);
     void insert_in_registers_signed(register_t, location_t, interval_t);
     void insert_in_registers_unsigned(register_t, location_t, interval_t);

@@ -54,6 +54,8 @@ class register_location_t {
     void write(std::ostream& o) const;
 };
 
+// TODO: get rid of shared_ptr for register_location_t
+using live_registers_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
 
 } // namespace crab
 

@@ -44,11 +44,11 @@ void interval_domain_t::set_registers_to_top() {
     m_unsigned.set_registers_to_top();
 }
 
-std::optional<interval_cells_t> interval_domain_t::find_in_stack_signed(uint64_t key) const {
+std::optional<signed_interval_stack_cell_t> interval_domain_t::find_in_stack_signed(uint64_t key) const {
     return m_signed.find_in_stack(key);
 }
 
-std::optional<interval_cells_t> interval_domain_t::find_in_stack_unsigned(uint64_t key) const {
+std::optional<unsigned_interval_stack_cell_t> interval_domain_t::find_in_stack_unsigned(uint64_t key) const {
     return m_unsigned.find_in_stack(key);
 }
 

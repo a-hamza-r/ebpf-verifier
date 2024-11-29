@@ -9,26 +9,25 @@
 namespace crab {
 
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
-using live_refinements_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
-using global_offset_env_t = std::unordered_map<register_location_t, refinement_t>;
+using global_env_offset_registers_t = std::unordered_map<register_location_t, refinement_t>;
 
-class registers_state_t {
+class offset_registers_t {
 
-    live_refinements_t m_cur_def;
-    std::shared_ptr<global_offset_env_t> m_offset_env;
+    live_registers_t m_cur_register_def;
+    std::shared_ptr<global_env_offset_registers_t> m_registers_env;
     std::shared_ptr<slacks_t> m_slacks;
     bool m_is_bottom = false;
 
     public:
-        registers_state_t(bool is_bottom = false) : m_offset_env(nullptr), m_slacks(nullptr),
+        offset_registers_t(bool is_bottom = false) : m_registers_env(nullptr), m_slacks(nullptr),
         m_is_bottom(is_bottom) {}
-        registers_state_t(std::shared_ptr<global_offset_env_t> offset_env,
+        offset_registers_t(std::shared_ptr<global_env_offset_registers_t> registers_env,
                 std::shared_ptr<slacks_t> slacks, bool is_bottom = false)
-            : m_offset_env(offset_env), m_slacks(slacks), m_is_bottom(is_bottom) {}
-        registers_state_t(std::shared_ptr<global_offset_env_t> offset_env,
+            : m_registers_env(registers_env), m_slacks(slacks), m_is_bottom(is_bottom) {}
+        offset_registers_t(std::shared_ptr<global_env_offset_registers_t> registers_env,
                 std::shared_ptr<slacks_t> slacks, const ebpf_context_descriptor_t* desc,
                 bool is_bottom = false)
-            : m_offset_env(offset_env), m_slacks(slacks), m_is_bottom(is_bottom) {
+            : m_registers_env(registers_env), m_slacks(slacks), m_is_bottom(is_bottom) {
 
             location_t loc{label_t::entry, 0};
             if (desc->data >= 0) {
@@ -36,13 +35,13 @@ class registers_state_t {
             }
         }
 
-        explicit registers_state_t(live_refinements_t&& vars,
-                std::shared_ptr<global_offset_env_t> offset_env,
+        explicit offset_registers_t(live_registers_t&& vars,
+                std::shared_ptr<global_env_offset_registers_t> registers_env,
                 std::shared_ptr<slacks_t> slacks, bool is_bottom = false)
-            : m_cur_def(std::move(vars)), m_offset_env(offset_env), m_slacks(slacks),
+            : m_cur_register_def(std::move(vars)), m_registers_env(registers_env), m_slacks(slacks),
             m_is_bottom(is_bottom) {}
 
-        registers_state_t operator|(const registers_state_t&) const;
+        offset_registers_t operator|(const offset_registers_t&) const;
         void operator-=(register_t);
         void set_to_top();
         void set_to_bottom();
@@ -54,22 +53,22 @@ class registers_state_t {
         std::optional<mock_interval_t> find_slack_value(symbol_t) const;
         std::optional<refinement_t> find(register_location_t reg) const;
         std::optional<refinement_t> find(register_t key) const;
-        friend std::ostream& operator<<(std::ostream& o, const registers_state_t& p);
+        friend std::ostream& operator<<(std::ostream& o, const offset_registers_t& p);
         void adjust_bb_for_registers(location_t);
         void scratch_caller_saved_registers();
         void forget_packet_pointers(location_t);
 };
 
-using refinement_cells_t = std::pair<refinement_t, int>;
-using stack_slot_refinements_t = std::map<uint64_t, refinement_cells_t>;
-class stack_state_t {
+using refinement_stack_cell_t = std::pair<refinement_t, int>;
+using refinement_stack_cells_t = std::map<uint64_t, refinement_stack_cell_t>;
 
-    stack_slot_refinements_t m_slot_rfs;
+class offset_stack_t {
+    refinement_stack_cells_t m_stack_cells;
     bool m_is_bottom = false;
 
     public:
-        stack_state_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
-        std::optional<refinement_cells_t> find(uint64_t) const;
+        offset_stack_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
+        std::optional<refinement_stack_cell_t> find(uint64_t) const;
         void store(uint64_t, refinement_t, int);
         void operator-=(uint64_t);
         void operator-=(const std::vector<uint64_t>&);
@@ -77,32 +76,32 @@ class stack_state_t {
         void set_to_bottom();
         bool is_bottom() const;
         bool is_top() const;
-        static stack_state_t top();
-        stack_state_t operator|(const stack_state_t&) const;
-        explicit stack_state_t(stack_slot_refinements_t&& stack_rfs, bool is_bottom = false)
-            : m_slot_rfs(std::move(stack_rfs)), m_is_bottom(is_bottom) {}
+        static offset_stack_t top();
+        offset_stack_t operator|(const offset_stack_t&) const;
+        explicit offset_stack_t(refinement_stack_cells_t&& cells, bool is_bottom = false)
+            : m_stack_cells(std::move(cells)), m_is_bottom(is_bottom) {}
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
         std::vector<uint64_t> get_keys() const;
 };
 
-class ctx_offsets_t {
-    using ctx_refinements_t = std::unordered_map<uint64_t, refinement_t>;    // represents `cp[n] = rf;`
-    ctx_refinements_t m_rfs;
-    int m_size;
+class offset_ctx_t {
+    using refinement_ctx_cells_t = std::unordered_map<uint64_t, refinement_t>;    // represents `cp[n] = rf;`
+    refinement_ctx_cells_t m_ctx_cells;
+    size_t m_size;
 
     public:
-        ctx_offsets_t(const ebpf_context_descriptor_t* desc);
+        offset_ctx_t(const ebpf_context_descriptor_t* desc);
         std::optional<refinement_t> find(uint64_t) const;
-        int get_size() const;
+        size_t get_size() const { return m_size; }
         std::vector<uint64_t> get_keys() const;
 };
 
 class offset_domain_t final {
 
     bool m_is_bottom = false;
-    registers_state_t m_reg_state;
-    stack_state_t m_stack_state;
-    std::shared_ptr<ctx_offsets_t> m_ctx_rfs;
+    offset_registers_t m_registers;
+    offset_stack_t m_stack;
+    std::shared_ptr<offset_ctx_t> m_ctx;
     std::vector<std::string> m_errors;
 
   public:
@@ -111,9 +110,9 @@ class offset_domain_t final {
     offset_domain_t(const offset_domain_t& o) = default;
     offset_domain_t& operator=(offset_domain_t&& o) = default;
     offset_domain_t& operator=(const offset_domain_t& o) = default;
-    explicit offset_domain_t(registers_state_t&& reg, stack_state_t&& stack,
-            std::shared_ptr<ctx_offsets_t> ctx)
-        : m_reg_state(std::move(reg)), m_stack_state(std::move(stack)), m_ctx_rfs(ctx) {}
+    explicit offset_domain_t(offset_registers_t&& reg, offset_stack_t&& stack,
+            std::shared_ptr<offset_ctx_t> ctx)
+        : m_registers(std::move(reg)), m_stack(std::move(stack)), m_ctx(ctx) {}
 
     static offset_domain_t&& setup_entry();
     // bottom/top
@@ -136,7 +135,7 @@ class offset_domain_t final {
     // narrowing
     offset_domain_t narrow(const offset_domain_t& other) const;
     //forget
-    void operator-=(register_t reg) { m_reg_state -= reg; }
+    void operator-=(register_t reg) { m_registers -= reg; }
 
     //// abstract transformers
     void operator()(const Undefined&, location_t loc = location_t::top());
@@ -175,7 +174,7 @@ class offset_domain_t final {
 
     std::vector<uint64_t> get_ctx_keys() const;
     std::optional<refinement_t> find_in_ctx(int) const;
-    std::optional<refinement_cells_t> find_in_stack(int) const;
+    std::optional<refinement_stack_cell_t> find_in_stack(int) const;
     std::optional<refinement_t> find_refinement_at_loc(const register_location_t) const;
     std::optional<refinement_t> find_refinement_info(register_t reg) const;
     void insert_in_registers(register_t, location_t, refinement_t);
