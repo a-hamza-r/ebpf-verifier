@@ -37,12 +37,12 @@ class symbol_t final {
     bool is_begin() const { return *this == symbol_t::begin(); }
     bool is_slack() const { return _id >= 4; }
     void write(std::ostream& o) const;
+    friend std::ostream& operator<<(std::ostream& o, const symbol_t& s);
 
     struct Hasher {
         std::size_t operator()(const symbol_t& s) const { return s.hash(); }
     };
 };  // class symbol_t
 
-std::ostream& operator<<(std::ostream& o, const symbol_t& s);
 
 } // namespace crab

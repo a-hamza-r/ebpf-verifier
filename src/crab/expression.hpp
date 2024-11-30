@@ -22,17 +22,13 @@ class expression_t {
 
   public:
     expression_t() : _constant_term(interval_t::top()) {};
-    expression_t(symbol_terms_t symbol_terms, interval_t interval)
-        : _symbol_terms(symbol_terms), _constant_term(interval) {}
     expression_t(symbol_t symbol, std::shared_ptr<slacks_t> slacks = nullptr)
         : _constant_term(interval_t{0}), _slacks(slacks) {
         _symbol_terms[symbol] = 1;
     }
     expression_t(symbol_terms_t symbol_terms, interval_t interval,
-            std::shared_ptr<slacks_t> slacks)
+            std::shared_ptr<slacks_t> slacks = nullptr)
         : _symbol_terms(symbol_terms), _constant_term(interval), _slacks(slacks) {}
-    expression_t(symbol_terms_t symbol_terms, std::shared_ptr<slacks_t> slacks = nullptr)
-        : _symbol_terms(symbol_terms), _constant_term{interval_t{0}}, _slacks(slacks) {}
     expression_t(interval_t interval)
         : _constant_term(interval) {}
     expression_t(int n)
@@ -63,6 +59,7 @@ class expression_t {
     std::shared_ptr<slacks_t> get_slacks() const { return _slacks; }
     void set_slacks(std::shared_ptr<slacks_t> slacks) { _slacks = slacks; }
     std::vector<std::pair<symbol_t, interval_t>> get_slack_intervals() const;
+    friend std::ostream& operator<<(std::ostream &, const expression_t&);
 
     static expression_t begin() {
         return expression_t(symbol_t::begin());
@@ -77,6 +74,5 @@ class expression_t {
     }
 };
 
-std::ostream& operator<<(std::ostream &, const expression_t&);
 
 }  // namespace crab

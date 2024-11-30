@@ -4,7 +4,7 @@
  * Factories for symbol names.
  */
 
-#include "crab/symbol.hpp"
+#include "symbol.hpp"
 
 namespace crab {
 

@@ -18,7 +18,7 @@ class refinement_t {
     std::vector<crab::constraint_t> _constraints;
 
   public:
-    explicit refinement_t(refinement_type_t type, expression_t value,
+    refinement_t(refinement_type_t type, expression_t value,
             std::vector<crab::constraint_t> constraints = {})
         : _type(type), _value(value) {
         for (auto &&c : constraints) {
@@ -45,6 +45,7 @@ class refinement_t {
     bool is_safe_with(refinement_t, bool) const;
     interval_t simplify_for_subtraction(const symbol_t&, const symbol_t&,
             const std::vector<constraint_t>&) const;
+    friend std::ostream &operator<<(std::ostream &, const refinement_t&);
 
     static refinement_t begin() {
         return refinement_t(refinement_type_t::PACKET, expression_t::begin());
@@ -59,6 +60,5 @@ class refinement_t {
     }
 };
 
-std::ostream &operator<<(std::ostream &, const refinement_t&);
 
 } // namespace crab

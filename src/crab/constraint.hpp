@@ -19,21 +19,13 @@ class constraint_t {
     [[nodiscard]] expression_t get_lhs() const { return _lhs; }
     [[nodiscard]] expression_t get_rhs() const { return _rhs; }
 
-    constraint_t operator+(const constraint_t&) const;    
-    constraint_t operator+(int) const;
-    constraint_t operator+(interval_t) const;
-    constraint_t operator-(const constraint_t&) const;
-    constraint_t operator|(const constraint_t&) const;
-    constraint_t operator<=(const constraint_t&) const;
-    constraint_t operator>(const constraint_t&) const;
     std::vector<std::pair<symbol_t, interval_t>> get_slack_intervals() const;
-    bool is_equality() const;
     bool contains(const symbol_t&) const;
     void normalize();
     [[nodiscard]] constraint_t negate() const;
     void write(std::ostream&) const;
+    friend std::ostream& operator<<(std::ostream &, const constraint_t&);
 };
 
-std::ostream& operator<<(std::ostream &, const constraint_t&);
 
 } // namespace crab
