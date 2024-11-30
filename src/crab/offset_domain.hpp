@@ -19,28 +19,15 @@ class offset_registers_t {
     bool m_is_bottom = false;
 
     public:
-        offset_registers_t(bool is_bottom = false) : m_registers_env(nullptr), m_slacks(nullptr),
-        m_is_bottom(is_bottom) {}
+        offset_registers_t() = default;
         offset_registers_t(std::shared_ptr<global_env_offset_registers_t> registers_env,
-                std::shared_ptr<slacks_t> slacks, bool is_bottom = false)
-            : m_registers_env(registers_env), m_slacks(slacks), m_is_bottom(is_bottom) {}
-        offset_registers_t(std::shared_ptr<global_env_offset_registers_t> registers_env,
-                std::shared_ptr<slacks_t> slacks, const ebpf_context_descriptor_t* desc,
-                bool is_bottom = false)
-            : m_registers_env(registers_env), m_slacks(slacks), m_is_bottom(is_bottom) {
+                std::shared_ptr<slacks_t> slacks, int data_pos = -1)
+            : m_registers_env(registers_env), m_slacks(slacks) {
 
-            location_t loc{label_t::entry, 0};
-            if (desc->data >= 0) {
-                insert(register_t{12}, loc, refinement_t::begin());
+            if (data_pos >= 0) {
+                insert(register_t{12}, location_t{label_t::entry, 0}, refinement_t::begin());
             }
         }
-
-        explicit offset_registers_t(live_registers_t&& vars,
-                std::shared_ptr<global_env_offset_registers_t> registers_env,
-                std::shared_ptr<slacks_t> slacks, bool is_bottom = false)
-            : m_cur_register_def(std::move(vars)), m_registers_env(registers_env), m_slacks(slacks),
-            m_is_bottom(is_bottom) {}
-
         offset_registers_t operator|(const offset_registers_t&) const;
         void operator-=(register_t);
         void set_to_top();
@@ -67,7 +54,9 @@ class offset_stack_t {
     bool m_is_bottom = false;
 
     public:
-        offset_stack_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
+        offset_stack_t() = default;
+        explicit offset_stack_t(refinement_stack_cells_t cells)
+            : m_stack_cells(std::move(cells)) {}
         std::optional<refinement_stack_cell_t> find(uint64_t) const;
         void store(uint64_t, refinement_t, int);
         void operator-=(uint64_t);
@@ -78,8 +67,6 @@ class offset_stack_t {
         bool is_top() const;
         static offset_stack_t top();
         offset_stack_t operator|(const offset_stack_t&) const;
-        explicit offset_stack_t(refinement_stack_cells_t&& cells, bool is_bottom = false)
-            : m_stack_cells(std::move(cells)), m_is_bottom(is_bottom) {}
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
         std::vector<uint64_t> get_keys() const;
 };
@@ -106,15 +93,11 @@ class offset_domain_t final {
 
   public:
     offset_domain_t() = default;
-    offset_domain_t(offset_domain_t&& o) = default;
-    offset_domain_t(const offset_domain_t& o) = default;
-    offset_domain_t& operator=(offset_domain_t&& o) = default;
-    offset_domain_t& operator=(const offset_domain_t& o) = default;
-    explicit offset_domain_t(offset_registers_t&& reg, offset_stack_t&& stack,
+    offset_domain_t(offset_registers_t reg, offset_stack_t stack,
             std::shared_ptr<offset_ctx_t> ctx)
-        : m_registers(std::move(reg)), m_stack(std::move(stack)), m_ctx(ctx) {}
+        : m_registers(std::move(reg)), m_stack(std::move(stack)), m_ctx(std::move(ctx)) {}
 
-    static offset_domain_t&& setup_entry();
+    static offset_domain_t setup_entry();
     // bottom/top
     static offset_domain_t bottom();
     void set_to_top();

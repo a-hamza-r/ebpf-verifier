@@ -17,25 +17,20 @@ class unsigned_interval_registers_t {
     std::shared_ptr<global_env_unsigned_registers_t> m_registers_env;
     bool m_is_bottom = false;
 
-    public:
-        bool is_bottom() const;
-        bool is_top() const;
-        void set_to_bottom();
-        void set_to_top();
-        std::optional<mock_interval_t> find(register_location_t reg) const;
-        std::optional<mock_interval_t> find(register_t key) const;
-        void insert(register_t, const location_t&, interval_t);
-        void operator-=(register_t);
-        unsigned_interval_registers_t operator|(const unsigned_interval_registers_t& other) const;
-        unsigned_interval_registers_t(bool is_bottom = false) : m_registers_env(nullptr),
-            m_is_bottom(is_bottom) {}
-        explicit unsigned_interval_registers_t(live_registers_t&& vars,
-                std::shared_ptr<global_env_unsigned_registers_t> registers_env, bool is_bottom = false)
-            : m_cur_register_def(std::move(vars)), m_registers_env(registers_env), m_is_bottom(is_bottom) {}
-        explicit unsigned_interval_registers_t(std::shared_ptr<global_env_unsigned_registers_t> registers_env,
-                bool is_bottom = false)
-            : m_registers_env(registers_env), m_is_bottom(is_bottom) {}
-        void adjust_bb_for_registers(location_t);
+  public:
+    unsigned_interval_registers_t() = default;
+    unsigned_interval_registers_t(std::shared_ptr<global_env_unsigned_registers_t> registers_env)
+        : m_registers_env(std::move(registers_env)) {}
+    bool is_bottom() const;
+    bool is_top() const;
+    void set_to_bottom();
+    void set_to_top();
+    std::optional<mock_interval_t> find(register_location_t reg) const;
+    std::optional<mock_interval_t> find(register_t key) const;
+    void insert(register_t, const location_t&, interval_t);
+    void operator-=(register_t);
+    unsigned_interval_registers_t operator|(const unsigned_interval_registers_t& other) const;
+    void adjust_bb_for_registers(location_t);
 };
 
 using unsigned_interval_stack_cell_t = std::pair<mock_interval_t, int>;    // intervals with width
@@ -46,24 +41,22 @@ class unsigned_interval_stack_t {
     unsigned_interval_stack_cells_t m_cells;
     bool m_is_bottom = false;
 
-    public:
-        bool is_bottom() const;
-        bool is_top() const;
-        void set_to_bottom();
-        void set_to_top();
-        static unsigned_interval_stack_t top();
-        std::optional<unsigned_interval_stack_cell_t> find(uint64_t) const;
-        void store(uint64_t, mock_interval_t, int);
-        void operator-=(uint64_t);
-        unsigned_interval_stack_t operator|(const unsigned_interval_stack_t& other) const;
-        unsigned_interval_stack_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
-        explicit unsigned_interval_stack_t(unsigned_interval_stack_cells_t&& cells,
-                                           bool is_bottom = false)
-            : m_cells(std::move(cells)), m_is_bottom(is_bottom) {}
-        std::vector<uint64_t> get_keys() const;
-        size_t size() const;
-        void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
-        void fill_values(const std::vector<uint64_t>&, uint64_t, int);
+  public:
+    unsigned_interval_stack_t() = default;
+    unsigned_interval_stack_t(unsigned_interval_stack_cells_t cells) : m_cells(std::move(cells)) {}
+    bool is_bottom() const;
+    bool is_top() const;
+    void set_to_bottom();
+    void set_to_top();
+    static unsigned_interval_stack_t top();
+    std::optional<unsigned_interval_stack_cell_t> find(uint64_t) const;
+    void store(uint64_t, mock_interval_t, int);
+    void operator-=(uint64_t);
+    unsigned_interval_stack_t operator|(const unsigned_interval_stack_t& other) const;
+    std::vector<uint64_t> get_keys() const;
+    size_t size() const;
+    void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
+    void fill_values(const std::vector<uint64_t>&, uint64_t, int);
 };
 
 class unsigned_interval_domain_t final {
@@ -75,14 +68,9 @@ class unsigned_interval_domain_t final {
   public:
 
     unsigned_interval_domain_t() = default;
-    unsigned_interval_domain_t(unsigned_interval_domain_t&& o) = default;
-    unsigned_interval_domain_t(const unsigned_interval_domain_t& o) = default;
-    explicit unsigned_interval_domain_t(unsigned_interval_registers_t&& registers,
-            unsigned_interval_stack_t&& stack, bool is_bottom = false) :
-        m_registers(std::move(registers)), m_stack(std::move(stack)),
-        m_is_bottom(is_bottom) {}
-    unsigned_interval_domain_t& operator=(unsigned_interval_domain_t&& o) = default;
-    unsigned_interval_domain_t& operator=(const unsigned_interval_domain_t& o) = default;
+    unsigned_interval_domain_t(unsigned_interval_registers_t registers,
+            unsigned_interval_stack_t stack) :
+        m_registers(std::move(registers)), m_stack(std::move(stack)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static unsigned_interval_domain_t setup_entry();
     // bottom/top

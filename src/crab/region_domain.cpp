@@ -222,9 +222,13 @@ void region_stack_t::set_to_top() {
     m_is_bottom = false;
 }
 
-region_stack_t region_stack_t::bottom() { return region_stack_t(true); }
+region_stack_t region_stack_t::bottom() {
+    region_stack_t stk;
+    stk.set_to_bottom();
+    return stk;
+};
 
-region_stack_t region_stack_t::top() { return region_stack_t(false); }
+region_stack_t region_stack_t::top() { return region_stack_t(); }
 
 bool region_stack_t::is_bottom() const { return m_is_bottom; }
 
@@ -762,7 +766,7 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
     // nothing to do here
 }
 
-region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
+region_domain_t region_domain_t::setup_entry(bool init_r1) {
     region_registers_t typ(std::make_shared<global_env_region_registers_t>());
 
     location_t loc{label_t::entry, 0};
@@ -773,9 +777,9 @@ region_domain_t&& region_domain_t::setup_entry(bool init_r1) {
     auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
-    static region_domain_t inv(std::move(typ), region_stack_t::top());
+    region_domain_t inv(std::move(typ), region_stack_t::top());
     inv.compute_ctx_size(global_program_info.get().type.context_descriptor);
-    return std::move(inv);
+    return inv;
 }
 
 void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {

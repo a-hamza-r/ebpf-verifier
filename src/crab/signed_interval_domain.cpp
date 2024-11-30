@@ -101,7 +101,7 @@ void stack_slots_signed_state_t::set_to_bottom() {
 }
 
 stack_slots_signed_state_t stack_slots_signed_state_t::top() {
-    return stack_slots_signed_state_t(false);
+    return stack_slots_signed_state_t();
 }
 
 std::optional<signed_interval_stack_cell_t> stack_slots_signed_state_t::find(uint64_t key) const {

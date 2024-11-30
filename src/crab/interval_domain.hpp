@@ -17,19 +17,13 @@ class interval_domain_t final {
     signed_interval_domain_t m_signed;
     unsigned_interval_domain_t m_unsigned;
     std::vector<std::string> m_errors;
-    bool m_is_bottom = false;
 
   public:
 
     interval_domain_t() = default;
-    interval_domain_t(interval_domain_t&& o) = default;
-    interval_domain_t(const interval_domain_t& o) = default;
-    explicit interval_domain_t(signed_interval_domain_t&& signed_domain,
-            unsigned_interval_domain_t&& unsigned_domain, bool is_bottom = false) :
-        m_signed(std::move(signed_domain)), m_unsigned(std::move(unsigned_domain)),
-        m_is_bottom(is_bottom) {}
-    interval_domain_t& operator=(interval_domain_t&& o) = default;
-    interval_domain_t& operator=(const interval_domain_t& o) = default;
+    interval_domain_t(signed_interval_domain_t signed_domain,
+            unsigned_interval_domain_t unsigned_domain) :
+        m_signed(std::move(signed_domain)), m_unsigned(std::move(unsigned_domain)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static interval_domain_t setup_entry();
     // bottom/top

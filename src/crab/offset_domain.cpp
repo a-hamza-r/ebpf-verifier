@@ -154,7 +154,7 @@ bool offset_stack_t::is_bottom() const {
 }
 
 offset_stack_t offset_stack_t::top() {
-    return offset_stack_t(false);
+    return offset_stack_t();
 }
 
 std::optional<refinement_stack_cell_t> offset_stack_t::find(uint64_t key) const {
@@ -247,14 +247,13 @@ std::optional<refinement_t> offset_ctx_t::find(uint64_t key) const {
     return it->second;
 }
 
-offset_domain_t&& offset_domain_t::setup_entry() {
+offset_domain_t offset_domain_t::setup_entry() {
     offset_registers_t regs(std::make_shared<global_env_offset_registers_t>(),
-                      std::make_shared<slacks_t>(),
-                      global_program_info->type.context_descriptor);
+                            std::make_shared<slacks_t>(),
+                            global_program_info->type.context_descriptor->data);
 
-    static offset_domain_t off_d(std::move(regs), offset_stack_t::top(),
-                      std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor));
-    return std::move(off_d);
+    return offset_domain_t{std::move(regs), offset_stack_t::top(),
+                    std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor)};
 }
 
 offset_domain_t offset_domain_t::bottom() {
@@ -264,9 +263,9 @@ offset_domain_t offset_domain_t::bottom() {
 }
 
 void offset_domain_t::set_to_top() {
+    m_is_bottom = false;
     m_registers.set_to_top();
     m_stack.set_to_top();
-    m_is_bottom = false;
 }
 
 void offset_domain_t::set_to_bottom() {
@@ -305,28 +304,22 @@ void offset_domain_t::operator|=(offset_domain_t&& abs) {
 offset_domain_t offset_domain_t::operator|(const offset_domain_t& other) const {
     if (is_bottom() || other.is_top()) {
         return other;
-    }
-    else if (other.is_bottom() || is_top()) {
+    } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return offset_domain_t(
-            m_registers | other.m_registers,
-            m_stack | other.m_stack,
-            m_ctx
-    );
+    return offset_domain_t(m_registers | other.m_registers, m_stack | other.m_stack, m_ctx);
 }
 
 offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
     if (is_bottom() || other.is_top()) {
         return std::move(other);
-    }
-    else if (other.is_bottom() || is_top()) {
+    } else if (other.is_bottom() || is_top()) {
         return *this;
     }
     return offset_domain_t(
-            m_registers | std::move(other.m_registers),
-            m_stack | std::move(other.m_stack),
-            m_ctx
+        m_registers | std::move(other.m_registers),
+        m_stack | std::move(other.m_stack),
+        std::move(m_ctx)
     );
 }
 

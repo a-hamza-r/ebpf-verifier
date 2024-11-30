@@ -7,12 +7,10 @@
 namespace crab {
 
 bool inference_domain_t::is_bottom() const {
-    if (m_is_bottom) return true;
     return (m_region.is_bottom() || m_offset.is_bottom() || m_interval.is_bottom());
 }
 
 bool inference_domain_t::is_top() const {
-    if (m_is_bottom) return false;
     return (m_region.is_top() && m_offset.is_top() && m_interval.is_top());
 }
 
@@ -23,14 +21,12 @@ inference_domain_t inference_domain_t::bottom() {
 }
 
 void inference_domain_t::set_to_bottom() {
-    m_is_bottom = true;
     m_region.set_to_bottom();
     m_offset.set_to_bottom();
     m_interval.set_to_bottom();
 }
 
 void inference_domain_t::set_to_top() {
-    m_is_bottom = false;
     m_region.set_to_top();
     m_offset.set_to_top();
     m_interval.set_to_top();
@@ -52,32 +48,21 @@ void inference_domain_t::operator|=(const inference_domain_t& abs) {
     operator|=(std::move(tmp));
 }
 
-void inference_domain_t::operator|=(inference_domain_t&& abs) {
+void inference_domain_t::operator|=(inference_domain_t&& other) {
     if (is_bottom()) {
-        *this = abs;
+        *this = std::move(other);
         return;
     }
-    *this = *this | std::move(abs);
+    if (other.is_bottom()) return;
+    *this = *this | std::move(other);
 }
 
 inference_domain_t inference_domain_t::operator|(const inference_domain_t& other) const {
-    if (is_bottom() || other.is_top()) {
-        return other;
-    }
-    else if (other.is_bottom() || is_top()) {
-        return *this;
-    }
     return inference_domain_t(m_region | other.m_region, m_offset | other.m_offset,
             m_interval | other.m_interval);
 }
 
 inference_domain_t inference_domain_t::operator|(inference_domain_t&& other) const {
-    if (is_bottom() || other.is_top()) {
-        return std::move(other);
-    }
-    else if (other.is_bottom() || is_top()) {
-        return *this;
-    }
     return inference_domain_t(m_region | std::move(other.m_region),
             m_offset | std::move(other.m_offset),
             m_interval | std::move(other.m_interval));
@@ -573,11 +558,11 @@ void inference_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
 }
 
 inference_domain_t inference_domain_t::setup_entry(bool init_r1) {
-    auto&& reg = crab::region_domain_t::setup_entry(init_r1);
-    auto&& off = offset_domain_t::setup_entry();
-    auto&& interval = interval_domain_t::setup_entry();
-    inference_domain_t typ(std::move(reg), std::move(off), std::move(interval));
-    return typ;
+    return inference_domain_t{
+        region_domain_t::setup_entry(init_r1),
+        offset_domain_t::setup_entry(),
+        interval_domain_t::setup_entry()
+    };
 }
 
 void inference_domain_t::operator()(const Bin& bin, location_t loc) {

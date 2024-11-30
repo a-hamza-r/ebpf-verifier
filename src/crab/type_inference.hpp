@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "crab/region_domain.hpp"
-#include "crab/interval_domain.hpp"
-#include "crab/offset_domain.hpp"
-#include "crab/type_ostream.hpp"
+#include "region_domain.hpp"
+#include "interval_domain.hpp"
+#include "offset_domain.hpp"
+#include "type_ostream.hpp"
 
 namespace crab {
 
@@ -14,17 +14,12 @@ class inference_domain_t final {
     region_domain_t m_region;
     offset_domain_t m_offset;
     interval_domain_t m_interval;
-    bool m_is_bottom = false;
     std::vector<std::string> m_errors;
 
   public:
 
     inference_domain_t() = default;
-    inference_domain_t(inference_domain_t&& o) = default;
-    inference_domain_t(const inference_domain_t& o) = default;
-    inference_domain_t& operator=(inference_domain_t&& o) = default;
-    inference_domain_t& operator=(const inference_domain_t& o) = default;
-    explicit inference_domain_t(region_domain_t region, offset_domain_t offset,
+    inference_domain_t(region_domain_t region, offset_domain_t offset,
             interval_domain_t interval) :
         m_region(std::move(region)), m_offset(std::move(offset)), m_interval(std::move(interval)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.

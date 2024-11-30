@@ -101,7 +101,7 @@ void unsigned_interval_stack_t::set_to_bottom() {
 }
 
 unsigned_interval_stack_t unsigned_interval_stack_t::top() {
-    return unsigned_interval_stack_t(false);
+    return unsigned_interval_stack_t();
 }
 
 std::optional<unsigned_interval_stack_cell_t> unsigned_interval_stack_t::find(uint64_t key) const {

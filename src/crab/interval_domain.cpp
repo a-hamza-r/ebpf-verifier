@@ -7,12 +7,10 @@
 namespace crab {
 
 bool interval_domain_t::is_bottom() const {
-    if (m_is_bottom) return true;
     return (m_signed.is_bottom() || m_unsigned.is_bottom());
 }
 
 bool interval_domain_t::is_top() const {
-    if (m_is_bottom) return false;
     return (m_signed.is_top() && m_unsigned.is_top());
 }
 
@@ -23,13 +21,11 @@ interval_domain_t interval_domain_t::bottom() {
 }
 
 void interval_domain_t::set_to_bottom() {
-    m_is_bottom = true;
     m_signed.set_to_bottom();
     m_unsigned.set_to_bottom();
 }
 
 void interval_domain_t::set_to_top() {
-    m_is_bottom = false;
     m_signed.set_to_top();
     m_unsigned.set_to_top();
 }
@@ -163,24 +159,12 @@ void interval_domain_t::operator|=(interval_domain_t&& abs) {
 }
 
 interval_domain_t interval_domain_t::operator|(const interval_domain_t& other) const {
-    if (is_bottom() || other.is_top()) {
-        return other;
-    }
-    else if (other.is_bottom() || is_top()) {
-        return *this;
-    }
     return interval_domain_t(m_signed | other.m_signed, m_unsigned | other.m_unsigned);
 }
 
 interval_domain_t interval_domain_t::operator|(interval_domain_t&& other) const {
-    if (is_bottom() || other.is_top()) {
-        return std::move(other);
-    }
-    else if (other.is_bottom() || is_top()) {
-        return *this;
-    }
-    return interval_domain_t(
-            m_signed | std::move(other.m_signed), m_unsigned | std::move(other.m_unsigned));
+    return interval_domain_t(m_signed | std::move(other.m_signed),
+                             m_unsigned | std::move(other.m_unsigned));
 }
 
 interval_domain_t interval_domain_t::operator&(const interval_domain_t& abs) const {
@@ -212,10 +196,10 @@ string_invariant interval_domain_t::to_set() {
 }
 
 interval_domain_t interval_domain_t::setup_entry() {
-    auto&& _signed = signed_interval_domain_t::setup_entry();
-    auto&& _unsigned = unsigned_interval_domain_t::setup_entry();
-    interval_domain_t interval(std::move(_signed), std::move(_unsigned));
-    return interval;
+    return interval_domain_t{
+        std::move(signed_interval_domain_t::setup_entry()),
+        std::move(unsigned_interval_domain_t::setup_entry())
+    };
 }
 
 void interval_domain_t::overflow_bounds(const register_t& lhs, number_t span, const int finite_width, location_t loc, bool is_signed) {

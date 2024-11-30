@@ -16,13 +16,10 @@ using ptr_or_mapfd_stack_cell_t = std::pair<ptr_or_mapfd_t, int>;
 class region_stack_t {
     using ptr_or_mapfd_stack_cells_t = std::map<uint64_t, ptr_or_mapfd_stack_cell_t>;
     ptr_or_mapfd_stack_cells_t m_cells;
-    bool m_is_bottom;
+    bool m_is_bottom = false;
 
   public:
-    region_stack_t(bool is_bottom = false) : m_is_bottom(is_bottom) {}
-    region_stack_t(ptr_or_mapfd_stack_cells_t&& cells, bool is_bottom)
-    : m_cells(std::move(cells)) , m_is_bottom(is_bottom) {}
-    
+    region_stack_t() = default;
     region_stack_t operator|(const region_stack_t& other) const;
     void operator-=(uint64_t);
     void operator-=(const std::vector<uint64_t>&);
@@ -49,14 +46,10 @@ class region_registers_t {
     bool m_is_bottom = false;
 
   public:
-    region_registers_t(bool is_bottom = false) : m_registers_env(nullptr), m_is_bottom(is_bottom) {}
-    explicit region_registers_t(live_registers_t&& vars,
-            std::shared_ptr<global_env_region_registers_t> registers_env, bool is_bottom = false)
-        : m_cur_register_def(std::move(vars)), m_registers_env(registers_env), m_is_bottom(is_bottom) {}
-
+    region_registers_t() = default;
     explicit region_registers_t(std::shared_ptr<global_env_region_registers_t> registers_env,
             bool is_bottom = false)
-        : m_registers_env(registers_env), m_is_bottom(is_bottom) {}
+        : m_registers_env(std::move(registers_env)), m_is_bottom(is_bottom) {}
 
     region_registers_t operator|(const region_registers_t& other) const;
     void operator-=(register_t var);
@@ -86,16 +79,12 @@ class region_domain_t final {
   public:
 
     region_domain_t() = default;
-    region_domain_t(region_domain_t&& o) = default;
-    region_domain_t(const region_domain_t& o) = default;
-    region_domain_t& operator=(region_domain_t&& o) = default;
-    region_domain_t& operator=(const region_domain_t& o) = default;
-    explicit region_domain_t(crab::region_registers_t&& _types, crab::region_stack_t&& _st,
-            shared_ptr_aliases_t&& _shared_ptr_aliases = {})
-            : m_stack(std::move(_st)), m_registers(std::move(_types)),
-            m_shared_ptr_aliases(std::move(_shared_ptr_aliases)) {}
+    region_domain_t(region_registers_t registers, region_stack_t stack,
+            shared_ptr_aliases_t shared_ptr_aliases = {})
+            : m_stack(std::move(stack)), m_registers(std::move(registers)),
+            m_shared_ptr_aliases(std::move(shared_ptr_aliases)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
-    static region_domain_t&& setup_entry(bool);
+    static region_domain_t setup_entry(bool);
     // bottom/top
     static region_domain_t bottom();
     void set_to_top();
