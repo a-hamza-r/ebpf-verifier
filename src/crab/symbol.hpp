@@ -7,35 +7,33 @@
 
 namespace crab {
 
-using index_t = int64_t;
-
 class symbol_t final {
-    index_t _id;
+    uint64_t _id;
 
-    explicit symbol_t(index_t id) : _id(id) {}
+    explicit symbol_t(uint64_t id) : _id(id) {}
 
   public:
-    [[nodiscard]] std::size_t hash() const { return (size_t)_id; }
+    [[nodiscard]] std::size_t hash() const { return _id; }
     bool operator==(symbol_t o) const { return _id == o._id; }
     bool operator!=(symbol_t o) const { return (!(operator==(o))); }
     bool operator<(symbol_t o) const { return _id < o._id; }
     bool operator>(symbol_t o) const { return _id > o._id; }
-    operator int64_t() const { return _id; }
+    operator uint64_t() const { return _id; }
 
   private:
-    static int64_t count;
+    static uint64_t count;
 
   public:
     static symbol_t begin()     { return symbol_t(0); }
     static symbol_t end()       { return symbol_t(1); }
     static symbol_t meta()      { return symbol_t(2); }
-    static symbol_t nu()        { return symbol_t(3); }
+    //static symbol_t nu()        { return symbol_t(3); }
     static symbol_t make()      { return symbol_t(count++); }
-    bool is_nu() const { return *this == symbol_t::nu(); }
+    //bool is_nu() const { return *this == symbol_t::nu(); }
     bool is_meta() const { return *this == symbol_t::meta(); }
     bool is_end() const { return *this == symbol_t::end(); }
     bool is_begin() const { return *this == symbol_t::begin(); }
-    bool is_slack() const { return _id >= 4; }
+    bool is_slack() const { return _id >= 3; }
     void write(std::ostream& o) const;
     friend std::ostream& operator<<(std::ostream& o, const symbol_t& s);
 

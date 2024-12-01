@@ -5,121 +5,63 @@
 
 namespace crab {
 
-constexpr int PROPAGATE_INEQUALITIES = 2;
-
-static void propagate_inequalities(std::vector<constraint_t>& constraints_to_check) {
-    std::vector<constraint_t> new_constraints;
-    for (int i = 0; i < (int)constraints_to_check.size()-1; i++) {
-        for (int j = i + 1; j < (int)constraints_to_check.size(); j++) {
-            auto c1 = constraints_to_check[i];
-            auto c2 = constraints_to_check[j];
-            expression_t lhs1 = c1.get_lhs();
-            expression_t rhs1 = c1.get_rhs();
-            expression_t lhs2 = c2.get_lhs();
-            expression_t rhs2 = c2.get_rhs();
-            if (rhs1.is_singleton()) {
-                symbol_t y = rhs1.get_singleton();
-                if (lhs2.contains(y)) {
-                    expression_t new_lhs2 = lhs2.substitute(y, lhs1);
-                    new_constraints.push_back(constraint_t(new_lhs2, rhs2));
-                }
-            }
-            if (rhs2.is_singleton()) {
-                symbol_t y = rhs2.get_singleton();
-                if (lhs1.contains(y)) {
-                    expression_t new_lhs1 = lhs1.substitute(y, lhs2);
-                    new_constraints.push_back(constraint_t(new_lhs1, rhs1));
-                }
-            }
-        }
-    }
-    constraints_to_check.insert(constraints_to_check.end(),
-            new_constraints.begin(), new_constraints.end());
-}
-
 std::ostream& operator<<(std::ostream& o, const refinement_t& r) {
     r.write(o);
     return o;
 }
 
-bool refinement_t::is_bottom() {
-    std::vector<constraint_t> constraints_to_check = _constraints;
-    int i = 0;
-    while (i <= PROPAGATE_INEQUALITIES) {
-        for (constraint_t c : constraints_to_check) {
-            for (constraint_t c1 : constraints_to_check) {
-                c.normalize();  c1.normalize();
-                auto lhs = c.get_lhs();
-                auto lhs1 = c1.get_lhs();
-                auto add = lhs + lhs1;
-                // if we can derive a contradiction, then the refinement is bottom
-                // e.g., 5 <= 0
-                if (add.is_greater_than(expression_t(0))) {
-                    return true;
-                }
-            }
-        }
-        if (i < PROPAGATE_INEQUALITIES) {
-            propagate_inequalities(constraints_to_check);
-        }
-        i++;
-    }
-    return false;
+bool refinement_t::is_numeric_refinement() const {
+    return _type == refinement_type_t::NUM;
 }
 
-bool refinement_t::has_value(refinement_t&& other) const {
-    return (_type == other._type && _value == other._value);
+bool refinement_t::is_packet_refinement() const {
+    return _type == refinement_type_t::PACKET;
+}
+
+std::map<symbol_t, mock_interval_t> refinement_t::get_slack_intervals() const {
+    std::map<symbol_t, mock_interval_t> slack_intervals = _value.get_slack_intervals();
+    if (has_constraints) {
+        slack_intervals.merge(meta_begin_constraint.get_slack_intervals());
+        slack_intervals.merge(begin_end_constraint.get_slack_intervals());
+    }
+    return slack_intervals;
 }
 
 void refinement_t::write(std::ostream& o) const {
-    o << "{" << symbol_t::nu() << " : ";
-    if (_type == refinement_type_t::NUM) {
+    std::map<symbol_t, mock_interval_t> slack_intervals = get_slack_intervals();
+    bool has_extra_info = has_constraints || !slack_intervals.empty();
+    if (has_extra_info) o << "{";
+    if (is_numeric_refinement()) {
         o << "num<" << _value << ">";
     }
-    else if (_type == refinement_type_t::PACKET) {
+    else if (is_packet_refinement()) {
         o << "pkt<" << _value << ">";
     }
     else {
         o << "_";
     }
-    std::vector<std::pair<symbol_t, interval_t>> slack_intervals = _value.get_slack_intervals();
-    if (!_constraints.empty() || !slack_intervals.empty()) {
-        o << " | ";
+    if (has_extra_info) o << " | ";
+    if (has_constraints) {
+        o << meta_begin_constraint << " & " << begin_end_constraint;
     }
-    if (!_constraints.empty()) {
-        for (size_t i = 0; i < _constraints.size(); i++) {
-            auto c = _constraints[i];
-            auto c_slack_intervals = c.get_slack_intervals();
-            slack_intervals.insert(slack_intervals.end(), c_slack_intervals.begin(),
-                    c_slack_intervals.end());
-            o << _constraints[i];
-            if (i < _constraints.size() - 1) {
-                o << " & ";
-            }
-        }
+    size_t i = 0;
+    size_t n = slack_intervals.size();
+    if (n > 0 && has_constraints) {
+        o << " & ";
     }
-    std::set<symbol_t> seen;
-    if (!slack_intervals.empty()) {
-        if (!_constraints.empty()) {
+    for (auto [s, mock_interv] : slack_intervals) {
+        o << s << " in " << mock_interv.to_interval();
+        if (i < n - 1) {
             o << " & ";
         }
-        for (auto [s, i] : slack_intervals) {
-            if (seen.find(s) != seen.end()) {
-                continue;
-            }
-            o << s << " in " << i;
-            seen.insert(s);
-            if (s != slack_intervals.back().first) {
-                o << " & ";
-            }
-        }
+        i++;
     }
-    o << "}";
+    if (has_extra_info) o << "}";
 }
 
 refinement_t refinement_t::operator+(interval_t i) const {
     expression_t added_value = _value + i;
-    return refinement_t(_type, added_value, _constraints);
+    return refinement_t(_type, added_value);
 }
 
 refinement_t refinement_t::operator+(int n) const {
@@ -128,178 +70,152 @@ refinement_t refinement_t::operator+(int n) const {
 
 refinement_t refinement_t::operator+(const refinement_t &other) const {
     expression_t new_value = _value + other._value;
-    std::vector<crab::constraint_t> new_constraints;
-    new_constraints.insert(new_constraints.end(), _constraints.begin(), _constraints.end());
-    new_constraints.insert(new_constraints.end(),
-            other._constraints.begin(), other._constraints.end());
     refinement_type_t new_type = (_type == other._type) ? _type
         : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET)
           ? refinement_type_t::PACKET : refinement_type_t::ANY;
-    return refinement_t(new_type, new_value, new_constraints);
+    return refinement_t(new_type, new_value);
 }
 
 // use the constraints to compute a value for the subtraction, if possible
-interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const symbol_t& src,
-        const std::vector<constraint_t>& constraints) const {
+interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const symbol_t& src) const {
     bound_t max_packet_size = bound_t{number_t{MAX_PACKET_SIZE}};
-    bound_t max_meta_size = bound_t{number_t{4098}};
+    bound_t max_meta_size = bound_t{number_t{MAX_META_SIZE}};
     bound_t zero = bound_t{number_t{0}};
     symbol_t begin = symbol_t::begin();
     symbol_t end = symbol_t::end();
     symbol_t meta = symbol_t::meta();
 
-    if (src != begin && src != meta && src != end && dst != begin && dst != meta && dst != end) {
+    if (dst == meta && src == begin) {
+        // compute meta - begin
+        interval_t i = meta_begin_constraint.compute_subtraction(meta, begin);
+        return i & interval_t{-max_meta_size, zero};
+    }
+    else if (dst == begin && src == meta) {
+        // compute begin - meta
+        interval_t i = meta_begin_constraint.compute_subtraction(begin, meta);
+        return i & interval_t{zero, max_meta_size};
+    }
+    else if (dst == end && src == begin) {
+        // compute end - begin
+        interval_t i = begin_end_constraint.compute_subtraction(end, begin);
+        return i & interval_t{zero, max_packet_size};
+    }
+    else if (dst == begin && src == end) {
+        // compute begin - end
+        interval_t i = begin_end_constraint.compute_subtraction(begin, end);
+        return i & interval_t{-max_packet_size, zero};
+    }
+    else if (dst == end && src == meta) {
+        // compute end - meta
+        constraint_t meta_end_constraint = construct_meta_end_constraint();
+        interval_t i = meta_end_constraint.compute_subtraction(end, meta);
+        return i & interval_t{zero, max_meta_size + max_packet_size};
+    }
+    else if (dst == meta && src == end) {
+        // compute meta - end
+        constraint_t meta_end_constraint = construct_meta_end_constraint();
+        interval_t i = meta_end_constraint.compute_subtraction(meta, end);
+        return i & interval_t{-max_meta_size - max_packet_size, zero};
+    }
+    else {
         // We currently only support subtraction between begin, meta, and end
         return interval_t::top();
     }
+}
 
-    // we can do better in case both end and meta are involved, but for now we should be okay
-    if (dst == end && src == meta) {
-        return interval_t{zero, max_meta_size + max_packet_size};
+static constraint_t solve_constraints(constraint_t c1, constraint_t c2) {
+    // We are adding c2 to a system already containing c1
+    if (c1.is_unsat(c2)) {
+        // c1 and c2 are unsatisfiable
+        // e.g., c1 := begin + 14 <= end and c2 := begin + 14 > end
+        return constraint_t::get_false();
     }
-    else if (dst == meta && src == end) {
-        return interval_t{-(max_meta_size + max_packet_size), zero};
+    if (c1.implies(c2)) {
+        // c1 implies c2, so c2 is a weaker constraint. We keep c1.
+        // e.g., c1 := begin + 14 <= end and c2 := begin + 12 <= end
+        return c1;
     }
-    // we only have cases (begin, meta), and (begin, end) left
-    bound_t max_size = (dst == meta || src == meta) ? max_meta_size : max_packet_size;
+    if (c2.implies(c1)) {
+        // c2 implies c1, so c1 is a weaker constraint. We keep c2.
+        // e.g., c1 := begin + 14 <= end and c2 := begin + 18 <= end
+        return c2;
+    }
+    // c1 and c2 are not comparable, i.e., c2 is providing information not affecting c1
+    // e.g., c1 := begin + 14 <= end and c2 := begin + 18 > end
+    return c1;
+}
 
-    interval_t result = interval_t::top();
-    for (constraint_t c : constraints) {
-        c.normalize();
-        expression_t lhs = c.get_lhs();
-        if (lhs.contains(dst) && lhs.contains(src)) {
-            symbol_terms_t terms = lhs.get_symbol_terms();
-            if (terms.size() == 2) {
-                if (terms[dst] == 1 && terms[src] == -1) {
-                    // dst - src + [lb, ub] <= 0 -> dst - src <= -lb
-                    interval_t lhs_interval = lhs.get_constant_term();
-                    result = result & interval_t{-max_size, -lhs_interval.lb()};
-                }
-                else if (terms[dst] == -1 && terms[src] == 1) {
-                    // src - dst + [lb, ub] <= 0 -> dst - src >= lb
-                    interval_t lhs_interval = lhs.get_constant_term();
-                    result = result & interval_t{lhs_interval.lb(), max_size};
-                }
-            }
-        }
+void refinement_t::add_constraint(constraint_t c) {
+    if (c.is_meta_begin_constraint()) {
+        meta_begin_constraint = solve_constraints(meta_begin_constraint, std::move(c));
     }
-    // If no constraints were found, we can still infer some bounds
-    if (result == interval_t::top()) {
-        if (src == end)
-            result = interval_t{-max_packet_size, zero};
-        else if (dst == end)
-            result = interval_t{zero, max_packet_size};
-        else if (src == meta)
-            result = interval_t{zero, max_meta_size};
-        else if (dst == meta)
-            result = interval_t{-max_meta_size, zero};
+    else if (c.is_begin_end_constraint()) {
+        begin_end_constraint = solve_constraints(begin_end_constraint, std::move(c));
     }
-    return result;
 }
 
 refinement_t refinement_t::operator-(const refinement_t &other) const {
-    expression_t new_value = _value + other._value.negate();
-    std::vector<crab::constraint_t> new_constraints;
-    new_constraints.insert(new_constraints.end(), _constraints.begin(), _constraints.end());
-    new_constraints.insert(new_constraints.end(),
-            other._constraints.begin(), other._constraints.end());
+    expression_t new_value = _value - other._value;
     refinement_type_t new_type = (_type == other._type) ? refinement_type_t::NUM
         : (_type == refinement_type_t::PACKET || other._type == refinement_type_t::PACKET)
           ? refinement_type_t::PACKET : refinement_type_t::ANY;
-    return refinement_t(new_type, new_value, new_constraints);
+    return refinement_t(new_type, new_value);
 }
 
 bool refinement_t::same_type(const refinement_t &other) const {
-    return _type == other._type;
+    return _type == other._type && _type != refinement_type_t::ANY;
 }
 
 refinement_t refinement_t::operator|(const refinement_t &other) const {
-    assert(same_type(other));
-    auto joined_value = _value | other._value;
-    std::vector<crab::constraint_t> new_constraints;
-    std::set<int> to_keep, to_keep1;
-    for (size_t i = 0; i < _constraints.size(); i++) {
-        for (size_t j = 0; j < other._constraints.size(); j++) {
-            auto c = _constraints[i];
-            auto c1 = other._constraints[j];
-            auto lhs = c.get_lhs();
-            auto lhs1 = c1.get_lhs();
-            if (lhs.is_equal(lhs1)) {
-                to_keep.insert(i);
-            }
-            else if (lhs.is_less_than(lhs1)) {
-                to_keep.insert(i);
-            }
-            else if (lhs1.is_less_than(lhs)) {
-                to_keep1.insert(j);
-            }
-        }
+    if (!has_constraints) {
+        return refinement_t(_type, _value | other._value);
     }
-    for (size_t i = 0; i < _constraints.size(); i++) {
-        if (to_keep.find(i) != to_keep.end()) {
-            new_constraints.push_back(_constraints[i]);
-        }
-    }
-    for (size_t i = 0; i < other._constraints.size(); i++) {
-        if (to_keep1.find(i) != to_keep1.end()) {
-            new_constraints.push_back(other._constraints[i]);
-        }
-    }
-    return refinement_t(_type, joined_value, new_constraints);
+    return refinement_t(_type, _value | other._value,
+                        meta_begin_constraint | other.meta_begin_constraint,
+                        begin_end_constraint | other.begin_end_constraint);
 }
 
 constraint_t refinement_t::operator<=(const refinement_t &other) const {
-    assert(same_type(other));
     return constraint_t(_value, other._value);
 }
 
 constraint_t refinement_t::operator>(const refinement_t &other) const {
-    assert(same_type(other));
-    return constraint_t(other._value, _value + (-1));
+    return operator<=(other).negate();
 }
 
-void refinement_t::add_constraint(constraint_t&& c, bool remove_redundant) {
-    auto c_copy = c;
-    c_copy.normalize();
-    if (remove_redundant) {
-        // remove redundant constraints
-        for (auto it = _constraints.begin(); it != _constraints.end();) {
-            auto c1 = *it;
-            c1.normalize();
-            // already contains the same constraint
-            if (c1.get_lhs().is_equal(c_copy.get_lhs())) {
-                return;
-            }
-            // found a stronger constraint
-            // e.g., begin + 14 <= end & begin + 34 <= end -> begin + 34 <= end
-            if (c1.get_lhs().is_less_than(c_copy.get_lhs())) {
-                it = _constraints.erase(it);
-            }
-            // found a weaker constraint
-            else if (c_copy.get_lhs().is_less_than(c1.get_lhs())) {
-                return;
-            }
-            else {
-                it++;
-            }
-        }
+constraint_t refinement_t::construct_meta_end_constraint() const {
+    return meta_begin_constraint + begin_end_constraint;
+}
+
+bool refinement_t::check_consistent(const constraint_t& c) const {
+    if (c.is_bottom()) {
+        return false;
     }
-    _constraints.push_back(std::move(c));
+    else if (c.is_top()) {
+        return true;
+    }
+    else if (c.is_begin_end_constraint()) {
+        return begin_end_constraint.implies(c);
+    }
+    else if (c.is_meta_begin_constraint()) {
+        return meta_begin_constraint.implies(c);
+    }
+    else {
+        return construct_meta_end_constraint().implies(c);
+    }
 }
 
-bool refinement_t::is_safe_with(refinement_t begin, bool is_comparison_check) const {
-    refinement_t check_lb = begin;
-    auto lb = constraint_t(expression_t::meta(), _value);
-    constraint_t neg_lb = lb.negate();
-    check_lb.add_constraint(std::move(neg_lb), false);
-    bool lb_satisfied = check_lb.is_bottom();
+bool refinement_t::safe_access(const expression_t& access_lb, const expression_t& access_ub,
+                               bool is_comparison_check) const {
+    // access is at least meta
+    constraint_t lb = constraint_t(expression_t::meta(), access_lb);
+    bool lb_satisfied = check_consistent(lb);
 
-    refinement_t check_ub = std::move(begin);
-    auto ub = is_comparison_check ? constraint_t(_value, expression_t(interval_t{MAX_PACKET_SIZE}))
-        : constraint_t(_value, expression_t::end());
-    constraint_t neg_ub = ub.negate();
-    check_ub.add_constraint(std::move(neg_ub), false);
-    bool ub_satisfied = check_ub.is_bottom();
+    // access is at most end or MAX_PACKET_SIZE, depending on the check
+    constraint_t ub = is_comparison_check ?
+        constraint_t(access_ub, expression_t(interval_t{MAX_PACKET_SIZE}))
+        : constraint_t(access_ub, expression_t::end());
+    bool ub_satisfied = check_consistent(ub);
 
     return lb_satisfied && ub_satisfied;
 }

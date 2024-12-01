@@ -11,6 +11,8 @@ namespace crab {
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
 using global_env_offset_registers_t = std::unordered_map<register_location_t, refinement_t>;
 
+constexpr uint8_t BEGIN_REG = 12;
+
 class offset_registers_t {
 
     live_registers_t m_cur_register_def;
@@ -25,7 +27,7 @@ class offset_registers_t {
             : m_registers_env(registers_env), m_slacks(slacks) {
 
             if (data_pos >= 0) {
-                insert(register_t{12}, location_t{label_t::entry, 0}, refinement_t::begin());
+                insert(BEGIN_REG, location_t{label_t::entry, 0}, refinement_t::begin(true));
             }
         }
         offset_registers_t operator|(const offset_registers_t&) const;

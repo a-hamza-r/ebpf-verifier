@@ -1,3 +1,5 @@
+// Copyright (c) Prevail Verifier contributors.
+// SPDX-License-Identifier: MIT
 
 #include "expression.hpp"
 
@@ -9,14 +11,23 @@ std::ostream& operator<<(std::ostream& o, const expression_t& e) {
 }
 
 // get values for all slack variables in the expression
-std::vector<std::pair<symbol_t, interval_t>> expression_t::get_slack_intervals() const {
-    std::vector<std::pair<symbol_t, interval_t>> slack_intervals;
+std::map<symbol_t, mock_interval_t> expression_t::get_slack_intervals() const {
+    std::map<symbol_t, mock_interval_t> slack_intervals;
     for (const auto &term : _symbol_terms) {
         if (term.first.is_slack()) {
-            slack_intervals.push_back({term.first, (*_slacks)[term.first].to_interval()});
+            // assuming that there are no conflicting values
+            slack_intervals[term.first] = (*_slacks)[term.first];
         }
     }
     return slack_intervals;
+}
+
+int8_t expression_t::get_coefficient(const symbol_t &s) const {
+    auto it = _symbol_terms.find(s);
+    if (it != _symbol_terms.end()) {
+        return it->second;
+    }
+    return 0;
 }
 
 // get an equivalent expression with all slack variables replaced by their values
@@ -33,44 +44,72 @@ expression_t expression_t::get_equivalent_expression() const {
     return expression_t(symbol_terms, value, _slacks);
 }
 
-// check if two expressions are equal, by getting equivalent expressions and comparing them
-bool expression_t::is_equal(const expression_t &other) const {
-    return get_equivalent_expression() == other.get_equivalent_expression();
+template <typename T, typename Op>
+static bool check_op(const symbol_terms_t& s1, const symbol_terms_t& s2, const T& op1, const T& op2,
+                     Op op) {
+    return s1 == s2 && op(op1, op2);
 }
 
-// check less than
-bool expression_t::is_less_than(const expression_t &other) const {
-    return get_equivalent_expression() < other.get_equivalent_expression();
-}
-
-// check less than or equal
-bool expression_t::is_less_or_equal(const expression_t &other) const {
-    return get_equivalent_expression() <= other.get_equivalent_expression();
-}
-
-// check greater than
-bool expression_t::is_greater_than(const expression_t &other) const {
-    return get_equivalent_expression() > other.get_equivalent_expression();
-}
-
-// syntactic equality
+// equality
 bool expression_t::operator==(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _constant_term == other._constant_term;
+    auto check = [](const interval_t &a, const interval_t &b) { return a == b; };
+    if (check_op(_symbol_terms, other._symbol_terms, _constant_term, other._constant_term, check)) {
+        // syntactic equality
+        return true;
+    }
+    // check if two expressions are equal, by getting equivalent expressions and comparing them
+    expression_t e1 = get_equivalent_expression();
+    expression_t e2 = other.get_equivalent_expression();
+    if (check_op(e1._symbol_terms, e2._symbol_terms, e1._constant_term, e2._constant_term, check)) {
+        return true;
+    }
+    // expressions might still be equal, however, we can't prove it as it contains packet symbols
+    return false;
 }
 
-// syntactic less than
+// less than
 bool expression_t::operator<(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _constant_term.ub() < other._constant_term.lb();
+    auto check = [](const bound_t &a, const bound_t &b) { return a < b; };
+    if (check_op(_symbol_terms, other._symbol_terms, _constant_term.ub(), other._constant_term.lb(), check)) {
+        return true;
+    }
+    expression_t e1 = get_equivalent_expression();
+    expression_t e2 = other.get_equivalent_expression();
+    if (check_op(e1._symbol_terms, e2._symbol_terms, e1._constant_term.ub(), e2._constant_term.lb(), check)) {
+        return true;
+    }
+    // we cannot prove that one expression is less than the other, as they contain packet symbols
+    return false;
 }
 
-// syntactic less than or equal
+// less than or equal
 bool expression_t::operator<=(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _constant_term.ub() <= other._constant_term.lb();
+    auto check = [](const bound_t &a, const bound_t &b) { return a <= b; };
+    if (check_op(_symbol_terms, other._symbol_terms, _constant_term.ub(), other._constant_term.lb(), check)) {
+        return true;
+    }
+    expression_t e1 = get_equivalent_expression();
+    expression_t e2 = other.get_equivalent_expression();
+    if (check_op(e1._symbol_terms, e2._symbol_terms, e1._constant_term.ub(), e2._constant_term.lb(), check)) {
+        return true;
+    }
+    // we cannot prove that one expression is less than or equal to the other, as they contain packet symbols
+    return false;
 }
 
-// syntactic greater than
+// greater than
 bool expression_t::operator>(const expression_t &other) const {
-    return _symbol_terms == other._symbol_terms && _constant_term.lb() > other._constant_term.ub();
+    auto check = [](const bound_t &a, const bound_t &b) { return a > b; };
+    if (check_op(_symbol_terms, other._symbol_terms, _constant_term.lb(), other._constant_term.ub(), check)) {
+        return true;
+    }
+    expression_t e1 = get_equivalent_expression();
+    expression_t e2 = other.get_equivalent_expression();
+    if (check_op(e1._symbol_terms, e2._symbol_terms, e1._constant_term.lb(), e2._constant_term.ub(), check)) {
+        return true;
+    }
+    // we cannot prove that one expression is greater than the other, as they contain packet symbols
+    return false;
 }
 
 // check if an expression contains a single symbol, which can be slack or not
@@ -103,26 +142,6 @@ static void insert(symbol_terms_t &terms, const std::pair<symbol_t, int8_t>& kv)
     }
 }
 
-// substitute a symbol in an expression with another expression
-expression_t expression_t::substitute(const symbol_t &from, const expression_t &to) const {
-    expression_t result = *this;
-    auto it = result._symbol_terms.find(from);
-    if (it != result._symbol_terms.end()) {
-        result._symbol_terms.erase(it);
-        result = result + to;
-    }
-    return result;
-}
-
-// negate an expression, and return it
-expression_t expression_t::negate() const {
-    symbol_terms_t new_terms;
-    for (const auto &term : _symbol_terms) {
-        new_terms[term.first] = -term.second;
-    }
-    return expression_t(new_terms, -_constant_term, _slacks);
-}
-
 // add two expressions, and return the result
 expression_t expression_t::operator+(const expression_t &other) const {
     auto new_terms = _symbol_terms;
@@ -138,23 +157,29 @@ expression_t expression_t::operator+(interval_t constant) const {
     return expression_t(_symbol_terms, _constant_term + constant, _slacks);
 }
 
+// subtract an expression from another, and return the result
+expression_t expression_t::operator-(const expression_t &other) const {
+    auto new_terms = _symbol_terms;
+    for (const auto &term : other._symbol_terms) {
+        insert(new_terms, {term.first, -term.second});
+    }
+    auto slacks = _slacks == nullptr ? other._slacks : _slacks;
+    return expression_t(new_terms, _constant_term - other._constant_term, slacks);
+}
+
 // add an integer to an expression, and return the result
 expression_t expression_t::operator+(int n) const {
     return operator+(interval_t{n});
 }
 
 expression_t expression_t::operator|(const expression_t &other) const {
-    // TODO: support case where there are one slack variable in each expression,
-    // then we can construct a new slack that is the interval of two.
-    // we need to have intervals of slack variables to do this
     auto slacks = _slacks == nullptr ? other._slacks : _slacks;
+    if (slacks == nullptr) {
+        slacks = std::make_shared<slacks_t>();
+    }
     if (*this == other) {
         // both expressions are equal
-        return expression_t(_symbol_terms, _constant_term, slacks);
-    }
-    else if (_symbol_terms == other._symbol_terms) {
-        // both expressions have the same symbol terms, but different constant terms
-        return expression_t(_symbol_terms, _constant_term | other._constant_term, slacks);
+        return *this;
     }
     interval_t constant_term = _constant_term;
     interval_t other_constant_term = other._constant_term;
@@ -177,14 +202,18 @@ expression_t expression_t::operator|(const expression_t &other) const {
         }
     }
     for (const auto &term : other._symbol_terms) {
+        if (new_terms.find(term.first) != new_terms.end()) {
+            // if the symbol is already handled in the previous loop, then we skip it
+            continue;
+        }
         if (term.first.is_slack()) {
-            // if the symbol is a slack variable, it must not be in the first expression else it
-            // would have been handled in the previous loop, hence we resolve its value
+            // the slack variable was not handled before, hence we resolve its value
             other_constant_term = other_constant_term +
                 interval_t{static_cast<int>(term.second)} * (*slacks)[term.first].to_interval();
         }
-        else if (_symbol_terms.find(term.first) == _symbol_terms.end()
-          || term.second != _symbol_terms.at(term.first)) {
+        else {
+            // in case where we have symbols other than slack variables, and either the symbol is not
+            // found in the other expression, or the coefficients are different, we return top
             return expression_t();
         }
     }

@@ -16,6 +16,7 @@ constexpr int CTX_BEGIN = 0;
 constexpr int PACKET_BEGIN = 0;
 constexpr int SHARED_BEGIN = 0;
 constexpr int MAX_PACKET_SIZE = 0xffff;
+constexpr int MAX_META_SIZE = 4098;
 
 
 enum class types_t {

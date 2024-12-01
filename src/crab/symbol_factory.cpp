@@ -8,7 +8,7 @@
 
 namespace crab {
 
-int64_t symbol_t::count = 4;
+uint64_t symbol_t::count = 3;
 
 void symbol_t::write(std::ostream& o) const {
     if (is_begin()) {
@@ -17,10 +17,10 @@ void symbol_t::write(std::ostream& o) const {
         o << "end";
     } else if (is_meta()) {
         o << "meta";
-    } else if (is_nu()) {
-        o << "v";
+    //} else if (is_nu()) {
+    //    o << "v";
     } else {
-        o << "a_" << ((int64_t)_id-4);
+        o << "a_" << ((uint64_t)_id-3);
     }
 }
 
