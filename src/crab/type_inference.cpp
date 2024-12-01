@@ -113,7 +113,7 @@ string_invariant inference_domain_t::to_set() const {
             result.insert(elem.str());
         }
     }
-    std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
+   const std::vector<uint64_t>& stack_keys_region = m_region.get_stack_keys();
     for (auto const& k : stack_keys_region) {
         std::stringstream elem;
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
@@ -134,7 +134,7 @@ string_invariant inference_domain_t::to_set() const {
         result.insert(elem.str());
     }
 
-    std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
+    const std::vector<uint64_t>& stack_keys_interval = m_interval.get_stack_keys();
     for (auto const& k : stack_keys_interval) {
         auto maybe_interval_cells_signed = m_interval.find_in_stack_signed(k);
         if (maybe_interval_cells_signed.has_value()) {
@@ -673,7 +673,7 @@ void inference_domain_t::operator()(const Mem& b, location_t loc) {
 }
 
 void inference_domain_t::print_ctx(std::ostream& o) const {
-    std::vector<uint64_t> ctx_keys = m_offset.get_ctx_keys();
+    const std::vector<uint64_t>& ctx_keys = m_region.get_ctx_keys();
     o << "\tctx: {";
     for (auto const& k : ctx_keys) {
         auto dist = m_offset.find_in_ctx(k);
@@ -687,8 +687,8 @@ void inference_domain_t::print_ctx(std::ostream& o) const {
 }
 
 void inference_domain_t::print_stack(std::ostream& o) const {
-    std::vector<uint64_t> stack_keys_region = m_region.get_stack_keys();
-    std::vector<uint64_t> stack_keys_interval = m_interval.get_stack_keys();
+    const std::vector<uint64_t>& stack_keys_region = m_region.get_stack_keys();
+    const std::vector<uint64_t>& stack_keys_interval = m_interval.get_stack_keys();
     o << "\tstack: {\n";
     for (auto const& k : stack_keys_region) {
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);

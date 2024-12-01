@@ -53,7 +53,7 @@ class unsigned_interval_stack_t {
     void store(uint64_t, mock_interval_t, int);
     void operator-=(uint64_t);
     unsigned_interval_stack_t operator|(const unsigned_interval_stack_t& other) const;
-    std::vector<uint64_t> get_keys() const;
+    [[nodiscard]] std::vector<uint64_t> get_keys() const;
     size_t size() const;
     void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values(const std::vector<uint64_t>&, uint64_t, int);

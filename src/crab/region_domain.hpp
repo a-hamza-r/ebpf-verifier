@@ -13,6 +13,19 @@ using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, co
 using shared_ptr_aliases_t = std::vector<std::set<int>>;
 using ptr_or_mapfd_stack_cell_t = std::pair<ptr_or_mapfd_t, int>;
 
+class region_ctx_t {
+    std::vector<uint64_t> m_keys;
+    std::size_t m_size = 0;
+    bool m_is_bottom = false;
+
+  public:
+    region_ctx_t() = default;
+    region_ctx_t(const ebpf_context_descriptor_t*);
+    [[nodiscard]] const std::vector<uint64_t>& get_keys() const { return m_keys; }
+    bool packet_ptr_at(uint64_t key) const;
+    size_t get_size() const { return m_size; }
+};
+
 class region_stack_t {
     using ptr_or_mapfd_stack_cells_t = std::map<uint64_t, ptr_or_mapfd_stack_cell_t>;
     ptr_or_mapfd_stack_cells_t m_cells;
@@ -32,7 +45,7 @@ class region_stack_t {
     const ptr_or_mapfd_stack_cells_t &get_cells() { return m_cells; }
     void store(uint64_t, ptr_or_mapfd_t, int);
     std::optional<ptr_or_mapfd_stack_cell_t> find(uint64_t) const;
-    std::vector<uint64_t> get_keys() const;
+    [[nodiscard]] std::vector<uint64_t> get_keys() const;
     std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
     size_t size() const;
 };
@@ -69,10 +82,9 @@ class region_registers_t {
 class region_domain_t final {
 
     bool m_is_bottom = false;
-    crab::region_stack_t m_stack;
-    crab::region_registers_t m_registers;
-    // for ctx, we only keep the size of the context
-    size_t ctx_size = 0;
+    region_stack_t m_stack;
+    region_registers_t m_registers;
+    std::shared_ptr<region_ctx_t> m_ctx;
     shared_ptr_aliases_t m_shared_ptr_aliases;
     std::vector<std::string> m_errors;
 
@@ -80,8 +92,8 @@ class region_domain_t final {
 
     region_domain_t() = default;
     region_domain_t(region_registers_t registers, region_stack_t stack,
-            shared_ptr_aliases_t shared_ptr_aliases = {})
-            : m_stack(std::move(stack)), m_registers(std::move(registers)),
+            std::shared_ptr<region_ctx_t> ctx, shared_ptr_aliases_t shared_ptr_aliases = {})
+            : m_stack(std::move(stack)), m_registers(std::move(registers)), m_ctx(std::move(ctx)),
             m_shared_ptr_aliases(std::move(shared_ptr_aliases)) {}
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static region_domain_t setup_entry(bool);
@@ -152,10 +164,9 @@ class region_domain_t final {
             const crab::location_t&, register_t);
 
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_type(register_t) const;
-    void compute_ctx_size(const ebpf_context_descriptor_t*);
     [[nodiscard]] size_t get_ctx_size() const;
     std::optional<crab::packet_ptr_t> find_in_ctx(uint64_t key) const;
-    [[nodiscard]] std::vector<uint64_t> get_ctx_keys() const;
+    [[nodiscard]] const std::vector<uint64_t>& get_ctx_keys() const;
     std::optional<crab::ptr_or_mapfd_stack_cell_t> find_in_stack(uint64_t key) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::register_location_t&) const;
     void insert_in_registers(register_t, location_t, const ptr_or_mapfd_t&);

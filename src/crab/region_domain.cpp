@@ -48,6 +48,23 @@ static inline std::vector<std::set<int>> join_shared_ptr_aliases(
     return result;
 }
 
+region_ctx_t::region_ctx_t(const ebpf_context_descriptor_t* desc) {
+    if (desc->data >= 0) {
+        m_keys.push_back(desc->data);
+    }
+    if (desc->end >= 0) {
+        m_keys.push_back(desc->end);
+    }
+    if (desc->meta >= 0) {
+        m_keys.push_back(desc->meta);
+    }
+    m_size = std::max(0, desc->size);
+}
+
+bool region_ctx_t::packet_ptr_at(uint64_t key) const {
+    return std::find(m_keys.begin(), m_keys.end(), key) != m_keys.end();
+}
+
 void region_registers_t::scratch_caller_saved_registers() {
     for (uint8_t r = R1_ARG; r <= R5_ARG; r++) {
         operator-=(register_t{r});
@@ -284,12 +301,8 @@ std::vector<uint64_t> region_stack_t::find_overlapping_cells(uint64_t start, int
     return overlapping_cells;
 }
 
-void region_domain_t::compute_ctx_size(const ebpf_context_descriptor_t* desc) {
-    ctx_size = std::max(0, desc->size);
-}
-
 size_t region_domain_t::get_ctx_size() const {
-    return ctx_size;
+    return m_ctx->get_size();
 }
 
 std::optional<ptr_or_mapfd_t> region_domain_t::find_ptr_or_mapfd_type(register_t reg) const {
@@ -341,6 +354,10 @@ void region_domain_t::set_registers_to_top() {
     m_registers.set_to_top();
 }
 
+const std::vector<uint64_t>& region_domain_t::get_ctx_keys() const {
+    return m_ctx->get_keys();
+}
+
 std::vector<uint64_t> region_domain_t::get_stack_keys() const {
     return m_stack.get_keys();
 }
@@ -375,7 +392,7 @@ region_domain_t region_domain_t::operator|(const region_domain_t& other) const {
         return *this;
     }
     auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
-    return region_domain_t(m_registers | other.m_registers, m_stack | other.m_stack,
+    return region_domain_t(m_registers | other.m_registers, m_stack | other.m_stack, m_ctx,
             std::move(aliases));
 }
 
@@ -388,7 +405,7 @@ region_domain_t region_domain_t::operator|(region_domain_t&& other) const {
     }
     auto aliases = join_shared_ptr_aliases(m_shared_ptr_aliases, other.m_shared_ptr_aliases);
     return region_domain_t(m_registers | std::move(other.m_registers),
-            m_stack | std::move(other.m_stack), std::move(aliases));
+            m_stack | std::move(other.m_stack), std::move(m_ctx), std::move(aliases));
 }
 
 region_domain_t region_domain_t::operator&(const region_domain_t& abs) const {
@@ -767,6 +784,8 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
 }
 
 region_domain_t region_domain_t::setup_entry(bool init_r1) {
+    std::shared_ptr<region_ctx_t> ctx(std::make_shared<region_ctx_t>(
+                global_program_info.get().type.context_descriptor));
     region_registers_t typ(std::make_shared<global_env_region_registers_t>());
 
     location_t loc{label_t::entry, 0};
@@ -777,8 +796,7 @@ region_domain_t region_domain_t::setup_entry(bool init_r1) {
     auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
-    region_domain_t inv(std::move(typ), region_stack_t::top());
-    inv.compute_ctx_size(global_program_info.get().type.context_descriptor);
+    region_domain_t inv(std::move(typ), region_stack_t::top(), std::move(ctx));
     return inv;
 }
 
@@ -1026,14 +1044,14 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
         m_registers -= target_register;
         return;
     }
+
+    auto ptr_offset = offset_singleton.value();
+    auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
     if (is_stack_p) {
         if (width != 1 && width != 2 && width != 4 && width != 8) {
             m_registers -= target_register;
             return;
         }
-        auto ptr_offset = offset_singleton.value();
-        auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
-
         auto loaded = m_stack.find(load_at);
         if (!loaded) {
             // no field at loaded offset in stack
@@ -1051,9 +1069,12 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
         }
     }
     else {
-        // TODO: better reasoning needed here: in case there was an unsuccessful load in offset
-        // domain, we should not be loading from ctx
-        m_registers.insert(target_register, loc, packet_ptr_t{});
+        if (m_ctx->packet_ptr_at(load_at)) {
+            m_registers.insert(target_register, loc, packet_ptr_t{});
+        }
+        else {
+            m_registers -= target_register;
+        }
     }
 }
 

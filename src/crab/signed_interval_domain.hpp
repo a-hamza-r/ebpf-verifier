@@ -55,7 +55,7 @@ class stack_slots_signed_state_t {
     void operator-=(uint64_t);
     bool all_numeric(uint64_t, int) const;
     stack_slots_signed_state_t operator|(const stack_slots_signed_state_t& other) const;
-    std::vector<uint64_t> get_keys() const;
+    [[nodiscard]] std::vector<uint64_t> get_keys() const;
     size_t size() const;
     std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
     void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
@@ -128,7 +128,7 @@ class signed_interval_domain_t final {
     void insert_in_registers(register_t, location_t, interval_t);
     void store_in_stack(uint64_t, mock_interval_t, int);
     void adjust_bb_for_types(location_t);
-    std::vector<uint64_t> get_stack_keys() const;
+    [[nodiscard]] std::vector<uint64_t> get_stack_keys() const;
     bool all_numeric_in_stack(uint64_t, int) const;
     std::vector<uint64_t> find_overlapping_cells_in_stack(uint64_t, int) const;
     void remove_overlap_in_stack(const std::vector<uint64_t>&, uint64_t, int);
