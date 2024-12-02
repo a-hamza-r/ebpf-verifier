@@ -18,9 +18,26 @@ class signed_interval_registers_t {
     bool m_is_bottom = false;
 
   public:
-    signed_interval_registers_t() = default;
-    signed_interval_registers_t(std::shared_ptr<global_env_signed_registers_t> registers_env)
-        : m_registers_env(std::move(registers_env)) {}
+    signed_interval_registers_t() :
+            m_registers_env(std::make_shared<global_env_signed_registers_t>()) {}
+    signed_interval_registers_t(const signed_interval_registers_t& other) :
+        m_cur_register_def(other.m_cur_register_def), m_is_bottom(other.m_is_bottom) {
+        if (other.m_registers_env) {
+            m_registers_env = std::make_shared<global_env_signed_registers_t>(*other.m_registers_env);
+        }
+    }
+    signed_interval_registers_t& operator=(const signed_interval_registers_t& other) {
+        if (this != &other) {
+            m_cur_register_def = other.m_cur_register_def;
+            m_is_bottom = other.m_is_bottom;
+            if (other.m_registers_env) {
+                m_registers_env = std::make_shared<global_env_signed_registers_t>(*other.m_registers_env);
+            }
+        }
+        return *this;
+    }
+    signed_interval_registers_t(signed_interval_registers_t&& other) = default;
+    signed_interval_registers_t& operator=(signed_interval_registers_t&& other) = default;
     bool is_bottom() const;
     bool is_top() const;
     void set_to_bottom();

@@ -49,6 +49,7 @@ static inline std::vector<std::set<int>> join_shared_ptr_aliases(
 }
 
 region_ctx_t::region_ctx_t(const ebpf_context_descriptor_t* desc) {
+    if (desc == nullptr) return;
     if (desc->data >= 0) {
         m_keys.push_back(desc->data);
     }
@@ -85,7 +86,7 @@ region_registers_t region_registers_t::operator|(const region_registers_t& other
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    region_registers_t joined_reg_types(m_registers_env);
+    region_registers_t joined_reg_types;
 
     // a hack to store region information at the start of a joined basic block
     // in join, we do not know the label of the bb, hence we store the information
@@ -784,11 +785,8 @@ void region_domain_t::operator()(const ValidAccess &s, location_t loc) {
 }
 
 region_domain_t region_domain_t::setup_entry(bool init_r1) {
-    std::shared_ptr<region_ctx_t> ctx(std::make_shared<region_ctx_t>(
-                global_program_info.get().type.context_descriptor));
-    region_registers_t typ(std::make_shared<global_env_region_registers_t>());
-
     location_t loc{label_t::entry, 0};
+    region_registers_t typ;
     if (init_r1) {
         auto ctx_ptr_r1 = ptr_with_off_t(region_t::R_CTX, -1, mock_interval_t{number_t{0}});
         typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
@@ -796,8 +794,8 @@ region_domain_t region_domain_t::setup_entry(bool init_r1) {
     auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
-    region_domain_t inv(std::move(typ), region_stack_t::top(), std::move(ctx));
-    return inv;
+    return region_domain_t{std::move(typ), region_stack_t::top(),
+        std::make_shared<region_ctx_t>(global_program_info->type.context_descriptor)};
 }
 
 void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {

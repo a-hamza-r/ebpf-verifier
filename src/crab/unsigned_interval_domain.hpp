@@ -18,9 +18,26 @@ class unsigned_interval_registers_t {
     bool m_is_bottom = false;
 
   public:
-    unsigned_interval_registers_t() = default;
-    unsigned_interval_registers_t(std::shared_ptr<global_env_unsigned_registers_t> registers_env)
-        : m_registers_env(std::move(registers_env)) {}
+    unsigned_interval_registers_t() :
+        m_registers_env(std::make_shared<global_env_unsigned_registers_t>()) {}
+    unsigned_interval_registers_t(const unsigned_interval_registers_t& other) :
+        m_cur_register_def(other.m_cur_register_def), m_is_bottom(other.m_is_bottom) {
+        if (other.m_registers_env) {
+            m_registers_env = std::make_shared<global_env_unsigned_registers_t>(*other.m_registers_env);
+        }
+    }
+    unsigned_interval_registers_t& operator=(const unsigned_interval_registers_t& other) {
+        if (this != &other) {
+            m_cur_register_def = other.m_cur_register_def;
+            m_is_bottom = other.m_is_bottom;
+            if (other.m_registers_env) {
+                m_registers_env = std::make_shared<global_env_unsigned_registers_t>(*other.m_registers_env);
+            }
+        }
+        return *this;
+    }
+    unsigned_interval_registers_t(unsigned_interval_registers_t&& other) = default;
+    unsigned_interval_registers_t& operator=(unsigned_interval_registers_t&& other) = default;
     bool is_bottom() const;
     bool is_top() const;
     void set_to_bottom();

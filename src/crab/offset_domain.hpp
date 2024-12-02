@@ -21,15 +21,33 @@ class offset_registers_t {
     bool m_is_bottom = false;
 
     public:
-        offset_registers_t() = default;
-        offset_registers_t(std::shared_ptr<global_env_offset_registers_t> registers_env,
-                std::shared_ptr<slacks_t> slacks, int data_pos = -1)
-            : m_registers_env(registers_env), m_slacks(slacks) {
-
-            if (data_pos >= 0) {
-                insert(BEGIN_REG, location_t{label_t::entry, 0}, refinement_t::begin(true));
+        offset_registers_t() :
+            m_registers_env(std::make_shared<global_env_offset_registers_t>()),
+            m_slacks(std::make_shared<slacks_t>()) {
+            insert(BEGIN_REG, location_t{label_t::entry, 0}, refinement_t::begin(true));
+        }
+        offset_registers_t(std::shared_ptr<slacks_t> slacks)
+            : m_registers_env(std::make_shared<global_env_offset_registers_t>()), m_slacks(slacks) {}
+        offset_registers_t(const offset_registers_t& other)
+            : m_cur_register_def(other.m_cur_register_def), m_slacks(other.m_slacks),
+            m_is_bottom(other.m_is_bottom) {
+            if (other.m_registers_env) {
+                m_registers_env = std::make_shared<global_env_offset_registers_t>(*other.m_registers_env);
             }
         }
+        offset_registers_t& operator=(const offset_registers_t& other) {
+            if (this != &other) {
+                m_cur_register_def = other.m_cur_register_def;
+                m_is_bottom = other.m_is_bottom;
+                if (other.m_registers_env) {
+                    m_registers_env = std::make_shared<global_env_offset_registers_t>(*other.m_registers_env);
+                }
+                m_slacks = other.m_slacks;
+            }
+            return *this;
+        }
+        offset_registers_t(offset_registers_t&& other) = default;
+        offset_registers_t& operator=(offset_registers_t&& other) = default;
         offset_registers_t operator|(const offset_registers_t&) const;
         void operator-=(register_t);
         void set_to_top();
@@ -76,7 +94,7 @@ class offset_stack_t {
 class offset_ctx_t {
     using refinement_ctx_cells_t = std::unordered_map<uint64_t, refinement_t>;    // represents `cp[n] = rf;`
     refinement_ctx_cells_t m_ctx_cells;
-    size_t m_size;
+    size_t m_size = 0;
 
     public:
         offset_ctx_t(const ebpf_context_descriptor_t* desc);

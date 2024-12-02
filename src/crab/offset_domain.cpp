@@ -91,7 +91,7 @@ offset_registers_t offset_registers_t::operator|(const offset_registers_t& other
         return *this;
     }
 
-    offset_registers_t joined_state(m_registers_env, m_slacks);
+    offset_registers_t joined_state(m_slacks);
     location_t loc = location_t::top();
 
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
@@ -219,6 +219,7 @@ offset_stack_t offset_stack_t::operator|(const offset_stack_t& other) const {
 }
 
 offset_ctx_t::offset_ctx_t(const ebpf_context_descriptor_t* desc) {
+    if (desc == nullptr) return;
     if (desc->data >= 0) {
         m_ctx_cells[desc->data] = refinement_t::begin();
     }
@@ -248,11 +249,7 @@ std::optional<refinement_t> offset_ctx_t::find(uint64_t key) const {
 }
 
 offset_domain_t offset_domain_t::setup_entry() {
-    offset_registers_t regs(std::make_shared<global_env_offset_registers_t>(),
-                            std::make_shared<slacks_t>(),
-                            global_program_info->type.context_descriptor->data);
-
-    return offset_domain_t{std::move(regs), offset_stack_t::top(),
+    return offset_domain_t{offset_registers_t{}, offset_stack_t::top(),
                     std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor)};
 }
 

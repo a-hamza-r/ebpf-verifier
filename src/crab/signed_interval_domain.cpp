@@ -54,7 +54,7 @@ signed_interval_registers_t signed_interval_registers_t::operator|(const signed_
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    signed_interval_registers_t intervals_joined(m_registers_env);
+    signed_interval_registers_t intervals_joined;
     location_t loc = location_t::top();
     for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (m_cur_register_def[i] == nullptr || other.m_cur_register_def[i] == nullptr) continue;
@@ -422,9 +422,8 @@ string_invariant signed_interval_domain_t::to_set() {
 }
 
 signed_interval_domain_t signed_interval_domain_t::setup_entry() {
-    signed_interval_registers_t registers(std::make_shared<global_env_signed_registers_t>());
-    signed_interval_domain_t interval(std::move(registers), stack_slots_signed_state_t::top());
-    return interval;
+    return signed_interval_domain_t{signed_interval_registers_t{},
+        stack_slots_signed_state_t::top()};
 }
 
 // Simple truncation function usable with swap_endianness().

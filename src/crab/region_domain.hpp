@@ -59,11 +59,25 @@ class region_registers_t {
     bool m_is_bottom = false;
 
   public:
-    region_registers_t() = default;
-    explicit region_registers_t(std::shared_ptr<global_env_region_registers_t> registers_env,
-            bool is_bottom = false)
-        : m_registers_env(std::move(registers_env)), m_is_bottom(is_bottom) {}
-
+    region_registers_t() : m_registers_env(std::make_shared<global_env_region_registers_t>()) {}
+    region_registers_t(const region_registers_t& other)
+        : m_cur_register_def(other.m_cur_register_def), m_is_bottom(other.m_is_bottom) {
+        if (other.m_registers_env) {
+            m_registers_env = std::make_shared<global_env_region_registers_t>(*other.m_registers_env);
+        }
+    }
+    region_registers_t(region_registers_t&& other) noexcept = default;
+    region_registers_t& operator=(const region_registers_t& other) {
+        if (this != &other) {
+            m_cur_register_def = other.m_cur_register_def;
+            if (other.m_registers_env) {
+                m_registers_env = std::make_shared<global_env_region_registers_t>(*other.m_registers_env);
+            }
+            m_is_bottom = other.m_is_bottom;
+        }
+        return *this;
+    }
+    region_registers_t& operator=(region_registers_t&& other) noexcept = default;
     region_registers_t operator|(const region_registers_t& other) const;
     void operator-=(register_t var);
     void set_to_bottom();
