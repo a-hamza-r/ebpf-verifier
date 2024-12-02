@@ -96,7 +96,7 @@ signed_interval_registers_t signed_interval_registers_t::widen(const signed_inte
         auto it2 = other.find(*(other.m_cur_register_def[i]));
         if (it1 && it2) {
             refinement_t rf1 = it1.value(), rf2 = it2.value();
-            refinements_joined.insert(register_t{i}, loc, rf1.widen(rf2)););
+            refinements_joined.insert(register_t{i}, loc, rf1.widen(rf2));
         }
     }
     return refinements_joined;
@@ -439,8 +439,7 @@ void signed_interval_domain_t::store_in_stack(uint64_t key, interval_t interval,
 }
 
 bool signed_interval_domain_t::operator<=(const signed_interval_domain_t& abs) const {
-    return (m_registers <= abs.m_registers) &&
-        (m_stack <= abs.m_stack);
+    return (m_registers <= abs.m_registers && m_stack <= abs.m_stack);
 }
 
 void signed_interval_domain_t::operator|=(const signed_interval_domain_t& abs) {
@@ -495,7 +494,7 @@ signed_interval_domain_t signed_interval_domain_t::widen(const signed_interval_d
         return *this;
     }
     return signed_interval_domain_t(m_registers.widen(other.m_registers),
-            m_stack.widen(other.m_stack));
+            m_stack.widen(other.m_stack), m_slacks);
 }
 
 signed_interval_domain_t signed_interval_domain_t::narrow(const signed_interval_domain_t& other) const {

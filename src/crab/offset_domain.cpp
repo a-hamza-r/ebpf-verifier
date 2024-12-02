@@ -75,19 +75,15 @@ void offset_registers_t::operator-=(register_t to_forget) {
 }
 
 bool offset_registers_t::operator<=(const offset_registers_t& other) const {
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (other.m_cur_register_def[i] == nullptr) continue;
         if (m_cur_register_def[i] == nullptr) return false;
         auto it1 = find(*(m_cur_register_def[i]));
         auto it2 = other.find(*(other.m_cur_register_def[i]));
         if (it1 && it2) {
-            // currently being conservative and only checking if the types are the same
-            // refinement equal only checks for equality of type and value, but not constraints
-            // We need comparison of constraints as well
-            if (!(*it1 == *it2)) return false;
+            if (!(it1->operator<=(*it2))) return false;
         }
     }
-    // need separate handling for the registers v_begin
     return true;
 }
 
@@ -232,8 +228,7 @@ bool offset_stack_t::operator<=(const offset_stack_t& other) const {
         auto rf2 = kv.second.first;
         auto width1 = it->second.second;
         auto width2 = kv.second.second;
-        // being conservative and only checking if the types are the same
-        if (!(rf1 == rf2) || width1 != width2) return false;
+        if (!(rf1 <= rf2) || width1 != width2) return false;
     }
     return true;
 }
@@ -455,11 +450,11 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
         }
         auto begin = m_registers.find(register_t{BEGIN_REG});
         if (cond.op == Condition::Op::LE) {
-            begin->add_constraint(*rf_left <= *rf_right);
+            begin->add_constraint(rf_left->assume_le(*rf_right));
             m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GT) {
-            begin->add_constraint(*rf_left > *rf_right);
+            begin->add_constraint(rf_left->assume_gt(*rf_right));
             m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
         }
         // other comparisons not supported

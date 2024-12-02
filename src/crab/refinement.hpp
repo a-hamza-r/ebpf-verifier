@@ -39,8 +39,9 @@ class refinement_t {
     refinement_t operator-(const refinement_t &other) const;
     refinement_t operator|(const refinement_t &other) const;
     refinement_t widen(const refinement_t &other) const;
-    constraint_t operator<=(const refinement_t &other) const;
-    constraint_t operator>(const refinement_t &other) const;
+    bool operator<=(const refinement_t &other) const;
+    constraint_t assume_le(const refinement_t &other) const;
+    constraint_t assume_gt(const refinement_t &other) const;
     bool operator==(const refinement_t &other) const;
     void write(std::ostream &o) const;
     bool same_type(const refinement_t &other) const;

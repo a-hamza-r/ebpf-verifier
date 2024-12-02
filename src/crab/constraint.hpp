@@ -44,6 +44,8 @@ class constraint_t {
     interval_t compute_subtraction(const symbol_t&, const symbol_t&) const;
     [[nodiscard]] constraint_t negate() const;
     constraint_t operator|(const constraint_t&) const;
+    constraint_t widen(const constraint_t&) const;
+    bool operator<=(const constraint_t&) const;
     void write(std::ostream&) const;
     friend std::ostream& operator<<(std::ostream &, const constraint_t&);
 };

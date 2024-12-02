@@ -174,10 +174,24 @@ bool refinement_t::same_type(const refinement_t &other) const {
     return _type == other._type && _type != refinement_type_t::ANY;
 }
 
+
+// inclusion operator
+bool refinement_t::operator<=(const refinement_t &other) const {
+    if (!has_constraints) {
+        return _value <= other._value;
+    }
+    return _value <= other._value &&
+           meta_begin_constraint <= other.meta_begin_constraint &&
+           begin_end_constraint <= other.begin_end_constraint;
+}
+
 refinement_t refinement_t::widen(const refinement_t &other) const {
-    assert(same_type(other));
-    auto widened_value = _value.widen(other._value);
-    return refinement_t(_type, widened_value);
+    if (!has_constraints) {
+        return refinement_t(_type, _value.widen(other._value));
+    }
+    return refinement_t(_type, _value.widen(other._value),
+                        meta_begin_constraint.widen(other.meta_begin_constraint),
+                        begin_end_constraint.widen(other.begin_end_constraint));
 }
 
 refinement_t refinement_t::operator|(const refinement_t &other) const {
@@ -189,12 +203,14 @@ refinement_t refinement_t::operator|(const refinement_t &other) const {
                         begin_end_constraint | other.begin_end_constraint);
 }
 
-constraint_t refinement_t::operator<=(const refinement_t &other) const {
+// assume that the current refinement is less than or equal to the other refinement
+constraint_t refinement_t::assume_le(const refinement_t &other) const {
     return constraint_t(_value, other._value);
 }
 
-constraint_t refinement_t::operator>(const refinement_t &other) const {
-    return operator<=(other).negate();
+// assume that the current refinement is greater than the other refinement
+constraint_t refinement_t::assume_gt(const refinement_t &other) const {
+    return assume_le(other).negate();
 }
 
 constraint_t refinement_t::construct_meta_end_constraint() const {

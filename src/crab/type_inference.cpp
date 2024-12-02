@@ -41,7 +41,7 @@ bool inference_domain_t::operator<=(const inference_domain_t& abs) const {
 inference_domain_t inference_domain_t::widen(const inference_domain_t& other, bool to_constants) {
     return inference_domain_t(m_region.widen(other.m_region, to_constants),
             m_offset.widen(other.m_offset, to_constants),
-            m_interval.widen(other.m_interval, to_constants));
+            m_interval.widen(other.m_interval, to_constants), m_slacks);
 }
 
 void inference_domain_t::operator|=(const inference_domain_t& abs) {

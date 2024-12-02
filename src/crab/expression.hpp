@@ -35,8 +35,7 @@ class expression_t {
         : _constant_term(interval_t{n}), _slacks(slacks) {}
     expression_t get_equivalent_expression() const;
     bool operator==(const expression_t &other) const;
-    bool operator<(const expression_t &other) const;
-    bool operator<=(const expression_t &other) const;
+    bool check_le(const expression_t &other) const;
     bool operator>(const expression_t &other) const;
     void operator-=(const symbol_t& s) { _symbol_terms.erase(s); }
     bool is_constant() const { return _symbol_terms.empty(); }
@@ -46,6 +45,7 @@ class expression_t {
     expression_t operator-(const expression_t &other) const;
     expression_t operator|(const expression_t &other) const;
     expression_t widen(const expression_t &other) const;
+    bool operator<=(const expression_t &other) const;
     void write(std::ostream &o) const;
     symbol_terms_t get_symbol_terms() const { return _symbol_terms; }
     int8_t get_coefficient(const symbol_t &s) const;
@@ -54,7 +54,7 @@ class expression_t {
     bool only_has_interval() const;
     symbol_t get_singleton() const;
     interval_t get_constant_term() const { return _constant_term; }
-    std::shared_ptr<slacks_t> get_slacks() const { return _slacks; }
+    const std::shared_ptr<slacks_t>& get_slacks() const { return _slacks; }
     void set_slacks(std::shared_ptr<slacks_t> slacks) { _slacks = slacks; }
     std::map<symbol_t, mock_interval_t> get_slack_intervals() const;
     friend std::ostream& operator<<(std::ostream &, const expression_t&);

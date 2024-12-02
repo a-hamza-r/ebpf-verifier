@@ -67,23 +67,8 @@ bool expression_t::operator==(const expression_t &other) const {
     return false;
 }
 
-// less than
-bool expression_t::operator<(const expression_t &other) const {
-    auto check = [](const bound_t &a, const bound_t &b) { return a < b; };
-    if (check_op(_symbol_terms, other._symbol_terms, _constant_term.ub(), other._constant_term.lb(), check)) {
-        return true;
-    }
-    expression_t e1 = get_equivalent_expression();
-    expression_t e2 = other.get_equivalent_expression();
-    if (check_op(e1._symbol_terms, e2._symbol_terms, e1._constant_term.ub(), e2._constant_term.lb(), check)) {
-        return true;
-    }
-    // we cannot prove that one expression is less than the other, as they contain packet symbols
-    return false;
-}
-
-// less than or equal
-bool expression_t::operator<=(const expression_t &other) const {
+// less than or equal, named check_le to avoid confusion with operator<= (inclusion operator)
+bool expression_t::check_le(const expression_t &other) const {
     auto check = [](const bound_t &a, const bound_t &b) { return a <= b; };
     if (check_op(_symbol_terms, other._symbol_terms, _constant_term.ub(), other._constant_term.lb(), check)) {
         return true;
@@ -177,45 +162,50 @@ expression_t expression_t::operator+(int n) const {
     return operator+(interval_t{n});
 }
 
-expression_t expression_t::operator|(const expression_t &other) const {
-    auto slacks = _slacks == nullptr ? other._slacks : _slacks;
-    if (*this == other) {
+using IntervalJoin = std::function<interval_t(const interval_t&, const interval_t&)>;
+
+static inline expression_t join(const expression_t* e1, const expression_t &e2,
+                                IntervalJoin join) {
+    auto slacks = e1->get_slacks() == nullptr ? e2.get_slacks() : e1->get_slacks();
+    if (*e1 == e2) {
         // both expressions are equal
-        return *this;
+        return *e1;
     }
-    interval_t constant_term = _constant_term;
-    interval_t other_constant_term = other._constant_term;
+    interval_t e1_constant_term = e1->get_constant_term();
+    interval_t e2_constant_term = e2.get_constant_term();
+    const symbol_terms_t& e1_terms = e1->get_symbol_terms();
+    const symbol_terms_t& e2_terms = e2.get_symbol_terms();
     symbol_terms_t new_terms;
-    for (const auto &term : _symbol_terms) {
-        if (other._symbol_terms.find(term.first) != other._symbol_terms.end()
-            && term.second == other._symbol_terms.at(term.first)) {
+    for (const auto &term : e1_terms) {
+        if (e2_terms.find(term.first) != e2_terms.end()
+            && term.second == e2_terms.at(term.first)) {
             // for any symbol, if it exists in both expressions, and the coefficients are the same
             // then the term can be added to the new expression
             new_terms[term.first] = term.second;
         } else if (term.first.is_slack()) {
-            // either the symbol was not found in the other expression, or the coefficients are different
-            constant_term = constant_term +
+            // either the symbol was not found in the e2 expression, or the coefficients are different
+            e1_constant_term = e1_constant_term +
                 interval_t{static_cast<int>(term.second)} * (*slacks)[term.first].to_interval();
         }
         else {
             // in case where we have symbols other than slack variables, and either the symbol is not
-            // found in the other expression, or the coefficients are different, we return top
+            // found in the e2 expression, or the coefficients are different, we return top
             return expression_t();
         }
     }
-    for (const auto &term : other._symbol_terms) {
+    for (const auto &term : e2_terms) {
         if (new_terms.find(term.first) != new_terms.end()) {
             // if the symbol is already handled in the previous loop, then we skip it
             continue;
         }
         if (term.first.is_slack()) {
             // the slack variable was not handled before, hence we resolve its value
-            other_constant_term = other_constant_term +
+            e2_constant_term = e2_constant_term +
                 interval_t{static_cast<int>(term.second)} * (*slacks)[term.first].to_interval();
         }
         else {
             // in case where we have symbols other than slack variables, and either the symbol is not
-            // found in the other expression, or the coefficients are different, we return top
+            // found in the e2 expression, or the coefficients are different, we return top
             return expression_t();
         }
     }
@@ -223,30 +213,27 @@ expression_t expression_t::operator|(const expression_t &other) const {
     // so we construct a new slack variable and assign its value to the join of added intervals
     symbol_t new_slack = symbol_t::make();
     new_terms[new_slack] = 1;
-    (*slacks)[new_slack] = constant_term | other_constant_term;
+    // either join or widen
+    (*slacks)[new_slack] = join(e1_constant_term, e2_constant_term);
     return expression_t(new_terms, interval_t{0}, slacks);
 }
 
+expression_t expression_t::operator|(const expression_t &other) const {
+    return join(this, other, [](const interval_t& a, const interval_t& b) { return a | b; });
+}
+
 expression_t expression_t::widen(const expression_t &other) const {
-    // TODO: this needs more work
-    if (_symbol_terms.size() != other._symbol_terms.size()) {
-        return expression_t();
-    }
-    symbol_terms_t new_terms;
-    for (auto &term : _symbol_terms) {
-        auto it = other._symbol_terms.find(term.first);
-        if (it == other._symbol_terms.end()) {
-            // we need to know what is the other slack, but it's not accesible directly
-                auto new_slack = symbol_t::make();
-                new_terms[new_slack] = 1;
-        }
-        else {
-            // TODO: some complex logic is needed here
-            new_terms[term.first] = term.second;
-        }
-    }
-    interval_t new_interval = _constant_term.widen(other._constant_term);
-    return expression_t(new_terms, new_interval);
+    return join(this, other, [](const interval_t& a, const interval_t& b) { return a.widen(b); });
+}
+
+
+// inclusion operator
+bool expression_t::operator<=(const expression_t &other) const {
+    expression_t e1 = get_equivalent_expression();
+    expression_t e2 = other.get_equivalent_expression();
+    // if after removing slack variables, the expressions are equal, then the inclusion holds
+    // otherwise, we can't prove the inclusion
+    return e1._symbol_terms == e2._symbol_terms && e1._constant_term <= e2._constant_term;
 }
 
 void expression_t::write(std::ostream &o) const {

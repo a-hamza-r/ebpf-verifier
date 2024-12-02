@@ -125,7 +125,7 @@ region_registers_t region_registers_t::operator|(const region_registers_t& other
 }
 
 bool region_registers_t::operator<=(const region_registers_t& other) const {
-    for (uint8_t i = 0; i < NUM_REGISTERS-1; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (other.m_cur_register_def[i] == nullptr) continue;
         if (m_cur_register_def[i] == nullptr) return false;
         auto maybe_ptr1 = find(register_t{i});

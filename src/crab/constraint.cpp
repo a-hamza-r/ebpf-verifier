@@ -63,6 +63,30 @@ constraint_t constraint_t::operator|(const constraint_t &other) const {
     }
 }
 
+constraint_t constraint_t::widen(const constraint_t &other) const {
+    if (this->implies(other) && other.implies(*this)) {
+        // this == other
+        return *this;
+    } else {
+        if (is_meta_begin_constraint()) {
+            // meta <= begin
+            return constraint_t::meta_begin_init_constraint();
+        }
+        else if (is_begin_end_constraint()) {
+            // begin <= end
+            return constraint_t::begin_end_init_constraint();
+        }
+        else {
+            return constraint_t::get_true();
+        }
+    }
+}
+
+// inclusion operator
+bool constraint_t::operator<=(const constraint_t &other) const {
+    return this->implies(other);
+}
+
 bool constraint_t::is_meta_begin_constraint() const {
     return _lhs.contains(symbol_t::meta()) && _lhs.contains(symbol_t::begin());
 }
@@ -78,7 +102,9 @@ bool constraint_t::is_bottom() const {
 
 bool constraint_t::is_top() const {
     // lhs <= rhs is top
-    return _lhs <= _rhs;
+    // in expression_t, we need to support <= operator as inclusion operator,
+    // hence we use check_le instead of operator<=
+    return _lhs.check_le(_rhs);
 }
 
 constraint_t constraint_t::operator+(constraint_t c2) const {
