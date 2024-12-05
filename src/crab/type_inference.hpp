@@ -27,16 +27,18 @@ class inference_domain_t final {
         m_interval(std::move(interval)) {}
     inference_domain_t(const inference_domain_t& other) :
         m_slacks(other.m_slacks), m_region(other.m_region), m_offset(other.m_offset),
-        m_interval(other.m_interval) {}
+        m_interval(other.m_interval), m_errors(other.m_errors) {}
     inference_domain_t(inference_domain_t&& other) :
         m_slacks(std::move(other.m_slacks)), m_region(std::move(other.m_region)),
-        m_offset(std::move(other.m_offset)), m_interval(std::move(other.m_interval)) {}
+        m_offset(std::move(other.m_offset)), m_interval(std::move(other.m_interval)),
+        m_errors(std::move(other.m_errors)) {}
     inference_domain_t& operator=(const inference_domain_t& other) {
         if (this != &other) {
             m_slacks = other.m_slacks;
             m_region = other.m_region;
             m_offset = other.m_offset;
             m_interval = other.m_interval;
+            m_errors = other.m_errors;
         }
         return *this;
     }
@@ -46,6 +48,7 @@ class inference_domain_t final {
             m_region = std::move(other.m_region);
             m_offset = std::move(other.m_offset);
             m_interval = std::move(other.m_interval);
+            m_errors = std::move(other.m_errors);
         }
         return *this;
     }
