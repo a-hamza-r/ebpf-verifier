@@ -18,6 +18,14 @@ bool refinement_t::is_packet_refinement() const {
     return _type == refinement_type_t::PACKET;
 }
 
+interval_t refinement_t::get_interval_value() const {
+    expression_t e = _value.get_equivalent_expression();
+    if (e.only_has_interval()) {
+        return e.get_constant_term();
+    }
+    return interval_t::bottom();
+}
+
 std::map<symbol_t, mock_interval_t> refinement_t::get_slack_intervals() const {
     std::map<symbol_t, mock_interval_t> slack_intervals = _value.get_slack_intervals();
     if (has_constraints) {

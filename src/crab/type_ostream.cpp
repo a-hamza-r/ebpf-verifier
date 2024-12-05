@@ -4,7 +4,7 @@
 #include "crab/type_ostream.hpp"
 
 void print_non_numeric_memory_cell(std::ostream& o, int start, int end,
-        crab::ptr_or_mapfd_t&& ptr, std::optional<crab::refinement_t> d) {
+        const crab::ptr_or_mapfd_t& ptr, std::optional<crab::refinement_t> d) {
     if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
         o << "[" << start << "-" << end << "] : " << std::get<crab::ptr_with_off_t>(ptr);
     }
@@ -21,9 +21,10 @@ void print_non_numeric_memory_cell(std::ostream& o, int start, int end,
     }
 }
 
-void print_numeric_memory_cell(std::ostream& o, int start, int end, crab::interval_t n,
+void print_numeric_memory_cell(std::ostream& o, int start, int end, crab::refinement_t n,
         bool is_signed) {
-    if (n.is_top()) {
+    crab::interval_t i = n.get_interval_value();
+    if (i.is_top()) {
         if (is_signed) {
             o << "[" << start << "-" << end << "] : snumber";
         }
@@ -32,38 +33,23 @@ void print_numeric_memory_cell(std::ostream& o, int start, int end, crab::interv
         }
     }
     else {
-        if (auto n_singleton = n.singleton()) {
-            if (is_signed) {
-                o << "[" << start << "-" << end << "] : snumber<" << *n_singleton << ">";
-            }
-            else {
-                o << "[" << start << "-" << end << "] : unumber<" << *n_singleton << ">";
-            }
-        }
-        else {
-            if (is_signed) {
-                o << "[" << start << "-" << end << "] : snumber<" << n << ">";
-            }
-            else {
-                o << "[" << start << "-" << end << "] : unumber<" << n << ">";
-            }
-        }
+        // TODO: differentiate between signed and unsigned
+        o << "[" << start << "-" << end << "] : " << n;
     }
 }
 
 void print_memory_cell(std::ostream& o, int start, int end,
         const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::refinement_t> d
-        , std::optional<crab::mock_interval_t> signed_interval,
-        std::optional<crab::mock_interval_t> unsigned_interval) {
-    if (signed_interval) {
-        print_numeric_memory_cell(o, start, end, signed_interval->to_interval(), true);
+        , std::optional<crab::refinement_t> signed_numeric,
+        std::optional<crab::refinement_t> unsigned_numeric) {
+    if (signed_numeric) {
+        print_numeric_memory_cell(o, start, end, *signed_numeric, true);
     }
-    if (unsigned_interval) {
-        print_numeric_memory_cell(o, start, end, unsigned_interval->to_interval(), false);
+    if (unsigned_numeric) {
+        print_numeric_memory_cell(o, start, end, *unsigned_numeric, false);
     }
     else if (p) {
-        crab::ptr_or_mapfd_t ptr = *p;
-        print_non_numeric_memory_cell(o, start, end, std::move(ptr), d);
+        print_non_numeric_memory_cell(o, start, end, *p, d);
     }
 }
 
@@ -85,8 +71,9 @@ void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd
     }
 }
 
-void print_numeric_register(std::ostream& o, Reg r, crab::interval_t n, bool is_signed) {
-    if (n.is_top()) {
+void print_numeric_register(std::ostream& o, Reg r, crab::refinement_t n, bool is_signed) {
+    crab::interval_t i = n.get_interval_value();
+    if (i.is_top()) {
         if (is_signed) {
             o << r << " : snumber";
         }
@@ -95,53 +82,32 @@ void print_numeric_register(std::ostream& o, Reg r, crab::interval_t n, bool is_
         }
     }
     else {
-        if (auto n_singleton = n.singleton()) {
-            if (is_signed) {
-                o << r << " : snumber<" << *n_singleton << ">";
-            }
-            else {
-                o << r << " : unumber<" << *n_singleton << ">";
-            }
-        }
-        else {
-            if (is_signed) {
-                o << r << " : snumber<" << n << ">";
-            }
-            else {
-                o << r << " : unumber<" << n << ">";
-            }
-        }
+        o << r << " : " << n;
     }
 }
 
 void print_register(std::ostream& o, Reg r, const std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::refinement_t> d, std::optional<crab::mock_interval_t> interval,
+        const std::optional<crab::refinement_t>& d, const std::optional<crab::refinement_t>& numeric,
         bool is_signed) {
-    if (interval) print_numeric_register(o, r, interval->to_interval(), is_signed);
+    if (numeric) print_numeric_register(o, r, *numeric, is_signed);
     else if (p) print_non_numeric_register(o, r, *p, d);
 }
 
 inline std::string size_(int w) { return std::string("u") + std::to_string(w * 8); }
 
 void print_annotated(std::ostream& o, const Call& call, std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::refinement_t>& d,
-        std::optional<crab::mock_interval_t>& n, bool is_signed) {
+        std::optional<crab::refinement_t>& n, bool is_signed) {
     o << "  ";
     print_register(o, Reg{(uint8_t)R0_RETURN_VALUE}, p, d, n, is_signed);
     o << " = " << call.name << ":" << call.func << "(...)\n";
-    if (d) {
-        o << "  " << *d << "\n";
-    }
 }
 
 void print_annotated(std::ostream& o, const Bin& b, std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::refinement_t>& d, std::optional<crab::mock_interval_t>& n,
+        std::optional<crab::refinement_t>& d, std::optional<crab::refinement_t>& n,
         bool is_signed) {
     o << "  ";
     print_register(o, b.dst, p, d, n, is_signed);
     o << " " << b.op << "= " << b.v << "\n";
-    if (d) {
-        o << "  " << *d << "\n";
-    }
 }
 
 void print_annotated(std::ostream& o, const LoadMapFd& u, std::optional<crab::ptr_or_mapfd_t>& p) {
@@ -151,7 +117,7 @@ void print_annotated(std::ostream& o, const LoadMapFd& u, std::optional<crab::pt
 }
 
 void print_annotated(std::ostream& o, const Mem& b, std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::refinement_t>& d, std::optional<crab::mock_interval_t>& n, bool is_signed) {
+        std::optional<crab::refinement_t>& d, std::optional<crab::refinement_t>& n, bool is_signed) {
     o << "  ";
     print_register(o, std::get<Reg>(b.value), p, d, n, is_signed);
     o << " = ";
@@ -159,9 +125,6 @@ void print_annotated(std::ostream& o, const Mem& b, std::optional<crab::ptr_or_m
     int offset = std::abs(b.access.offset);
     o << "*(" << size_(b.access.width) << " *)";
     o << "(" << b.access.basereg << sign << offset << ")\n";
-    if (d) {
-        o << "  " << *d << "\n";
-    }
 }
 
 std::string op(Un::Op op) {
@@ -185,7 +148,7 @@ std::string op(Un::Op op) {
     }
 }
 
-void print_annotated(std::ostream& o, const Un& b, std::optional<crab::mock_interval_t>& n,
+void print_annotated(std::ostream& o, const Un& b, std::optional<crab::refinement_t>& n,
         bool is_signed) {
     o << "  ";
     print_register(o, b.dst, std::nullopt, std::nullopt, n, is_signed);

@@ -59,13 +59,14 @@ void inference_domain_t::operator|=(inference_domain_t&& other) {
 
 inference_domain_t inference_domain_t::operator|(const inference_domain_t& other) const {
     return inference_domain_t(m_region | other.m_region, m_offset | other.m_offset,
-            m_interval | other.m_interval);
+            m_interval | other.m_interval, m_slacks);
 }
 
 inference_domain_t inference_domain_t::operator|(inference_domain_t&& other) const {
     return inference_domain_t(m_region | std::move(other.m_region),
             m_offset | std::move(other.m_offset),
-            m_interval | std::move(other.m_interval));
+            m_interval | std::move(other.m_interval),
+            std::move(other.m_slacks));
 }
 
 inference_domain_t inference_domain_t::operator&(const inference_domain_t& abs) const {
@@ -95,14 +96,13 @@ string_invariant inference_domain_t::to_set() const {
         auto maybe_rf = m_offset.find_refinement_info(register_t{i});
         if (maybe_ptr_or_mapfd.has_value()) {
             std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, std::nullopt, false);
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, {}, false);
             result.insert(elem.str());
         }
         auto maybe_signed_interval = m_interval.find_signed_interval_value(register_t{i});
         if (maybe_signed_interval.has_value()) {
             std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf,
-                    maybe_signed_interval, true);
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, maybe_signed_interval, true);
             result.insert(elem.str());
         }
         auto maybe_unsigned_interval = m_interval.find_unsigned_interval_value(register_t{i});
@@ -124,11 +124,10 @@ string_invariant inference_domain_t::to_set() const {
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
             elem << "stack";
             if (rf) {
-                print_non_numeric_memory_cell(elem, k, k+width-1, std::move(ptr_or_mapfd),
-                        std::optional<refinement_t>(rf->first));
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, rf->first);
             }
             else {
-                print_non_numeric_memory_cell(elem, k, k+width-1, std::move(ptr_or_mapfd));
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd);
             }
         }
         result.insert(elem.str());
@@ -142,7 +141,7 @@ string_invariant inference_domain_t::to_set() const {
             auto signed_interval_cells = maybe_interval_cells_signed.value();
             elem << "stack";
             print_numeric_memory_cell(elem, k, k+signed_interval_cells.second,
-                    signed_interval_cells.first.to_interval(), true);
+                    signed_interval_cells.first, true);
             result.insert(elem.str());
         }
         auto maybe_interval_cells_unsigned = m_interval.find_in_stack_unsigned(k);
@@ -151,7 +150,7 @@ string_invariant inference_domain_t::to_set() const {
             auto unsigned_interval_cells = maybe_interval_cells_unsigned.value();
             elem << "stack";
             print_numeric_memory_cell(elem, k, k+unsigned_interval_cells.second,
-                    unsigned_interval_cells.first.to_interval(), false);
+                    unsigned_interval_cells.first, false);
             result.insert(elem.str());
         }
     }
@@ -164,14 +163,8 @@ void inference_domain_t::operator()(const Undefined& u, location_t loc) {
 
 void inference_domain_t::operator()(const Un& u, location_t loc) {
     m_region(u, loc);
+    m_offset(u, loc);
     m_interval(u, loc);
-    // TODO: check if we need to get signed values in any case
-    // TODO: activate this when we deal with offset domain
-    //auto mock_interval_opt = m_interval.find_unsigned_interval_value(u.dst.v);
-    //auto interval = mock_interval_opt ? mock_interval_opt->to_interval()
-    //    : interval_t::bottom();
-    // m_offset.do_un(u, interval, loc);
-    m_offset.do_un(u, interval_t::bottom(), loc);
 }
 
 void inference_domain_t::operator()(const LoadMapFd& u, location_t loc) {
@@ -201,17 +194,18 @@ void inference_domain_t::operator()(const Atomic &u, location_t loc) {
     if (is_bottom()) return;
     std::optional<ptr_or_mapfd_t> base_reg_opt
         = m_region.find_ptr_or_mapfd_type(u.access.basereg.v);
-    std::optional<mock_interval_t> value_reg_opt = m_interval.find_interval_value(u.valreg.v);
+    std::optional<refinement_t> value_reg_opt = m_interval.find_interval_value(u.valreg.v);
     if (!base_reg_opt || !value_reg_opt) return;
     if (is_stack_ptr(base_reg_opt)) {
         if (u.op == Atomic::Op::CMPXCHG) {
             m_region -= register_t{R0_RETURN_VALUE};
             m_offset -= register_t{R0_RETURN_VALUE};
             insert_in_registers_in_interval_domain(register_t{R0_RETURN_VALUE},
-                    loc, interval_t::top());
+                    loc, refinement_t::numeric_refinement_top());
         }
         else if (u.fetch) {
-            insert_in_registers_in_interval_domain(u.valreg.v, loc, interval_t::top());
+            insert_in_registers_in_interval_domain(u.valreg.v, loc,
+                                    refinement_t::numeric_refinement_top());
         }
         return;
     }
@@ -233,7 +227,8 @@ void inference_domain_t::operator()(const Atomic &u, location_t loc) {
         // For now we just havoc the value of R11.
         m_region -= register_t{11};
         m_offset -= register_t{11};
-        insert_in_registers_in_interval_domain(register_t{11}, loc, interval_t::top());
+        insert_in_registers_in_interval_domain(register_t{11}, loc,
+                refinement_t::numeric_refinement_top());
     } else if (u.fetch) {
         // For other FETCH operations, store the original value in the src register.
         (*this)(Mem{.access = u.access, .value = u.valreg, .is_load = true}, loc);
@@ -260,11 +255,11 @@ void inference_domain_t::operator()(const Call& u, location_t loc) {
     for (ArgPair param : u.pairs) {
         if (param.kind == ArgPair::Kind::PTR_TO_WRITABLE_MEM) {
             auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(param.mem.v);
-            auto maybe_width_interval = m_interval.find_signed_interval_value(param.size.v);
-            if (!maybe_ptr_or_mapfd || !maybe_width_interval) continue;
+            auto maybe_width_rf = m_interval.find_signed_interval_value(param.size.v);
+            if (!maybe_ptr_or_mapfd || !maybe_width_rf) continue;
             if (is_stack_ptr(maybe_ptr_or_mapfd)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
-                auto width_interval = maybe_width_interval->to_interval();
+                auto width_interval = maybe_width_rf->get_interval_value();
 
                 auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
                 if (!offset_singleton) {
@@ -305,20 +300,30 @@ void inference_domain_t::operator()(const Packet& u, location_t loc) {
     m_interval(u, loc);
 }
 
+static inline bool same_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd1,
+        const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd2,
+        const std::optional<refinement_t>& interval1,
+        const std::optional<refinement_t>& interval2) {
+    if (is_mapfd_type(ptr_or_mapfd1) && is_mapfd_type(ptr_or_mapfd2)) return false;
+    if (ptr_or_mapfd1 && ptr_or_mapfd2 && same_region(*ptr_or_mapfd1, *ptr_or_mapfd2))
+        return true;
+    if (interval1 && interval2) return true;
+    return false;
+}
+
 void inference_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
     const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
-    const auto& maybe_left_interval = m_interval.find_interval_value(cond.left.v);
-    assert(!maybe_left_type.has_value() || !maybe_left_interval.has_value());
+    const auto& maybe_left_rf = m_interval.find_interval_value(cond.left.v);
+    assert(!maybe_left_type.has_value() || !maybe_left_rf.has_value());
     if (std::holds_alternative<Reg>(cond.right)) {
         const auto& right_reg = std::get<Reg>(cond.right);
         const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
-        const auto& maybe_right_interval = m_interval.find_interval_value(right_reg.v);
-        assert(!maybe_right_type.has_value() || !maybe_right_interval.has_value());
+        const auto& maybe_right_rf = m_interval.find_interval_value(right_reg.v);
+        assert(!maybe_right_type.has_value() || !maybe_right_rf.has_value());
         // TODO: it does not handle for mapfd yet
-        if (same_type(maybe_left_type, maybe_right_type,
-                    maybe_left_interval, maybe_right_interval)) {
-            if (maybe_left_interval) {
+        if (same_type(maybe_left_type, maybe_right_type, maybe_left_rf, maybe_right_rf)) {
+            if (maybe_left_rf) {
                 // both numbers
                 m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v},
                         cond.right, loc);
@@ -351,7 +356,7 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
             // left is  a mapfd
             // TODO: need to work with values
         }
-        else if (maybe_left_interval) {
+        else if (maybe_left_rf) {
             m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v}, cond.right, loc);
         }
     }
@@ -372,7 +377,7 @@ void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
         m_errors.push_back("Only numbers can be used as divisors");
     }
     else if (maybe_num_type_reg.has_value() && !thread_local_options.allow_division_by_zero) {
-        auto num_type_reg = maybe_num_type_reg->to_interval();
+        auto num_type_reg = maybe_num_type_reg->get_interval_value();
         if (interval_t{number_t{0}} <= num_type_reg) {
             m_errors.push_back("Possible division by zero");
         }
@@ -382,19 +387,19 @@ void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
 void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     if (reg_type) {
-        std::optional<mock_interval_t> width_mock_interval;
+        interval_t width_interval = interval_t::bottom();
         if (std::holds_alternative<Reg>(s.width)) {
-            width_mock_interval = m_interval.find_interval_value(std::get<Reg>(s.width).v);
-            if (!width_mock_interval) {
+            auto width_rf = m_interval.find_interval_value(std::get<Reg>(s.width).v);
+            if (!width_rf) {
                 m_errors.push_back("width is unknown for valid access");
                 return;
             }
+            width_interval = width_rf->get_interval_value();
         }
         else {
             auto imm = std::get<Imm>(s.width); 
-            width_mock_interval = mock_interval_t{interval_t{number_t{imm.v}}};
+            width_interval = interval_t{number_t{imm.v}};
         }
-        auto width_interval = width_mock_interval->to_interval();
         if (auto width_number = width_interval.ub().number()) {
             int width = width_number->cast_to<int>();
             m_region.check_valid_access(s, width);
@@ -412,9 +417,9 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
         }
     }
     else {
-        auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
-        if (mock_interval_type) {
-            m_interval.check_valid_access(s, std::move(mock_interval_type->to_interval()));
+        auto rf_type = m_interval.find_interval_value(s.reg.v);
+        if (rf_type) {
+            m_interval.check_valid_access(s, rf_type->get_interval_value());
         }
         else {
             m_errors.push_back("valid access on unknown register");
@@ -424,9 +429,9 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
 
 void inference_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
-    auto mock_interval_type = m_interval.find_interval_value(s.reg.v);
-    assert(!reg_type.has_value() || !mock_interval_type.has_value());
-    m_region.check_type(s, mock_interval_type);
+    auto rf_type = m_interval.find_interval_value(s.reg.v);
+    assert(!reg_type.has_value() || !rf_type.has_value());
+    m_region.check_type(s, rf_type.has_value());
 }
 
 void inference_domain_t::operator()(const Assert& u, location_t loc) {
@@ -494,7 +499,7 @@ void inference_domain_t::operator()(const ValidSize& u, location_t loc) {
     assert(!maybe_ptr_or_mapfd || !maybe_num_type);
 
     if (maybe_num_type) {
-        auto reg_value = maybe_num_type.value();
+        auto reg_value = maybe_num_type->get_interval_value();
         if ((u.can_be_zero && reg_value.lb() >= bound_t{number_t{0}})
                 || (!u.can_be_zero && reg_value.lb() > bound_t{number_t{0}})) {
             return;
@@ -558,38 +563,36 @@ void inference_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
 }
 
 inference_domain_t inference_domain_t::setup_entry(bool init_r1) {
+    std::shared_ptr<slacks_t> slacks = std::make_shared<slacks_t>();
     return inference_domain_t{
         region_domain_t::setup_entry(init_r1),
-        offset_domain_t::setup_entry(),
-        interval_domain_t::setup_entry()
+        offset_domain_t::setup_entry(slacks),
+        interval_domain_t::setup_entry(slacks),
+        slacks
     };
 }
 
 void inference_domain_t::operator()(const Bin& bin, location_t loc) {
     std::optional<ptr_or_mapfd_t> src_ptr_or_mapfd;
-    std::optional<interval_t> src_signed_interval, src_unsigned_interval;
+    std::optional<refinement_t> src_signed_rf;
+    std::optional<interval_t> dst_signed_interval, src_signed_interval;
 
+    auto dst_register = register_t{bin.dst.v};
     if (std::holds_alternative<Reg>(bin.v)) {
         Reg r = std::get<Reg>(bin.v);
         src_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(r.v);
-        if (auto src_mock_signed_interval = m_interval.find_signed_interval_value(r.v)) {
-            src_signed_interval = src_mock_signed_interval->to_interval();
-        }
-        if (auto src_mock_unsigned_interval = m_interval.find_unsigned_interval_value(r.v)) {
-            src_unsigned_interval = src_mock_unsigned_interval->to_interval();
+        src_signed_rf = m_interval.find_signed_interval_value(r.v);
+        if (src_signed_rf) {
+            src_signed_interval = src_signed_rf->get_interval_value();
         }
     }
-    auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(bin.dst.v);
-    std::optional<interval_t> dst_signed_interval, dst_unsigned_interval;
-    if (auto dst_mock_signed_interval = m_interval.find_signed_interval_value(bin.dst.v)) {
-        dst_signed_interval = dst_mock_signed_interval->to_interval();
-    }
-    if (auto dst_mock_unsigned_interval = m_interval.find_unsigned_interval_value(bin.dst.v)) {
-        dst_unsigned_interval = dst_mock_unsigned_interval->to_interval();
+    auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(dst_register);
+    auto dst_signed_rf = m_interval.find_signed_interval_value(dst_register);
+    if (dst_signed_rf) {
+        dst_signed_interval = dst_signed_rf->get_interval_value();
     }
 
-    auto dst_register = register_t{bin.dst.v};
-    interval_t subtracted = interval_t::bottom();
+    std::optional<interval_t> subtracted;
     using Op = Bin::Op;
     // ptr -= ptr
     if (std::holds_alternative<Reg>(bin.v) && bin.op == Op::SUB) {
@@ -622,16 +625,9 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
         }
     }
 
-    m_interval.do_bin(bin, src_signed_interval, src_unsigned_interval, src_ptr_or_mapfd,
-            dst_signed_interval, dst_unsigned_interval, dst_ptr_or_mapfd, subtracted, loc);
-    m_region.do_bin(bin, src_signed_interval, src_ptr_or_mapfd,
-            dst_signed_interval, dst_ptr_or_mapfd, loc);
-
-    auto mock_interval_result = m_interval.find_signed_interval_value(dst_register);
-    auto interval_result = std::move(mock_interval_result ? *mock_interval_result
-        : mock_interval_t::top());
-    m_offset.do_bin(bin, src_signed_interval, src_ptr_or_mapfd,
-            dst_signed_interval, dst_ptr_or_mapfd, std::move(interval_result), loc);
+    m_interval.do_bin(bin, subtracted, loc);
+    m_region.do_bin(bin, dst_signed_interval, src_signed_interval, loc);
+    m_offset.do_bin(bin, dst_signed_rf, src_signed_rf, loc);
 }
 
 void inference_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
@@ -640,10 +636,7 @@ void inference_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unkno
     // TODO: replace with a bool value returned from region do_load
     auto load_in_region = m_region.find_ptr_or_mapfd_type(target_reg.v).has_value();
     m_interval.do_load(b, register_t{target_reg.v}, basereg_opt, load_in_region, loc);
-    auto mock_interval_opt = m_interval.find_unsigned_interval_value(target_reg.v);
-    auto interval = mock_interval_opt ? mock_interval_opt->to_interval()
-        : interval_t::bottom();
-    m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, std::move(interval), loc);
+    m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, loc);
 }
 
 void inference_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt) {
@@ -714,7 +707,7 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             auto interval_cells = maybe_signed_interval_cells.value();
             o << "\t\t";
             print_numeric_memory_cell(o, k, k+interval_cells.second-1,
-                    interval_cells.first.to_interval(), true);
+                    interval_cells.first, true);
             o << ",\n";
         }
         auto maybe_unsigned_interval_cells = m_interval.find_in_stack_unsigned(k);
@@ -722,7 +715,7 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             auto interval_cells = maybe_unsigned_interval_cells.value();
             o << "\t\t";
             print_numeric_memory_cell(o, k, k+interval_cells.second-1,
-                    interval_cells.first.to_interval(), false);
+                    interval_cells.first, false);
             o << ",\n";
         }
     }
@@ -768,12 +761,12 @@ inference_domain_t::find_refinement_at_loc(const crab::register_location_t& loc)
     return m_offset.find_refinement_at_loc(loc);
 }
 
-std::optional<crab::mock_interval_t>
+std::optional<crab::refinement_t>
 inference_domain_t::find_signed_interval_at_loc(const crab::register_location_t& loc) const {
     return m_interval.find_signed_interval_at_loc(loc);
 }
 
-std::optional<crab::mock_interval_t>
+std::optional<crab::refinement_t>
 inference_domain_t::find_unsigned_interval_at_loc(const crab::register_location_t& loc) const {
     return m_interval.find_unsigned_interval_at_loc(loc);
 }
@@ -792,36 +785,36 @@ static inline region_t string_to_region(const std::string& s) {
 }
 
 void inference_domain_t::insert_in_registers_in_interval_domain(register_t r, location_t loc,
-        interval_t interval) {
-    m_interval.insert_in_registers(r, loc, interval);
+                                                            refinement_t rf) {
+    m_interval.insert_in_registers(r, loc, rf);
 }
 
-void inference_domain_t::insert_in_registers_in_signed_interval_domain(register_t r, location_t loc,
-        interval_t interval) {
-    m_interval.insert_in_registers_signed(r, loc, interval);
+void inference_domain_t::insert_in_registers_in_signed_interval_domain(register_t r,
+                                                            location_t loc, refinement_t rf) {
+    m_interval.insert_in_registers_signed(r, loc, rf);
 }
 
-void inference_domain_t::insert_in_registers_in_unsigned_interval_domain(register_t r, location_t loc,
-        interval_t interval) {
-    m_interval.insert_in_registers_unsigned(r, loc, interval);
+void inference_domain_t::insert_in_registers_in_unsigned_interval_domain(register_t r,
+                                                            location_t loc, refinement_t rf) {
+    m_interval.insert_in_registers_unsigned(r, loc, rf);
 }
 
-void inference_domain_t::store_in_stack_in_interval_domain(uint64_t key, mock_interval_t p, int width) {
+void inference_domain_t::store_in_stack_in_interval_domain(uint64_t key, refinement_t p, int width) {
     m_interval.store_in_stack(key, p, width);
 }
 
-void inference_domain_t::store_in_stack_in_signed_interval_domain(uint64_t key, mock_interval_t p,
-        int width) {
+void inference_domain_t::store_in_stack_in_signed_interval_domain(uint64_t key, refinement_t p,
+                                                            int width) {
     m_interval.store_in_stack_signed(key, p, width);
 }
 
-void inference_domain_t::store_in_stack_in_unsigned_interval_domain(uint64_t key, mock_interval_t p,
-        int width) {
+void inference_domain_t::store_in_stack_in_unsigned_interval_domain(uint64_t key, refinement_t p,
+                                                            int width) {
     m_interval.store_in_stack_unsigned(key, p, width);
 }
 
 void inference_domain_t::insert_in_registers_in_offset_domain(register_t r, location_t loc,
-        refinement_t d) {
+                                                             refinement_t d) {
     m_offset.insert_in_registers(r, loc, d);
 }
 
@@ -830,7 +823,7 @@ void inference_domain_t::store_in_stack_in_offset_domain(uint64_t key, refinemen
 }
 
 void inference_domain_t::insert_in_registers_in_region_domain(register_t r, location_t loc,
-        const ptr_or_mapfd_t& p) {
+                                                             const ptr_or_mapfd_t& p) {
     m_region.insert_in_registers(r, loc, p);
 }
 
@@ -839,7 +832,7 @@ void inference_domain_t::store_in_stack_in_region_domain(uint64_t key, ptr_or_ma
 }
 
 inference_domain_t inference_domain_t::from_predefined_types(const std::set<std::string>& types,
-        bool setup_constraints) {
+                                                             bool setup_constraints) {
     // TODO: redo the method according to the new offset domain
     // also, need to store the intervals in the offset domain
     using std::regex;
@@ -922,6 +915,7 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
     };
     */
 
+    // TODO: Incomplete implementation, needs work
     inference_domain_t typ;
     if (setup_constraints) {
         typ = inference_domain_t::setup_entry(false);
@@ -954,12 +948,12 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
         else if (regex_match(t, m, regex(REG ":" SNUMBER))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
             auto num = create_interval(m[2], m[3]).to_interval();
-            typ.insert_in_registers_in_signed_interval_domain(reg, loc, num);
+            //typ.insert_in_registers_in_signed_interval_domain(reg, loc, num);
         }
         else if (regex_match(t, m, regex(REG ":" UNUMBER))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
             auto num = create_interval(m[2], m[3]).to_interval();
-            typ.insert_in_registers_in_unsigned_interval_domain(reg, loc, num);
+            //typ.insert_in_registers_in_unsigned_interval_domain(reg, loc, num);
         }
         else if (regex_match(t, m, regex(REG ":" MAPFD))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
@@ -995,15 +989,15 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
             auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
             auto stack_cell_end = std::stoi(m[2]);
             auto num = create_interval(m[3], m[4]);
-            typ.store_in_stack_in_signed_interval_domain(stack_cell_start, num,
-                    stack_cell_end-stack_cell_start);
+            //typ.store_in_stack_in_signed_interval_domain(stack_cell_start, num,
+            //        stack_cell_end-stack_cell_start);
         }
         else if (regex_match(t, m, regex(STACK_CELL ":" UNUMBER))) {
             auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));
             auto stack_cell_end = std::stoi(m[2]);
             auto num = create_interval(m[3], m[4]);
-            typ.store_in_stack_in_unsigned_interval_domain(stack_cell_start, num,
-                    stack_cell_end-stack_cell_start);
+            //typ.store_in_stack_in_unsigned_interval_domain(stack_cell_start, num,
+            //        stack_cell_end-stack_cell_start);
         }
         else if (regex_match(t, m, regex(STACK_CELL ":" MAPFD))) {
             auto stack_cell_start = static_cast<uint64_t>(std::stoul(m[1]));

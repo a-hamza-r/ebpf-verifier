@@ -802,8 +802,7 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::check_type(const TypeConstraint& s,
-        std::optional<mock_interval_t> interval_opt) {
+void region_domain_t::check_type(const TypeConstraint& s, bool is_numeric) {
     auto ptr_or_mapfd_opt = m_registers.find(s.reg.v);
     if (ptr_or_mapfd_opt) {
         // it is a pointer or mapfd
@@ -843,7 +842,7 @@ void region_domain_t::check_type(const TypeConstraint& s,
             }
         }
     }
-    else if (interval_opt) {
+    else if (is_numeric) {
         if (s.types == TypeGroup::number || s.types == TypeGroup::ptr_or_num
                 || s.types == TypeGroup::mem_or_num)
             return;
@@ -852,8 +851,8 @@ void region_domain_t::check_type(const TypeConstraint& s,
     m_errors.push_back("type constraint assert fail");
 }
 
-void region_domain_t::update_ptr_or_mapfd(ptr_or_mapfd_t&& ptr_or_mapfd, interval_t&& change,
-        const location_t& loc, register_t reg) {
+void region_domain_t::update_ptr_or_mapfd(const ptr_or_mapfd_t& ptr_or_mapfd, const interval_t& change,
+        location_t loc, register_t reg) {
     if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd)) {
         auto ptr_or_mapfd_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd);
         auto offset = ptr_or_mapfd_with_off.get_offset();
@@ -875,14 +874,17 @@ void region_domain_t::operator()(const Bin& b, location_t loc) {
 }
 
 void region_domain_t::do_bin(const Bin& bin,
-        const std::optional<interval_t>& src_signed_interval_opt,
-        const std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
-        const std::optional<interval_t>& dst_signed_interval_opt,
-        const std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt, location_t loc) {
+                             const std::optional<interval_t>& dst_signed_interval_opt,
+                             const std::optional<interval_t>& src_signed_interval_opt,
+                             location_t loc) {
 
     auto dst_register = register_t{bin.dst.v};
+    auto dst_ptr_or_mapfd_opt = m_registers.find(dst_register);
+    bool is_numeric_dst = !(dst_ptr_or_mapfd_opt.has_value());
+    bool is_numeric_src = std::holds_alternative<Imm>(bin.v) ||
+        !(find_ptr_or_mapfd_type(register_t{std::get<Reg>(bin.v).v}).has_value());
 
-    if (!dst_ptr_or_mapfd_opt && !src_ptr_or_mapfd_opt) {
+    if (is_numeric_dst && is_numeric_src) {
         m_registers -= dst_register;
         return;
     }
@@ -908,10 +910,8 @@ void region_domain_t::do_bin(const Bin& bin,
             case Op::ADD: {
                 // ra += imm
                 if (imm == 0) break;
-                if (dst_ptr_or_mapfd_opt) {
-                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
-                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
-                            std::move(imm_interval), loc, dst_register);
+                if (!is_numeric_dst) {
+                    update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, imm_interval, loc, dst_register);
                 }
                 else {
                     m_registers -= dst_register;
@@ -921,10 +921,8 @@ void region_domain_t::do_bin(const Bin& bin,
             case Op::SUB: {
                 // ra -= imm
                 if (imm == 0) break;
-                if (dst_ptr_or_mapfd_opt) {
-                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
-                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
-                            -std::move(imm_interval), loc, dst_register);
+                if (!is_numeric_dst) {
+                    update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, -imm_interval, loc, dst_register);
                 }
                 else {
                     m_registers -= dst_register;
@@ -939,13 +937,14 @@ void region_domain_t::do_bin(const Bin& bin,
         }
     }
     else {
+        auto src_register = register_t{std::get<Reg>(bin.v).v};
+        auto src_ptr_or_mapfd_opt = m_registers.find(src_register);
         switch (bin.op) {
             case Op::MOV: {
                 // ra = rb
-                if (src_ptr_or_mapfd_opt) {
-                    auto src_ptr_or_mapfd = std::move(*src_ptr_or_mapfd_opt);
-                    if (is_shared_ptr(src_ptr_or_mapfd)) {
-                        auto shared_ptr = std::get<ptr_with_off_t>(src_ptr_or_mapfd);
+                if (!is_numeric_src) {
+                    if (is_shared_ptr(*src_ptr_or_mapfd_opt)) {
+                        auto shared_ptr = std::get<ptr_with_off_t>(*src_ptr_or_mapfd_opt);
                         set_aliases(dst_register, shared_ptr);
                         m_registers.insert(dst_register, loc, shared_ptr);
                     }
@@ -960,23 +959,15 @@ void region_domain_t::do_bin(const Bin& bin,
             }
             case Op::ADD: {
                 // ra += rb
-                if (dst_ptr_or_mapfd_opt && src_signed_interval_opt) {
-                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
-                    auto src_signed = std::move(*src_signed_interval_opt);
-                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
-                            std::move(src_signed), loc, dst_register);
+                if (!is_numeric_dst && is_numeric_src) {
+                    update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, *src_signed_interval_opt, loc,
+                                        dst_register);
                 }
-                else if (src_ptr_or_mapfd_opt && dst_signed_interval_opt) {
-                    auto src_ptr_or_mapfd = std::move(*src_ptr_or_mapfd_opt);
-                    auto dst_signed = std::move(*dst_signed_interval_opt);
-                    update_ptr_or_mapfd(std::move(src_ptr_or_mapfd),
-                            std::move(dst_signed), loc, dst_register);
+                else if (is_numeric_dst && !is_numeric_src) {
+                    update_ptr_or_mapfd(*src_ptr_or_mapfd_opt, *dst_signed_interval_opt, loc,
+                                        dst_register);
                 }
-                // else if (dst_signed_interval_opt && src_signed_interval_opt) {
-                //     // we do not deal with numbers in region domain
-                //     m_registers -= dst_register;
-                // }
-                else if (dst_ptr_or_mapfd_opt && src_ptr_or_mapfd_opt) {
+                else if (!is_numeric_dst && !is_numeric_src) {
                     // possibly adding two pointers
                     set_to_bottom();
                 }
@@ -984,19 +975,13 @@ void region_domain_t::do_bin(const Bin& bin,
             }
             case Op::SUB: {
                 // ra -= rb
-                if (dst_ptr_or_mapfd_opt && src_signed_interval_opt) {
-                    auto dst_ptr_or_mapfd = std::move(*dst_ptr_or_mapfd_opt);
-                    auto src_signed = std::move(*src_signed_interval_opt);
-                    update_ptr_or_mapfd(std::move(dst_ptr_or_mapfd),
-                            -std::move(src_signed), loc, dst_register);
+                if (!is_numeric_dst && is_numeric_src) {
+                    update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, -(*src_signed_interval_opt),
+                                        loc, dst_register);
                 }
-                else if (src_ptr_or_mapfd_opt && dst_signed_interval_opt) {
+                else if (is_numeric_dst && !is_numeric_src) {
                     m_registers -= dst_register;
                 }
-                // else if (dst_signed_interval_opt && src_signed_interval_opt) {
-                //     // we do not deal with numbers in region domain
-                //     m_registers -= dst_register;
-                // }
                 else {
                     // ptr -= ptr
                     // this case already handled in type domain

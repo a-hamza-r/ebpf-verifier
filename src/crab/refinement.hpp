@@ -29,8 +29,10 @@ class refinement_t {
         _type(type), _value(value), meta_begin_constraint(constraint_t::get_true()),
         begin_end_constraint(constraint_t::get_true()) {}
  
+    [[nodiscard]] interval_t get_interval_value() const;
     [[nodiscard]] refinement_type_t get_type() const { return _type; }
     [[nodiscard]] expression_t get_value() const { return _value; }
+    [[nodiscard]] expression_t get_equivalent_expression() const;
     refinement_t operator+(int n) const;
     refinement_t operator+(interval_t) const;
     refinement_t operator+(const refinement_t &other) const;
@@ -50,26 +52,38 @@ class refinement_t {
     void add_constraint(constraint_t);
     friend std::ostream &operator<<(std::ostream &, const refinement_t&);
 
-    static refinement_t begin(bool has_constraints = false) {
-        if (has_constraints) {
-            constraint_t meta_begin_constraint = constraint_t::meta_begin_init_constraint();
-            constraint_t begin_end_constraint = constraint_t::begin_end_init_constraint();
-            return refinement_t(refinement_type_t::PACKET, expression_t::begin(),
-                                meta_begin_constraint, begin_end_constraint);
-        }
-        return refinement_t(refinement_type_t::PACKET, expression_t::begin());
+    static refinement_t begin_with_constraints() {
+        constraint_t meta_begin_constraint = constraint_t::meta_begin_init_constraint();
+        constraint_t begin_end_constraint = constraint_t::begin_end_init_constraint();
+        return refinement_t(refinement_type_t::PACKET, expression_t::begin(),
+                            meta_begin_constraint, begin_end_constraint);
     }
 
-    static refinement_t end() {
-        return refinement_t(refinement_type_t::PACKET, expression_t::end());
+    static refinement_t begin(std::shared_ptr<slacks_t> slacks = nullptr) {
+        return refinement_t(refinement_type_t::PACKET, expression_t::begin(slacks));
     }
 
-    static refinement_t meta() {
-        return refinement_t(refinement_type_t::PACKET, expression_t::meta());
+    static refinement_t end(std::shared_ptr<slacks_t> slacks) {
+        return refinement_t(refinement_type_t::PACKET, expression_t::end(slacks));
+    }
+
+    static refinement_t meta(std::shared_ptr<slacks_t> slacks) {
+        return refinement_t(refinement_type_t::PACKET, expression_t::meta(slacks));
     }
 
     static refinement_t numeric_refinement(expression_t value) {
-        return refinement_t(refinement_type_t::NUM, std::move(value));
+        return refinement_t(refinement_type_t::NUM, value);
+    }
+
+    static refinement_t numeric_refinement(interval_t i, std::shared_ptr<slacks_t> slacks) {
+        symbol_t s = symbol_t::make();
+        (*slacks)[s] = i;
+        return numeric_refinement(expression_t(s, slacks));
+    }
+
+    static refinement_t numeric_refinement_top(std::shared_ptr<slacks_t> slacks = nullptr) {
+        // expression_t::top() represents a top interval
+        return numeric_refinement(expression_t::top(slacks));
     }
 };
 

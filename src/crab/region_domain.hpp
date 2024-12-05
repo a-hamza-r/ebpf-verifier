@@ -107,8 +107,9 @@ class region_domain_t final {
     region_domain_t() = default;
     region_domain_t(region_registers_t registers, region_stack_t stack,
             std::shared_ptr<region_ctx_t> ctx, shared_ptr_aliases_t shared_ptr_aliases = {})
-            : m_stack(std::move(stack)), m_registers(std::move(registers)), m_ctx(std::move(ctx)),
+            : m_stack(std::move(stack)), m_registers(std::move(registers)), m_ctx(ctx),
             m_shared_ptr_aliases(std::move(shared_ptr_aliases)) {}
+
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static region_domain_t setup_entry(bool);
     // bottom/top
@@ -163,19 +164,16 @@ class region_domain_t final {
     interval_t get_map_key_size(const Reg&) const;
     std::optional<uint32_t> get_map_type(const Reg&) const;
     std::optional<uint32_t> get_map_inner_map_fd(const Reg&) const;
-    void check_type(const TypeConstraint&, std::optional<mock_interval_t>);
+    void check_type(const TypeConstraint&, bool);
     void do_load_mapfd(const register_t&, int, location_t);
     void do_load(const Mem&, const register_t&, bool, location_t);
     void do_mem_store(const Mem&);
-    void do_bin(const Bin&, const std::optional<interval_t>&,
-            const std::optional<ptr_or_mapfd_t>&,
-            const std::optional<interval_t>&,
-            const std::optional<ptr_or_mapfd_t>&, location_t);
+    void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,
+                location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void check_valid_access(const ValidAccess &, int);
     void assume_cst(Condition::Op, ptr_with_off_t&&, int64_t, register_t, location_t);
-    void update_ptr_or_mapfd(crab::ptr_or_mapfd_t&&, interval_t&&,
-            const crab::location_t&, register_t);
+    void update_ptr_or_mapfd(const ptr_or_mapfd_t&, const interval_t&, location_t, register_t);
 
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_type(register_t) const;
     [[nodiscard]] size_t get_ctx_size() const;

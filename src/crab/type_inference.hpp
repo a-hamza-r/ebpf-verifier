@@ -11,6 +11,7 @@
 namespace crab {
 
 class inference_domain_t final {
+    std::shared_ptr<slacks_t> m_slacks;
     region_domain_t m_region;
     offset_domain_t m_offset;
     interval_domain_t m_interval;
@@ -18,10 +19,37 @@ class inference_domain_t final {
 
   public:
 
-    inference_domain_t() = default;
+    inference_domain_t() : m_slacks(std::make_shared<slacks_t>()),
+        m_region(), m_offset(m_slacks), m_interval(m_slacks) {}
     inference_domain_t(region_domain_t region, offset_domain_t offset,
-            interval_domain_t interval) :
-        m_region(std::move(region)), m_offset(std::move(offset)), m_interval(std::move(interval)) {}
+            interval_domain_t interval, std::shared_ptr<slacks_t> slacks) :
+        m_slacks(std::move(slacks)), m_region(std::move(region)), m_offset(std::move(offset)),
+        m_interval(std::move(interval)) {}
+    inference_domain_t(const inference_domain_t& other) :
+        m_slacks(other.m_slacks), m_region(other.m_region), m_offset(other.m_offset),
+        m_interval(other.m_interval) {}
+    inference_domain_t(inference_domain_t&& other) :
+        m_slacks(std::move(other.m_slacks)), m_region(std::move(other.m_region)),
+        m_offset(std::move(other.m_offset)), m_interval(std::move(other.m_interval)) {}
+    inference_domain_t& operator=(const inference_domain_t& other) {
+        if (this != &other) {
+            m_slacks = other.m_slacks;
+            m_region = other.m_region;
+            m_offset = other.m_offset;
+            m_interval = other.m_interval;
+        }
+        return *this;
+    }
+    inference_domain_t& operator=(inference_domain_t&& other) {
+        if (this != &other) {
+            m_slacks = std::move(other.m_slacks);
+            m_region = std::move(other.m_region);
+            m_offset = std::move(other.m_offset);
+            m_interval = std::move(other.m_interval);
+        }
+        return *this;
+    }
+
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
     static inference_domain_t setup_entry(bool);
     // bottom/top
@@ -84,17 +112,17 @@ class inference_domain_t final {
     void print_annotated_bb(std::ostream&, const basic_block_t&) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::register_location_t&) const;
     std::optional<crab::refinement_t> find_refinement_at_loc(const crab::register_location_t&) const;
-    std::optional<crab::mock_interval_t> find_signed_interval_at_loc(const crab::register_location_t&) const;
-    std::optional<crab::mock_interval_t> find_unsigned_interval_at_loc(const crab::register_location_t&) const;
+    std::optional<crab::refinement_t> find_signed_interval_at_loc(const crab::register_location_t&) const;
+    std::optional<crab::refinement_t> find_unsigned_interval_at_loc(const crab::register_location_t&) const;
     static inference_domain_t from_predefined_types(const std::set<std::string>&, bool);
     void insert_in_registers_in_region_domain(register_t, location_t, const ptr_or_mapfd_t&);
     void store_in_stack_in_region_domain(uint64_t, ptr_or_mapfd_t, int);
-    void insert_in_registers_in_interval_domain(register_t, location_t, interval_t);
-    void insert_in_registers_in_signed_interval_domain(register_t, location_t, interval_t);
-    void insert_in_registers_in_unsigned_interval_domain(register_t, location_t, interval_t);
-    void store_in_stack_in_interval_domain(uint64_t, mock_interval_t, int);
-    void store_in_stack_in_signed_interval_domain(uint64_t, mock_interval_t, int);
-    void store_in_stack_in_unsigned_interval_domain(uint64_t, mock_interval_t, int);
+    void insert_in_registers_in_interval_domain(register_t, location_t, refinement_t);
+    void insert_in_registers_in_signed_interval_domain(register_t, location_t, refinement_t);
+    void insert_in_registers_in_unsigned_interval_domain(register_t, location_t, refinement_t);
+    void store_in_stack_in_interval_domain(uint64_t, refinement_t, int);
+    void store_in_stack_in_signed_interval_domain(uint64_t, refinement_t, int);
+    void store_in_stack_in_unsigned_interval_domain(uint64_t, refinement_t, int);
     void insert_in_registers_in_offset_domain(register_t, location_t, refinement_t);
     void store_in_stack_in_offset_domain(uint64_t, refinement_t, int);
 

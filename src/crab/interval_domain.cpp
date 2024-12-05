@@ -81,63 +81,67 @@ void interval_domain_t::fill_values_in_stack(const std::vector<uint64_t>& overla
     m_unsigned.fill_values_in_stack(overlap, start_loc, width);
 }
 
-std::optional<mock_interval_t> interval_domain_t::find_interval_value(register_t reg) const {
+std::optional<refinement_t> interval_domain_t::find_interval_value(register_t reg) const {
     // in this case, it does not matter which domain we look into, hence we look into the signed one
     return m_signed.find_interval_value(reg);
 }
 
-std::optional<mock_interval_t> interval_domain_t::find_signed_interval_value(register_t reg) const {
+std::optional<refinement_t> interval_domain_t::find_signed_interval_value(register_t reg) const {
     return m_signed.find_interval_value(reg);
 }
 
-std::optional<mock_interval_t> interval_domain_t::find_unsigned_interval_value(register_t reg) const {
+std::optional<refinement_t> interval_domain_t::find_unsigned_interval_value(register_t reg) const {
     return m_unsigned.find_interval_value(reg);
 }
 
-std::optional<mock_interval_t> interval_domain_t::find_signed_interval_at_loc(
+std::optional<refinement_t> interval_domain_t::find_signed_interval_at_loc(
         const register_location_t reg) const {
     return m_signed.find_interval_at_loc(reg);
 }
 
-std::optional<mock_interval_t> interval_domain_t::find_unsigned_interval_at_loc(
+std::optional<refinement_t> interval_domain_t::find_unsigned_interval_at_loc(
         const register_location_t reg) const {
     return m_unsigned.find_interval_at_loc(reg);
 }
 
-void interval_domain_t::insert_in_registers(register_t reg, location_t loc, interval_t interval) {
-    insert_in_registers_unsigned(reg, loc, interval);
-    insert_in_registers_signed(reg, loc, interval);
+void interval_domain_t::insert_in_registers(register_t reg, location_t loc, refinement_t rf) {
+    insert_in_registers_unsigned(reg, loc, rf);
+    insert_in_registers_signed(reg, loc, rf);
 }
 
 void interval_domain_t::insert_in_registers_signed(register_t reg, location_t loc,
         interval_t interval) {
-    m_signed.insert_in_registers(reg, loc, interval);
-    //auto v = m_unsigned.find_interval_at_loc(register_location_t{reg, loc});
-    //if (!v) {
-    //    m_unsigned.insert_in_registers(reg, loc, interval_t::top());
-    //}
+    refinement_t rf = refinement_t::numeric_refinement(interval, m_slacks);
+    m_signed.insert_in_registers(reg, loc, rf);
+}
+
+void interval_domain_t::insert_in_registers_signed(register_t reg, location_t loc,
+        refinement_t rf) {
+    m_signed.insert_in_registers(reg, loc, rf);
 }
 
 void interval_domain_t::insert_in_registers_unsigned(register_t reg, location_t loc,
         interval_t interval) {
-    m_unsigned.insert_in_registers(reg, loc, interval);
-    //auto v = m_signed.find_interval_at_loc(register_location_t{reg, loc});
-    //if (!v) {
-    //    m_signed.insert_in_registers(reg, loc, interval_t::top());
-    //}
+    refinement_t rf = refinement_t::numeric_refinement(interval, m_slacks);
+    m_unsigned.insert_in_registers(reg, loc, rf);
 }
 
-void interval_domain_t::store_in_stack(uint64_t key, mock_interval_t interval, int width) {
-    store_in_stack_signed(key, interval, width);
-    store_in_stack_unsigned(key, interval, width);
+void interval_domain_t::insert_in_registers_unsigned(register_t reg, location_t loc,
+        refinement_t rf) {
+    m_unsigned.insert_in_registers(reg, loc, rf);
 }
 
-void interval_domain_t::store_in_stack_signed(uint64_t key, mock_interval_t interval, int width) {
-    m_signed.store_in_stack(key, interval, width);
+void interval_domain_t::store_in_stack(uint64_t key, refinement_t rf, int width) {
+    store_in_stack_signed(key, rf, width);
+    store_in_stack_unsigned(key, rf, width);
 }
 
-void interval_domain_t::store_in_stack_unsigned(uint64_t key, mock_interval_t interval, int width) {
-    m_unsigned.store_in_stack(key, interval, width);
+void interval_domain_t::store_in_stack_signed(uint64_t key, refinement_t rf, int width) {
+    m_signed.store_in_stack(key, rf, width);
+}
+
+void interval_domain_t::store_in_stack_unsigned(uint64_t key, refinement_t rf, int width) {
+    m_unsigned.store_in_stack(key, rf, width);
 }
 
 bool interval_domain_t::operator<=(const interval_domain_t& abs) const {
@@ -159,12 +163,12 @@ void interval_domain_t::operator|=(interval_domain_t&& abs) {
 }
 
 interval_domain_t interval_domain_t::operator|(const interval_domain_t& other) const {
-    return interval_domain_t(m_signed | other.m_signed, m_unsigned | other.m_unsigned);
+    return interval_domain_t(m_signed | other.m_signed, m_unsigned | other.m_unsigned, m_slacks);
 }
 
 interval_domain_t interval_domain_t::operator|(interval_domain_t&& other) const {
     return interval_domain_t(m_signed | std::move(other.m_signed),
-                             m_unsigned | std::move(other.m_unsigned));
+                             m_unsigned | std::move(other.m_unsigned), std::move(other.m_slacks));
 }
 
 interval_domain_t interval_domain_t::operator&(const interval_domain_t& abs) const {
@@ -195,33 +199,36 @@ string_invariant interval_domain_t::to_set() {
     return string_invariant{};
 }
 
-interval_domain_t interval_domain_t::setup_entry() {
+interval_domain_t interval_domain_t::setup_entry(std::shared_ptr<slacks_t> slacks) {
     return interval_domain_t{
-        std::move(signed_interval_domain_t::setup_entry()),
-        std::move(unsigned_interval_domain_t::setup_entry())
+        signed_interval_domain_t::setup_entry(slacks),
+        unsigned_interval_domain_t::setup_entry(slacks),
+        slacks
     };
 }
 
 void interval_domain_t::overflow_bounds(const register_t& lhs, number_t span, const int finite_width, location_t loc, bool is_signed) {
-    auto mock_interval = is_signed ? m_signed.find_interval_value(lhs) : m_unsigned.find_interval_value(lhs);
-    if (!mock_interval) return;
-    interval_t interval = mock_interval->to_interval();
+    auto rf_opt = is_signed ? m_signed.find_interval_value(lhs) : m_unsigned.find_interval_value(lhs);
+    if (!rf_opt) return;
+    interval_t interval = rf_opt->get_interval_value();
+    // numeric_refinement_top() represents interval_t::top()
+    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (interval.ub() - interval.lb() >= span) {
         // Interval covers the full space.
         // We do not forget the interval, as it will remove the information that it is a number.
         // We only set the interval to top.
         if (is_signed) {
-            m_signed.insert_in_registers(lhs, loc, interval_t::top());
+            m_signed.insert_in_registers(lhs, loc, top_rf);
         } else {
-            m_unsigned.insert_in_registers(lhs, loc, interval_t::top());
+            m_unsigned.insert_in_registers(lhs, loc, top_rf);
         }
         return;
     }
     if (interval.is_bottom()) {
         if (is_signed) {
-            m_signed.insert_in_registers(lhs, loc, interval_t::top());
+            m_signed.insert_in_registers(lhs, loc, top_rf);
         } else {
-            m_unsigned.insert_in_registers(lhs, loc, interval_t::top());
+            m_unsigned.insert_in_registers(lhs, loc, top_rf);
         }
         return;
     }
@@ -294,8 +301,8 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
             std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
-        zi = zi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
+        zi = zi_opt->get_interval_value();
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
@@ -303,8 +310,8 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
             std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
-        zi = zi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
+        zi = zi_opt->get_interval_value();
     }
 
     switch (op) {
@@ -352,14 +359,14 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
             std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         if (!yi_opt) {
             std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
     }
 
     switch (op) {
@@ -390,14 +397,14 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
             std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         if (!yi_opt) {
             std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
     }
     interval_t zi{number_t{k.cast_to<uint64_t>()}};
 
@@ -430,8 +437,8 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
             std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
-        zi = zi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
+        zi = zi_opt->get_interval_value();
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
@@ -439,8 +446,8 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
             std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->to_interval();
-        zi = zi_opt->to_interval();
+        yi = yi_opt->get_interval_value();
+        zi = zi_opt->get_interval_value();
     }
 
     switch (op) {
@@ -465,8 +472,7 @@ void interval_domain_t::apply_signed(const binaryop_t& op, const register_t& res
     if (finite_width) {
         auto signed_result = m_signed.find_interval_value(result);
         if (signed_result) {
-            auto signed_interval = signed_result->to_interval();
-            m_unsigned.insert_in_registers(result, loc, signed_interval);
+            m_unsigned.insert_in_registers(result, loc, *signed_result);
         }
         overflow(result, finite_width, loc, true);
         overflow(result, finite_width, loc, false);
@@ -478,8 +484,7 @@ void interval_domain_t::apply_signed(const binaryop_t& op, const register_t& res
     if (finite_width) {
         auto signed_result = m_signed.find_interval_value(result);
         if (signed_result) {
-            auto signed_interval = signed_result->to_interval();
-            m_unsigned.insert_in_registers(result, loc, signed_interval);
+            m_unsigned.insert_in_registers(result, loc, *signed_result);
         }
         overflow(result, finite_width, loc, true);
         overflow(result, finite_width, loc, false);
@@ -491,8 +496,7 @@ void interval_domain_t::apply_unsigned(const binaryop_t& op, const register_t& r
     if (finite_width) {
         auto unsigned_result = m_unsigned.find_interval_value(result);
         if (unsigned_result) {
-            auto unsigned_interval = unsigned_result->to_interval();
-            m_signed.insert_in_registers(result, loc, unsigned_interval);
+            m_signed.insert_in_registers(result, loc, *unsigned_result);
         }
         overflow(result, finite_width, loc, true);
         overflow(result, finite_width, loc, false);
@@ -504,8 +508,7 @@ void interval_domain_t::apply_unsigned(const binaryop_t& op, const register_t& r
     if (finite_width) {
         auto unsigned_result = m_unsigned.find_interval_value(result);
         if (unsigned_result) {
-            auto unsigned_interval = unsigned_result->to_interval();
-            m_signed.insert_in_registers(result, loc, unsigned_interval);
+            m_signed.insert_in_registers(result, loc, *unsigned_result);
         }
         overflow(result, finite_width, loc, true);
         overflow(result, finite_width, loc, false);
@@ -531,7 +534,8 @@ void interval_domain_t::sub(const register_t& lhs, const number_t& op2, location
 // Add/subtract with overflow are both signed and unsigned. We can use either one of the two to compute the
 // result before adjusting for overflow, though if one is top we want to use the other to retain precision.
 void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
-    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
@@ -539,7 +543,8 @@ void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op
 }
 
 void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
-    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
@@ -547,7 +552,8 @@ void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2,
 }
 
 void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
-    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
@@ -555,7 +561,8 @@ void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op
 }
 
 void interval_domain_t::sub_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
-    if (!m_signed.find_interval_value(lhs)->to_interval().is_top()) {
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
@@ -662,13 +669,14 @@ void interval_domain_t::scratch_caller_saved_registers() {
 
 void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_stack,
         location_t loc) {
+    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     for (const auto& kv : store_in_stack) {
         auto offset = kv.first;
         auto width = kv.second;
         auto overlapping_cells = find_overlapping_cells_in_stack(offset, width);
         if (overlapping_cells.empty()) {
-            m_signed.store_in_stack(offset, interval_t::top(), width);
-            m_unsigned.store_in_stack(offset, interval_t::top(), width);
+            m_signed.store_in_stack(offset, top_rf, width);
+            m_unsigned.store_in_stack(offset, top_rf, width);
         }
         else {
             fill_values_in_stack(overlapping_cells, offset, width);
@@ -683,14 +691,14 @@ void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_sta
         operator-=(r0);
     }
     else {
-        insert_in_registers(r0, loc, interval_t::top());
+        insert_in_registers(r0, loc, top_rf);
     }
     scratch_caller_saved_registers();
 }
 
 void interval_domain_t::operator()(const Packet& u, location_t loc) {
     auto r0 = register_t{R0_RETURN_VALUE};
-    insert_in_registers(r0, loc, interval_t::top());
+    insert_in_registers(r0, loc, refinement_t::numeric_refinement_top(m_slacks));
     scratch_caller_saved_registers();
 }
 
@@ -738,6 +746,7 @@ void interval_domain_t::assume_unsigned_lt(bool is64, bool strict,
         register_t left, Value right, location_t loc) {
 
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
+    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (right_interval <= interval_t::nonnegative(64)) {
         // Both left_interval and right_interval fit in [0, INT_MAX],
         // and can be treated as both signed and unsigned values
@@ -757,9 +766,9 @@ void interval_domain_t::assume_unsigned_lt(bool is64, bool strict,
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), interval_t::top(),
                 false, true, false, false);
-        insert_in_registers_signed(left, loc, interval_t::top());
+        insert_in_registers_signed(left, loc, top_rf);
         if (std::holds_alternative<Reg>(right)) {
-            insert_in_registers_signed(std::get<Reg>(right).v, loc, interval_t::top());
+            insert_in_registers_signed(std::get<Reg>(right).v, loc, top_rf);
         }
     }
     // possibly redundant case, since when left interval is negative, it is converted to
@@ -780,9 +789,9 @@ void interval_domain_t::assume_unsigned_lt(bool is64, bool strict,
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), std::move(positive), false, true, false, false);
-        insert_in_registers_signed(left, loc, interval_t::top());
+        insert_in_registers_signed(left, loc, top_rf);
         if (std::holds_alternative<Reg>(right)) {
-            insert_in_registers_signed(std::get<Reg>(right).v, loc, interval_t::top());
+            insert_in_registers_signed(std::get<Reg>(right).v, loc, top_rf);
         }
     }
 }
@@ -793,6 +802,7 @@ void interval_domain_t::assume_unsigned_gt(bool is64, bool strict,
         const interval_t& right_signed, const interval_t& right_unsigned,
         register_t left, Value right, location_t loc) {
 
+    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
     if (left_interval <= interval_t::unsigned_int(64) &&
             right_interval <= interval_t::unsigned_int(64)) {
@@ -816,9 +826,9 @@ void interval_domain_t::assume_unsigned_gt(bool is64, bool strict,
         update_gt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), std::move(positive), false, true, false, false);
-        insert_in_registers_signed(left, loc, interval_t::top());
+        insert_in_registers_signed(left, loc, top_rf);
         if (std::holds_alternative<Reg>(right)) {
-            insert_in_registers(std::get<Reg>(right).v, loc, interval_t::top());
+            insert_in_registers(std::get<Reg>(right).v, loc, top_rf);
         }
     }
 }
@@ -954,16 +964,18 @@ void interval_domain_t::update_lt(bool is64, bool strict, interval_t&& left_inte
         if (update_signed) {
             auto to_insert_signed = interval_t{llbs, strict ? rlbs - number_t{1} : rlbs};
             to_insert_signed = to_insert_signed & restrict_signed;
-            insert_in_registers_signed(left, loc, to_insert_signed);
+            refinement_t rf = refinement_t::numeric_refinement(to_insert_signed, m_slacks);
+            insert_in_registers_signed(left, loc, rf);
             if (mk_equal_unsigned && !is_signed) {
-                insert_in_registers_unsigned(left, loc, to_insert_signed);
+                insert_in_registers_unsigned(left, loc, rf);
             }
         }
 
         if (update_unsigned && !is_signed) {
             auto to_insert_unsigned = interval_t{llbu, strict ? rlbu - number_t{1} : rlbu};
             to_insert_unsigned = to_insert_unsigned & restrict_unsigned;
-            insert_in_registers_unsigned(left, loc, to_insert_unsigned);
+            insert_in_registers_unsigned(left, loc,
+                                refinement_t::numeric_refinement(to_insert_unsigned, m_slacks));
         }
     }
     else if (left_interval <= right_interval && strict ? lub < rub : lub <= rub && holds_reg) {
@@ -971,32 +983,36 @@ void interval_domain_t::update_lt(bool is64, bool strict, interval_t&& left_inte
         if (update_signed) {
             auto to_insert_signed = interval_t{strict ? lubs + number_t{1} : lubs, rubs};
             to_insert_signed = to_insert_signed & restrict_signed;
-            insert_in_registers_signed(right_reg, loc, to_insert_signed);
+            refinement_t rf = refinement_t::numeric_refinement(to_insert_signed, m_slacks);
+            insert_in_registers_signed(right_reg, loc, rf);
             if (mk_equal_unsigned && !is_signed) {
-                insert_in_registers_unsigned(right_reg, loc, to_insert_signed);
+                insert_in_registers_unsigned(right_reg, loc, rf);
             }
         }
 
         if (update_unsigned && !is_signed) {
             auto to_insert_unsigned = interval_t{strict ? lubu + number_t{1} : lubu, rubu};
             to_insert_unsigned = to_insert_unsigned & restrict_unsigned;
-            insert_in_registers_unsigned(right_reg, loc, to_insert_unsigned);
+            insert_in_registers_unsigned(right_reg, loc,
+                            refinement_t::numeric_refinement(to_insert_unsigned, m_slacks));
         }
     }
     else if (lub >= rub && strict ? llb < rub : llb <= rub) {
         if (update_signed) {
             auto to_insert_left_signed = interval_t{llbs, strict ? rubs - number_t{1} : rubs};
             to_insert_left_signed = to_insert_left_signed & restrict_signed;
-            insert_in_registers_signed(left, loc, to_insert_left_signed);
+            refinement_t rf = refinement_t::numeric_refinement(to_insert_left_signed, m_slacks);
+            insert_in_registers_signed(left, loc, rf);
             if (mk_equal_unsigned && !is_signed) {
-                insert_in_registers_unsigned(left, loc, to_insert_left_signed);
+                insert_in_registers_unsigned(left, loc, rf);
             }
         }
 
         if (update_unsigned && !is_signed) {
             auto to_insert_left_unsigned = interval_t{llbu, strict ? rubu - number_t{1} : rubu};
             to_insert_left_unsigned = to_insert_left_unsigned & restrict_unsigned;
-            insert_in_registers_unsigned(left, loc, to_insert_left_unsigned);
+            insert_in_registers_unsigned(left, loc,
+                            refinement_t::numeric_refinement(to_insert_left_unsigned, m_slacks));
         }
 
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rub)
@@ -1006,13 +1022,16 @@ void interval_domain_t::update_lt(bool is64, bool strict, interval_t&& left_inte
             auto right_reg = std::get<Reg>(right).v;
             if (update_signed) {
                 auto to_insert_right_signed = interval_t{rubs} & restrict_signed;
-                insert_in_registers_signed(right_reg, loc, to_insert_right_signed);
+                refinement_t rf = refinement_t::numeric_refinement(to_insert_right_signed, m_slacks);
+                insert_in_registers_signed(right_reg, loc, rf);
                 if (mk_equal_unsigned && !is_signed) {
-                    insert_in_registers_unsigned(right_reg, loc, to_insert_right_signed);
+                    insert_in_registers_unsigned(right_reg, loc, rf);
                 }
             }
             if (update_unsigned && !is_signed) {
-                insert_in_registers_unsigned(right_reg, loc, interval_t{rubu} & restrict_unsigned);
+                interval_t interval = interval_t{rubu} & restrict_unsigned;
+                insert_in_registers_unsigned(right_reg, loc,
+                                             refinement_t::numeric_refinement(interval, m_slacks));
             }
         }
     }
@@ -1021,9 +1040,11 @@ void interval_domain_t::update_lt(bool is64, bool strict, interval_t&& left_inte
         set_registers_to_bottom();
     }
     if (is_signed) {
-        insert_in_registers_unsigned(left, loc, left_unsigned);
+        insert_in_registers_unsigned(left, loc,
+                                     refinement_t::numeric_refinement(left_unsigned, m_slacks));
         if (std::holds_alternative<Reg>(right)) {
-            insert_in_registers_unsigned(std::get<Reg>(right).v, loc, right_unsigned);
+            insert_in_registers_unsigned(std::get<Reg>(right).v, loc,
+                                     refinement_t::numeric_refinement(right_unsigned, m_slacks));
         }
     }
 }
@@ -1056,10 +1077,12 @@ void interval_domain_t::assume_signed_lt(bool is64, bool strict,
         update_lt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), interval_t::top(), true, false, false, false);
-        insert_in_registers_unsigned(left, loc, left_unsigned);
+        insert_in_registers_unsigned(left, loc,
+                                     refinement_t::numeric_refinement(left_unsigned, m_slacks));
         if (std::holds_alternative<Reg>(right)) {
             auto right_reg = std::get<Reg>(right).v;
-            insert_in_registers_unsigned(right_reg, loc, right_unsigned);
+            insert_in_registers_unsigned(right_reg, loc,
+                                     refinement_t::numeric_refinement(right_unsigned, m_slacks));
         }
     }
 }
@@ -1090,16 +1113,18 @@ void interval_domain_t::update_gt(bool is64, bool strict, interval_t&& left_inte
         if (update_signed) {
             auto to_insert_signed = interval_t{strict ? rubs + number_t{1} : rubs, lubs};
             to_insert_signed = to_insert_signed & restrict_signed;
-            insert_in_registers_signed(left, loc, to_insert_signed);
+            refinement_t rf = refinement_t::numeric_refinement(to_insert_signed, m_slacks);
+            insert_in_registers_signed(left, loc, rf);
             if (mk_equal_unsigned && !is_signed) {
-                insert_in_registers_unsigned(left, loc, to_insert_signed);
+                insert_in_registers_unsigned(left, loc, rf);
             }
         }
 
         if (update_unsigned && !is_signed) {
             auto to_insert_unsigned = interval_t{strict ? rubu + number_t{1} : rubu, lubu};
             to_insert_unsigned = to_insert_unsigned & restrict_unsigned;
-            insert_in_registers_unsigned(left, loc, to_insert_unsigned);
+            insert_in_registers_unsigned(left, loc,
+                                    refinement_t::numeric_refinement(to_insert_unsigned, m_slacks));
         }
     }
     else if (left_interval <= right_interval && strict ? llb > rlb : llb >= rlb && holds_reg) {
@@ -1107,32 +1132,36 @@ void interval_domain_t::update_gt(bool is64, bool strict, interval_t&& left_inte
         if (update_signed) {
             auto to_insert_signed = interval_t{rlbs, strict ? llbs - number_t{1} : llbs};
             to_insert_signed = to_insert_signed & restrict_signed;
-            insert_in_registers_signed(right_reg, loc, to_insert_signed);
+            refinement_t rf = refinement_t::numeric_refinement(to_insert_signed, m_slacks);
+            insert_in_registers_signed(right_reg, loc, rf);
             if (mk_equal_unsigned && !is_signed) {
-                insert_in_registers_unsigned(right_reg, loc, to_insert_signed);
+                insert_in_registers_unsigned(right_reg, loc, rf);
             }
         }
 
         if (update_unsigned && !is_signed) {
             auto to_insert_unsigned = interval_t{rlbu, strict ? llbu - number_t{1} : llbu};
             to_insert_unsigned = to_insert_unsigned & restrict_unsigned;
-            insert_in_registers_unsigned(right_reg, loc, to_insert_unsigned);
+            insert_in_registers_unsigned(right_reg, loc,
+                                    refinement_t::numeric_refinement(to_insert_unsigned, m_slacks));
         }
     }
     else if (llb <= rlb && strict ? lub > rlb : lub >= rlb) {
         if (update_signed) {
             auto to_insert_signed_left = interval_t{strict ? rlbs + number_t{1} : rlbs, lubs};
             to_insert_signed_left = to_insert_signed_left & restrict_signed;
-            insert_in_registers_signed(left, loc, to_insert_signed_left);
+            refinement_t rf = refinement_t::numeric_refinement(to_insert_signed_left, m_slacks);
+            insert_in_registers_signed(left, loc, rf);
             if (mk_equal_unsigned && !is_signed) {
-                insert_in_registers_unsigned(left, loc, to_insert_signed_left);
+                insert_in_registers_unsigned(left, loc, rf);
             }
         }
 
         if (update_unsigned && !is_signed) {
             auto to_insert_unsigned_left = interval_t{strict ? rlbu + number_t{1} : rlbu, lubu};
             to_insert_unsigned_left = to_insert_unsigned_left & restrict_unsigned;
-            insert_in_registers_unsigned(left, loc, to_insert_unsigned_left);
+            insert_in_registers_unsigned(left, loc,
+                            refinement_t::numeric_refinement(to_insert_unsigned_left, m_slacks));
         }
 
         // this is only one way to resolve this scenario, i.e. set right to singleton value (rlb)
@@ -1142,13 +1171,16 @@ void interval_domain_t::update_gt(bool is64, bool strict, interval_t&& left_inte
             auto right_reg = std::get<Reg>(right).v;
             if (update_signed) {
                 auto to_insert_signed_right = interval_t{rlbs} & restrict_signed;
-                insert_in_registers_signed(right_reg, loc, to_insert_signed_right);
+                refinement_t rf = refinement_t::numeric_refinement(to_insert_signed_right, m_slacks);
+                insert_in_registers_signed(right_reg, loc, rf);
                 if (mk_equal_unsigned && !is_signed) {
-                    insert_in_registers_unsigned(right_reg, loc, to_insert_signed_right);
+                    insert_in_registers_unsigned(right_reg, loc, rf);
                 }
             }
             if (update_unsigned && !is_signed) {
-                insert_in_registers_unsigned(right_reg, loc, interval_t{rlbu} & restrict_unsigned);
+                interval_t interval = interval_t{rlbu} & restrict_unsigned;
+                insert_in_registers_unsigned(right_reg, loc,
+                                             refinement_t::numeric_refinement(interval, m_slacks));
             }
         }
     }
@@ -1157,9 +1189,11 @@ void interval_domain_t::update_gt(bool is64, bool strict, interval_t&& left_inte
         set_registers_to_bottom();
     }
     if (is_signed) {
-        insert_in_registers_unsigned(left, loc, left_unsigned);
+        insert_in_registers_unsigned(left, loc,
+                                     refinement_t::numeric_refinement(left_unsigned, m_slacks));
         if (std::holds_alternative<Reg>(right)) {
-            insert_in_registers_unsigned(std::get<Reg>(right).v, loc, right_unsigned);
+            insert_in_registers_unsigned(std::get<Reg>(right).v, loc,
+                                     refinement_t::numeric_refinement(right_unsigned, m_slacks));
         }
     }
 }
@@ -1193,9 +1227,11 @@ void interval_domain_t::assume_signed_gt(bool is64, bool strict,
         update_gt(is64, strict, std::move(left_interval), std::move(right_interval),
                 left_signed, left_unsigned, right_signed, right_unsigned,
                 left, right, loc, interval_t::top(), interval_t::top(), true, false, false, true);
-        insert_in_registers_unsigned(left, loc, left_unsigned);
+        insert_in_registers_unsigned(left, loc,
+                                     refinement_t::numeric_refinement(left_unsigned, m_slacks));
         if (std::holds_alternative<Reg>(right)) {
-            insert_in_registers_unsigned(std::get<Reg>(right).v, loc, right_unsigned);
+            insert_in_registers_unsigned(std::get<Reg>(right).v, loc,
+                                     refinement_t::numeric_refinement(right_unsigned, m_slacks));
         }
     }
 }
@@ -1256,14 +1292,14 @@ void interval_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
         Value right, location_t loc) {
     using Op = Condition::Op;
 
-    auto left_signed = find_signed_interval_value(left)->to_interval();
-    auto left_unsigned = find_unsigned_interval_value(left)->to_interval();
+    auto left_signed = find_signed_interval_value(left)->get_interval_value();
+    auto left_unsigned = find_unsigned_interval_value(left)->get_interval_value();
     auto right_signed = interval_t::bottom();
     auto right_unsigned = interval_t::bottom();
     if (std::holds_alternative<Reg>(right)) {
         auto right_reg = register_t{std::get<Reg>(right).v};
-        right_signed = find_signed_interval_value(right_reg)->to_interval();
-        right_unsigned = find_unsigned_interval_value(right_reg)->to_interval();
+        right_signed = find_signed_interval_value(right_reg)->get_interval_value();
+        right_unsigned = find_unsigned_interval_value(right_reg)->get_interval_value();
     } else if (std::holds_alternative<Imm>(right)) {
         auto right_imm = std::get<Imm>(right).v;
         right_signed = interval_t{number_t{right_imm}};
@@ -1274,12 +1310,14 @@ void interval_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
         case Op::EQ: {
             auto interval_signed = left_signed & right_signed;
             auto interval_unsigned = left_unsigned & right_unsigned;
-            insert_in_registers_signed(left, loc, interval_signed);
-            insert_in_registers_unsigned(left, loc, interval_unsigned);
+            refinement_t rf_signed = refinement_t::numeric_refinement(interval_signed, m_slacks);
+            refinement_t rf_unsigned = refinement_t::numeric_refinement(interval_unsigned, m_slacks);
+            insert_in_registers_signed(left, loc, rf_signed);
+            insert_in_registers_unsigned(left, loc, rf_unsigned);
             if (std::holds_alternative<Reg>(right)) {
                 auto right_reg = std::get<Reg>(right).v;
-                insert_in_registers_signed(right_reg, loc, interval_signed);
-                insert_in_registers_unsigned(right_reg, loc, interval_unsigned);
+                insert_in_registers_signed(right_reg, loc, rf_signed);
+                insert_in_registers_unsigned(right_reg, loc, rf_unsigned);
             }
             break;
         }
@@ -1340,7 +1378,7 @@ bool interval_domain_t::load_from_stack(register_t reg, interval_t load_at, int 
     if (overlapping_cells.size() == 1) {
         // only allow loading from a single cell
         if (all_numeric_in_stack(start_offset, width)) {
-            insert_in_registers(reg, loc, interval_t::top());
+            insert_in_registers(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
             return true;
         }
     }
@@ -1365,21 +1403,24 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
     int offset = b.access.offset;
     auto basereg_ptr_or_mapfd_type = basereg_type.value();
 
+    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (is_ctx_ptr(basereg_type)) {
-        insert_in_registers(target_register, loc, interval_t::top());
+        insert_in_registers(target_register, loc, top_rf);
         return;
     }
     if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
         if (width == 1) {
             interval_t to_insert = interval_t(number_t{0}, number_t{UINT8_MAX});
-            insert_in_registers(target_register, loc, to_insert);
+            expression_t e(to_insert, m_slacks);
+            insert_in_registers(target_register, loc, refinement_t::numeric_refinement(e));
         }
         else if (width == 2) {
             interval_t to_insert = interval_t(number_t{0}, number_t{UINT16_MAX});
-            insert_in_registers(target_register, loc, to_insert);
+            expression_t e(to_insert, m_slacks);
+            insert_in_registers(target_register, loc, refinement_t::numeric_refinement(e));
         }
         else {
-            insert_in_registers(target_register, loc, interval_t::top());
+            insert_in_registers(target_register, loc, refinement_t::numeric_refinement_top(m_slacks));
         }
         return;
     }
@@ -1431,7 +1472,7 @@ void interval_domain_t::shl(const register_t& reg, int imm, const int finite_wid
     imm &= finite_width - 1;
 
     if (auto interval_opt = find_unsigned_interval_value(reg)) {
-        interval_t interval = interval_opt->to_interval();
+        interval_t interval = interval_opt->get_interval_value();
         if (interval.finite_size()) {
             const number_t lb = interval.lb().number().value();
             const number_t ub = interval.ub().number().value();
@@ -1455,7 +1496,7 @@ void interval_domain_t::shl(const register_t& reg, int imm, const int finite_wid
             if (to_signed(ub_n) >= to_signed(lb_n)) {
                 insert_in_registers_signed(reg, loc, interval_t{lb_n, ub_n});
             } else {
-                insert_in_registers_signed(reg, loc, interval_t::top());
+                insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
             }
             return;
         }
@@ -1468,7 +1509,7 @@ void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_wi
     imm &= finite_width - 1;
 
     if (auto interval_opt = find_unsigned_interval_value(reg)) {
-        interval_t interval = interval_opt->to_interval();
+        interval_t interval = interval_opt->get_interval_value();
         number_t lb_n{0};
         number_t ub_n{std::numeric_limits<uint64_t>::max() >> imm};
         if (interval.finite_size()) {
@@ -1492,31 +1533,25 @@ void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_wi
         if (ub_n.narrow<int64_t>() >= lb_n.narrow<int64_t>()) {
             insert_in_registers_signed(reg, loc, interval_t{lb_n, ub_n});
         } else {
-            insert_in_registers_signed(reg, loc, interval_t::top());
+            insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
         }
         return;
     }
-    insert_in_registers_unsigned(reg, loc, interval_t::top());
-    insert_in_registers_signed(reg, loc, interval_t::top());
+    insert_in_registers_unsigned(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
+    insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
 }
 
-void interval_domain_t::do_bin(const Bin& bin,
-        const std::optional<interval_t>& src_signed_interval_opt,
-        const std::optional<interval_t>& src_unsigned_interval_opt,
-        const std::optional<ptr_or_mapfd_t>& src_ptr_or_mapfd_opt,
-        const std::optional<interval_t>& dst_signed_interval_opt,
-        const std::optional<interval_t>& dst_unsigned_interval_opt,
-        const std::optional<ptr_or_mapfd_t>& dst_ptr_or_mapfd_opt,
-        const interval_t& subtracted, location_t loc) {
+void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& subtracted_opt,
+                               location_t loc) {
     
     using Op = Bin::Op;
 
     auto dst_register = register_t{bin.dst.v};
     auto finite_width = (bin.is64 ? 64 : 32);
 
-    if (subtracted != interval_t::bottom()) {
-        interval_t dst_signed = subtracted;
-        interval_t dst_unsigned = subtracted;
+    if (subtracted_opt.has_value()) {
+        interval_t dst_signed = *subtracted_opt;
+        interval_t dst_unsigned = *subtracted_opt;
         if (!(dst_signed <= interval_t::signed_int(64))) {
             dst_signed = dst_signed.truncate_to_sint(64);
         }
@@ -1524,11 +1559,16 @@ void interval_domain_t::do_bin(const Bin& bin,
         if (!(dst_unsigned <= interval_t::unsigned_int(64))) {
             dst_unsigned = dst_unsigned.truncate_to_uint(64);
         }
-        insert_in_registers_unsigned(dst_register, loc, dst_unsigned);
+        insert_in_registers_unsigned(dst_register, loc,
+                                     refinement_t::numeric_refinement(dst_unsigned, m_slacks));
         return;
     }
 
-    if ((!dst_signed_interval_opt && !dst_unsigned_interval_opt) && bin.op != Op::MOV) {
+    bool is_numeric_dst = find_signed_interval_value(dst_register).has_value();
+    bool is_numeric_src = std::holds_alternative<Imm>(bin.v) ||
+            find_signed_interval_value(register_t{std::get<Reg>(bin.v).v}).has_value();
+
+    if (!is_numeric_dst && bin.op != Op::MOV) {
         operator-=(dst_register);
         return;
     }
@@ -1547,8 +1587,9 @@ void interval_domain_t::do_bin(const Bin& bin,
         switch (bin.op) {
             case Op::MOV: {
                 // ra = imm
-                m_signed.insert_in_registers(dst_register, loc, imm_interval);
-                m_unsigned.insert_in_registers(dst_register, loc, imm_interval);
+                refinement_t rf = refinement_t::numeric_refinement(imm_interval, m_slacks);
+                m_signed.insert_in_registers(dst_register, loc, rf);
+                m_unsigned.insert_in_registers(dst_register, loc, rf);
                 overflow(dst_register, finite_width, loc, false);
                 break;
             }
@@ -1602,12 +1643,13 @@ void interval_domain_t::do_bin(const Bin& bin,
                 if (gsl::narrow<int32_t>(imm) > 0) {
                     // AND with immediate is only a 32-bit operation so svalue and uvalue
                     // are the same.
-                    auto dst_signed = m_signed.find_interval_value(dst_register)->to_interval();
+                    auto dst_signed = m_signed.find_interval_value(dst_register)->get_interval_value();
                     auto lb = dst_signed.lb().number().value();
                     auto ub = dst_signed.ub().number().value();
                     dst_signed = dst_signed & interval_t{number_t{0}, number_t{imm}};
-                    m_signed.insert_in_registers(dst_register, loc, dst_signed);
-                    m_unsigned.insert_in_registers(dst_register, loc, dst_signed);
+                    refinement_t rf = refinement_t::numeric_refinement(dst_signed, m_slacks);
+                    m_signed.insert_in_registers(dst_register, loc, rf);
+                    m_unsigned.insert_in_registers(dst_register, loc, rf);
                 }
                 break;
             }
@@ -1634,8 +1676,10 @@ void interval_domain_t::do_bin(const Bin& bin,
             case Op::ARSH: {
                 // ra >>>= imm
                 //ashr(dst_register, gsl::narrow<int32_t>(imm), finite_width, loc);
-                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
-                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
+                m_signed.insert_in_registers(dst_register, loc,
+                                             refinement_t::numeric_refinement_top(m_slacks));
+                m_unsigned.insert_in_registers(dst_register, loc,
+                                               refinement_t::numeric_refinement_top(m_slacks));
                 break;
             }
             default: {
@@ -1644,7 +1688,7 @@ void interval_domain_t::do_bin(const Bin& bin,
         }
     }
     else {
-        if (!src_signed_interval_opt && !src_unsigned_interval_opt) {
+        if (!is_numeric_src) {
             operator-=(dst_register);
             return;
         }
@@ -1653,15 +1697,17 @@ void interval_domain_t::do_bin(const Bin& bin,
             case Op::MOVSX8:
             case Op::MOVSX16:
             case Op::MOVSX32:
-                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
-                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
+                m_signed.insert_in_registers(dst_register, loc,
+                                            refinement_t::numeric_refinement_top(m_slacks));
+                m_unsigned.insert_in_registers(dst_register, loc,
+                                            refinement_t::numeric_refinement_top(m_slacks));
                 break;
             case Op::MOV: {
                 // ra = rb
-                auto src_signed = m_signed.find_interval_value(src_register)->to_interval();
-                auto src_unsigned = m_unsigned.find_interval_value(src_register)->to_interval();
-                m_signed.insert_in_registers(dst_register, loc, src_signed);
-                m_unsigned.insert_in_registers(dst_register, loc, src_unsigned);
+                auto src_signed_rf = m_signed.find_interval_value(src_register);
+                auto src_unsigned_rf = m_unsigned.find_interval_value(src_register);
+                m_signed.insert_in_registers(dst_register, loc, *src_signed_rf);
+                m_unsigned.insert_in_registers(dst_register, loc, *src_unsigned_rf);
                 break;
             }
             case Op::ADD: {
@@ -1673,8 +1719,9 @@ void interval_domain_t::do_bin(const Bin& bin,
                 // ra -= rb
                 if (src_register == dst_register) {
                     // an extra check only to pass a test
-                    m_signed.insert_in_registers(dst_register, loc, interval_t{number_t{0}});
-                    m_unsigned.insert_in_registers(dst_register, loc, interval_t{number_t{0}});
+                    interval_t zero = interval_t{number_t{0}};
+                    m_signed.insert_in_registers(dst_register, loc, zero);
+                    m_unsigned.insert_in_registers(dst_register, loc, zero);
                     break;
                 }
                 apply_signed(arith_binaryop_t::SUB, dst_register, dst_register, src_register, finite_width, loc);
@@ -1723,7 +1770,7 @@ void interval_domain_t::do_bin(const Bin& bin,
             case Op::LSH: {
                 // ra <<= rb
                 if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
-                    auto src_unsigned = src_unsigned_interval_opt->to_interval();
+                    auto src_unsigned = src_unsigned_interval_opt->get_interval_value();
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
                         uint64_t imm = sn->cast_to<int32_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= std::numeric_limits<int32_t>::max()) {
@@ -1742,7 +1789,7 @@ void interval_domain_t::do_bin(const Bin& bin,
             case Op::RSH: {
                 // ra >>= rb
                 if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
-                    auto src_unsigned = src_unsigned_interval_opt->to_interval();
+                    auto src_unsigned = src_unsigned_interval_opt->get_interval_value();
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
                         uint64_t imm = sn->cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= std::numeric_limits<int32_t>::max()) {
@@ -1755,8 +1802,10 @@ void interval_domain_t::do_bin(const Bin& bin,
                         }
                     }
                 }
-                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
-                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
+                m_signed.insert_in_registers(dst_register, loc,
+                                             refinement_t::numeric_refinement_top(m_slacks));
+                m_unsigned.insert_in_registers(dst_register, loc,
+                                             refinement_t::numeric_refinement_top(m_slacks));
                 break;
             }
             case Op::ARSH: {
@@ -1765,8 +1814,10 @@ void interval_domain_t::do_bin(const Bin& bin,
                 //    ashr(dst_register, src_register, finite_width, loc);
                 //    break;
                 //}
-                m_signed.insert_in_registers(dst_register, loc, interval_t::top());
-                m_unsigned.insert_in_registers(dst_register, loc, interval_t::top());
+                m_signed.insert_in_registers(dst_register, loc,
+                                             refinement_t::numeric_refinement_top(m_slacks));
+                m_unsigned.insert_in_registers(dst_register, loc,
+                                             refinement_t::numeric_refinement_top(m_slacks));
                 break;
             }
             default: {

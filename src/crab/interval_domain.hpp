@@ -14,18 +14,24 @@ enum class bitwise_binaryop_t { AND, OR, XOR, SHL, LSHR, ASHR };
 using binaryop_t = std::variant<arith_binaryop_t, bitwise_binaryop_t>;
 
 class interval_domain_t final {
+    std::shared_ptr<slacks_t> m_slacks = nullptr;
     signed_interval_domain_t m_signed;
     unsigned_interval_domain_t m_unsigned;
     std::vector<std::string> m_errors;
 
   public:
 
-    interval_domain_t() = default;
+    interval_domain_t() : m_slacks(std::make_shared<slacks_t>()), m_signed(m_slacks),
+        m_unsigned(m_slacks) {}
+    interval_domain_t(std::shared_ptr<slacks_t> slacks) : m_slacks(std::move(slacks)),
+        m_signed(m_slacks), m_unsigned(m_slacks) {}
     interval_domain_t(signed_interval_domain_t signed_domain,
-            unsigned_interval_domain_t unsigned_domain) :
-        m_signed(std::move(signed_domain)), m_unsigned(std::move(unsigned_domain)) {}
+            unsigned_interval_domain_t unsigned_domain, std::shared_ptr<slacks_t> slacks) :
+        m_slacks(std::move(slacks)), m_signed(std::move(signed_domain)),
+        m_unsigned(std::move(unsigned_domain)) {}
+
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
-    static interval_domain_t setup_entry();
+    static interval_domain_t setup_entry(std::shared_ptr<slacks_t>);
     // bottom/top
     static interval_domain_t bottom();
     void set_to_top();
@@ -124,10 +130,7 @@ class interval_domain_t final {
     void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, bool, location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>);
     void do_call(const Call&, const stack_cells_t&, location_t);
-    void do_bin(const Bin&, const std::optional<interval_t>&,
-            const std::optional<interval_t>&, const std::optional<ptr_or_mapfd_t>&,
-            const std::optional<interval_t>&, const std::optional<interval_t>&,
-            const std::optional<ptr_or_mapfd_t>&, const interval_t&, location_t);
+    void do_bin(const Bin&, const std::optional<interval_t>&, location_t);
     void check_valid_access(const ValidAccess&, interval_t&&, int = -1, bool = false);
     void assume_cst(Condition::Op, bool, register_t, Value, location_t);
     void assume_signed_cst(Condition::Op, bool, const interval_t&, const interval_t&,
@@ -148,19 +151,21 @@ class interval_domain_t final {
     void update_lt(bool, bool, interval_t&&, interval_t&&, const interval_t&, const interval_t&,
             const interval_t&, const interval_t&, register_t, Value, location_t,
             interval_t&&, interval_t&&, bool, bool, bool, bool);
-    std::optional<mock_interval_t> find_interval_value(register_t) const;
-    std::optional<mock_interval_t> find_signed_interval_value(register_t) const;
-    std::optional<mock_interval_t> find_unsigned_interval_value(register_t) const;
-    std::optional<mock_interval_t> find_signed_interval_at_loc(const register_location_t reg) const;
-    std::optional<mock_interval_t> find_unsigned_interval_at_loc(const register_location_t reg) const;
+    std::optional<refinement_t> find_interval_value(register_t) const;
+    std::optional<refinement_t> find_signed_interval_value(register_t) const;
+    std::optional<refinement_t> find_unsigned_interval_value(register_t) const;
+    std::optional<refinement_t> find_signed_interval_at_loc(const register_location_t reg) const;
+    std::optional<refinement_t> find_unsigned_interval_at_loc(const register_location_t reg) const;
     std::optional<signed_interval_stack_cell_t> find_in_stack_signed(uint64_t) const;
     std::optional<unsigned_interval_stack_cell_t> find_in_stack_unsigned(uint64_t) const;
-    void insert_in_registers(register_t, location_t, interval_t);
+    void insert_in_registers(register_t, location_t, refinement_t);
+    void insert_in_registers_signed(register_t, location_t, refinement_t);
     void insert_in_registers_signed(register_t, location_t, interval_t);
+    void insert_in_registers_unsigned(register_t, location_t, refinement_t);
     void insert_in_registers_unsigned(register_t, location_t, interval_t);
-    void store_in_stack(uint64_t, mock_interval_t, int);
-    void store_in_stack_signed(uint64_t, mock_interval_t, int);
-    void store_in_stack_unsigned(uint64_t, mock_interval_t, int);
+    void store_in_stack(uint64_t, refinement_t, int);
+    void store_in_stack_signed(uint64_t, refinement_t, int);
+    void store_in_stack_unsigned(uint64_t, refinement_t, int);
     void adjust_bb_for_types(location_t);
     [[nodiscard]] std::vector<uint64_t> get_stack_keys() const;
     bool all_numeric_in_stack(uint64_t, int) const;

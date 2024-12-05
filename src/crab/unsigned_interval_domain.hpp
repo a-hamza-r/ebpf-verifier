@@ -4,12 +4,12 @@
 #pragma once
 
 #include "array_domain.hpp"
-#include "types.hpp"
+#include "refinement.hpp"
 
 namespace crab {
 
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
-using global_env_unsigned_registers_t = std::unordered_map<register_location_t, mock_interval_t>;
+using global_env_unsigned_registers_t = std::unordered_map<register_location_t, refinement_t>;
 
 class unsigned_interval_registers_t {
 
@@ -42,15 +42,15 @@ class unsigned_interval_registers_t {
     bool is_top() const;
     void set_to_bottom();
     void set_to_top();
-    std::optional<mock_interval_t> find(register_location_t reg) const;
-    std::optional<mock_interval_t> find(register_t key) const;
-    void insert(register_t, const location_t&, interval_t);
+    std::optional<refinement_t> find(register_location_t reg) const;
+    std::optional<refinement_t> find(register_t key) const;
+    void insert(register_t, const location_t&, refinement_t);
     void operator-=(register_t);
     unsigned_interval_registers_t operator|(const unsigned_interval_registers_t& other) const;
     void adjust_bb_for_registers(location_t);
 };
 
-using unsigned_interval_stack_cell_t = std::pair<mock_interval_t, int>;    // intervals with width
+using unsigned_interval_stack_cell_t = std::pair<refinement_t, int>;    // intervals with width
 using unsigned_interval_stack_cells_t = std::map<uint64_t, unsigned_interval_stack_cell_t>;
 
 class unsigned_interval_stack_t {
@@ -67,7 +67,7 @@ class unsigned_interval_stack_t {
     void set_to_top();
     static unsigned_interval_stack_t top();
     std::optional<unsigned_interval_stack_cell_t> find(uint64_t) const;
-    void store(uint64_t, mock_interval_t, int);
+    void store(uint64_t, refinement_t, int);
     void operator-=(uint64_t);
     unsigned_interval_stack_t operator|(const unsigned_interval_stack_t& other) const;
     [[nodiscard]] std::vector<uint64_t> get_keys() const;
@@ -77,6 +77,7 @@ class unsigned_interval_stack_t {
 };
 
 class unsigned_interval_domain_t final {
+    std::shared_ptr<slacks_t> m_slacks = nullptr;
     unsigned_interval_registers_t m_registers;
     unsigned_interval_stack_t m_stack;
     std::vector<std::string> m_errors;
@@ -85,11 +86,13 @@ class unsigned_interval_domain_t final {
   public:
 
     unsigned_interval_domain_t() = default;
+    unsigned_interval_domain_t(std::shared_ptr<slacks_t> slacks) : m_slacks(slacks) {}
     unsigned_interval_domain_t(unsigned_interval_registers_t registers,
-            unsigned_interval_stack_t stack) :
-        m_registers(std::move(registers)), m_stack(std::move(stack)) {}
+            unsigned_interval_stack_t stack, std::shared_ptr<slacks_t> slacks) :
+        m_slacks(std::move(slacks)), m_registers(std::move(registers)), m_stack(std::move(stack)) {}
+
     // eBPF initialization: R1 points to ctx, R10 to stack, etc.
-    static unsigned_interval_domain_t setup_entry();
+    static unsigned_interval_domain_t setup_entry(std::shared_ptr<slacks_t>);
     // bottom/top
     static unsigned_interval_domain_t bottom();
     void set_to_top();
@@ -133,11 +136,13 @@ class unsigned_interval_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f);
 
-    std::optional<mock_interval_t> find_interval_value(register_t) const;
-    std::optional<mock_interval_t> find_interval_at_loc(const register_location_t reg) const;
+    std::optional<refinement_t> find_interval_value(register_t) const;
+    std::optional<refinement_t> find_interval_at_loc(const register_location_t reg) const;
     std::optional<unsigned_interval_stack_cell_t> find_in_stack(uint64_t) const;
     void insert_in_registers(register_t, location_t, interval_t);
-    void store_in_stack(uint64_t, mock_interval_t, int);
+    void insert_in_registers(register_t, location_t, refinement_t);
+    void store_in_stack(uint64_t, refinement_t, int);
+    void store_in_stack(uint64_t, interval_t, int);
     void adjust_bb_for_types(location_t);
     void remove_overlap_in_stack(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values_in_stack(const std::vector<uint64_t>&, uint64_t, int);

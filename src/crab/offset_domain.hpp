@@ -17,23 +17,22 @@ class offset_registers_t {
 
     live_registers_t m_cur_register_def;
     std::shared_ptr<global_env_offset_registers_t> m_registers_env;
-    std::shared_ptr<slacks_t> m_slacks;
     bool m_is_bottom = false;
 
     public:
         offset_registers_t() :
-            m_registers_env(std::make_shared<global_env_offset_registers_t>()),
-            m_slacks(std::make_shared<slacks_t>()) {
-            insert(BEGIN_REG, location_t{label_t::entry, 0}, refinement_t::begin(true));
+            m_registers_env(std::make_shared<global_env_offset_registers_t>()) {
+            insert(BEGIN_REG, location_t{label_t::entry, 0},
+                   refinement_t::begin_with_constraints());
         }
-        offset_registers_t(std::shared_ptr<slacks_t> slacks)
-            : m_registers_env(std::make_shared<global_env_offset_registers_t>()), m_slacks(slacks) {}
+        offset_registers_t(std::shared_ptr<global_env_offset_registers_t> env)
+            : m_registers_env(env) {}
         offset_registers_t(const offset_registers_t& other)
-            : m_cur_register_def(other.m_cur_register_def), m_slacks(other.m_slacks),
-            m_is_bottom(other.m_is_bottom) {
+            : m_cur_register_def(other.m_cur_register_def), m_is_bottom(other.m_is_bottom) {
             if (other.m_registers_env) {
                 m_registers_env = std::make_shared<global_env_offset_registers_t>(*other.m_registers_env);
             }
+
         }
         offset_registers_t& operator=(const offset_registers_t& other) {
             if (this != &other) {
@@ -42,7 +41,6 @@ class offset_registers_t {
                 if (other.m_registers_env) {
                     m_registers_env = std::make_shared<global_env_offset_registers_t>(*other.m_registers_env);
                 }
-                m_slacks = other.m_slacks;
             }
             return *this;
         }
@@ -54,10 +52,7 @@ class offset_registers_t {
         void set_to_bottom();
         bool is_bottom() const;
         bool is_top() const;
-        void insert(register_t, const location_t&, refinement_t&&);
-        void insert_slack_value(symbol_t, mock_interval_t);
-        std::shared_ptr<slacks_t> get_slacks() const { return m_slacks; }
-        std::optional<mock_interval_t> find_slack_value(symbol_t) const;
+        void insert(register_t, const location_t&, refinement_t);
         std::optional<refinement_t> find(register_location_t reg) const;
         std::optional<refinement_t> find(register_t key) const;
         friend std::ostream& operator<<(std::ostream& o, const offset_registers_t& p);
@@ -97,7 +92,7 @@ class offset_ctx_t {
     size_t m_size = 0;
 
     public:
-        offset_ctx_t(const ebpf_context_descriptor_t* desc);
+        offset_ctx_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t>);
         std::optional<refinement_t> find(uint64_t) const;
         size_t get_size() const { return m_size; }
         std::vector<uint64_t> get_keys() const;
@@ -106,6 +101,7 @@ class offset_ctx_t {
 class offset_domain_t final {
 
     bool m_is_bottom = false;
+    std::shared_ptr<slacks_t> m_slacks;
     offset_registers_t m_registers;
     offset_stack_t m_stack;
     std::shared_ptr<offset_ctx_t> m_ctx;
@@ -114,10 +110,12 @@ class offset_domain_t final {
   public:
     offset_domain_t() = default;
     offset_domain_t(offset_registers_t reg, offset_stack_t stack,
-            std::shared_ptr<offset_ctx_t> ctx)
-        : m_registers(std::move(reg)), m_stack(std::move(stack)), m_ctx(std::move(ctx)) {}
+            std::shared_ptr<offset_ctx_t> ctx, std::shared_ptr<slacks_t> slacks) :
+        m_slacks(std::move(slacks)), m_registers(std::move(reg)), m_stack(std::move(stack)),
+        m_ctx(ctx) {}
+    offset_domain_t(std::shared_ptr<slacks_t> slacks) : m_slacks(slacks) {}
 
-    static offset_domain_t setup_entry();
+    static offset_domain_t setup_entry(std::shared_ptr<slacks_t>);
     // bottom/top
     static offset_domain_t bottom();
     void set_to_top();
@@ -162,14 +160,10 @@ class offset_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f) {}
 
-    void do_un(const Un&, interval_t, location_t);
-    void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, interval_t&&,
-            location_t);
+    void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>&);
-    void do_bin(const Bin&, const std::optional<interval_t>&,
-            const std::optional<ptr_or_mapfd_t>&,
-            const std::optional<interval_t>&,
-            const std::optional<ptr_or_mapfd_t>&, mock_interval_t&&, location_t);
+    void do_bin(const Bin&, const std::optional<refinement_t>&, const std::optional<refinement_t>&,
+                location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     bool check_packet_access(const Reg&, int, int, bool) const;
     void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&, int);

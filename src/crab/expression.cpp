@@ -112,6 +112,11 @@ bool expression_t::operator>(const expression_t &other) const {
     return false;
 }
 
+// check if an expression contains only an interval
+bool expression_t::only_has_interval() const {
+    return _symbol_terms.empty();
+}
+
 // check if an expression contains a single symbol, which can be slack or not
 bool expression_t::is_singleton() const {
     return _symbol_terms.size() == 1 && _constant_term == interval_t{0};
@@ -174,9 +179,6 @@ expression_t expression_t::operator+(int n) const {
 
 expression_t expression_t::operator|(const expression_t &other) const {
     auto slacks = _slacks == nullptr ? other._slacks : _slacks;
-    if (slacks == nullptr) {
-        slacks = std::make_shared<slacks_t>();
-    }
     if (*this == other) {
         // both expressions are equal
         return *this;

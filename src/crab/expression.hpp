@@ -29,10 +29,10 @@ class expression_t {
     expression_t(symbol_terms_t symbol_terms, interval_t interval,
             std::shared_ptr<slacks_t> slacks = nullptr)
         : _symbol_terms(symbol_terms), _constant_term(interval), _slacks(slacks) {}
-    expression_t(interval_t interval)
-        : _constant_term(interval) {}
-    expression_t(int n)
-        : _constant_term(interval_t{n}) {}
+    expression_t(interval_t interval, std::shared_ptr<slacks_t> slacks = nullptr)
+        : _constant_term(interval), _slacks(slacks) {}
+    expression_t(int n, std::shared_ptr<slacks_t> slacks = nullptr)
+        : _constant_term(interval_t{n}), _slacks(slacks) {}
     expression_t get_equivalent_expression() const;
     bool operator==(const expression_t &other) const;
     bool operator<(const expression_t &other) const;
@@ -50,6 +50,7 @@ class expression_t {
     int8_t get_coefficient(const symbol_t &s) const;
     bool is_singleton() const;
     bool contains(const symbol_t &s) const;
+    bool only_has_interval() const;
     symbol_t get_singleton() const;
     interval_t get_constant_term() const { return _constant_term; }
     std::shared_ptr<slacks_t> get_slacks() const { return _slacks; }
@@ -57,16 +58,20 @@ class expression_t {
     std::map<symbol_t, mock_interval_t> get_slack_intervals() const;
     friend std::ostream& operator<<(std::ostream &, const expression_t&);
 
-    static expression_t begin() {
-        return expression_t(symbol_t::begin());
+    static expression_t begin(std::shared_ptr<slacks_t> slacks = nullptr) {
+        return expression_t(symbol_t::begin(), slacks);
     }
 
-    static expression_t end() {
-        return expression_t(symbol_t::end());
+    static expression_t end(std::shared_ptr<slacks_t> slacks = nullptr) {
+        return expression_t(symbol_t::end(), slacks);
     }
 
-    static expression_t meta() {
-        return expression_t(symbol_t::meta());
+    static expression_t meta(std::shared_ptr<slacks_t> slacks = nullptr) {
+        return expression_t(symbol_t::meta(), slacks);
+    }
+
+    static expression_t top(std::shared_ptr<slacks_t> slacks = nullptr) {
+        return expression_t(interval_t::top(), slacks);
     }
 };
 
