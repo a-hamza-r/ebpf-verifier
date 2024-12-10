@@ -148,6 +148,33 @@ static constraint_t solve_constraints(constraint_t c1, constraint_t c2) {
         // e.g., c1 := begin + 14 <= end and c2 := begin + 18 <= end
         return c2;
     }
+    // some heuristic to resolve certain cases like the following:
+    // c1 := begin + 34 <= end and c2 := begin + a_0 + 18 <= end, a_0 in [0, 60]
+    // it will not fall in any category above
+    // We can prefer to keep c2 in this case as it might contain more information than c1
+    // as it contains a slack variable a_0
+    expression_t c2_lhs = c2.get_lhs();
+    expression_t c1_lhs = c1.get_lhs();
+    auto c2_slacks = c2_lhs.get_slack_intervals();
+    auto c1_slacks = c1_lhs.get_slack_intervals();
+    if (!c2_slacks.empty() && c1_slacks.empty()) {
+        // very specific heuristic but could be beneficial if expressed properly
+        // TODO: fix later
+        expression_t c2_eq = c2_lhs.get_equivalent_expression();
+        interval_t c2_interval = c2_eq.get_constant_term();
+        auto symbol_terms = c2_eq.get_symbol_terms();
+        if (c2_interval.singleton()) {
+            return c1;
+        }
+        auto lb = interval_t{c2_interval.lb()};
+        auto ub = interval_t{c2_interval.ub()};
+        expression_t lb_c2 = expression_t{symbol_terms, lb};
+        expression_t ub_c2 = expression_t{symbol_terms, ub};
+        if (c1.implies(constraint_t(lb_c2)) && constraint_t(ub_c2).implies(c1)) {
+            return c2;
+        }
+        return c1;
+    }
     // c1 and c2 are not comparable, i.e., c2 is providing information not affecting c1
     // e.g., c1 := begin + 14 <= end and c2 := begin + 18 > end
     return c1;
