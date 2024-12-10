@@ -457,6 +457,14 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             begin->add_constraint(rf_left->assume_gt(*rf_right));
             m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
         }
+        else if (cond.op == Condition::Op::GE) {
+            begin->add_constraint(rf_right->assume_le(*rf_left));
+            m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
+        }
+        else if (cond.op == Condition::Op::LT) {
+            begin->add_constraint(rf_right->assume_gt(*rf_left));
+            m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
+        }
         // other comparisons not supported
     }
 }
