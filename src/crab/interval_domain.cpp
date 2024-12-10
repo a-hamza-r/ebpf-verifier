@@ -297,7 +297,7 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
         auto yi_opt = m_signed.find_interval_value(y);
         auto zi_opt = m_signed.find_interval_value(z);
         if (!yi_opt || !zi_opt) {
-            std::cerr << "Error: registers not found in the interval environment\n";
+            //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
@@ -306,7 +306,7 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
         if (!yi_opt || !zi_opt) {
-            std::cerr << "Error: registers not found in the interval environment\n";
+            //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
@@ -355,14 +355,14 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
     if (is_signed) {
         auto yi_opt = m_signed.find_interval_value(y);
         if (!yi_opt) {
-            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         if (!yi_opt) {
-            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
@@ -393,14 +393,14 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
     if (is_signed) {
         auto yi_opt = m_signed.find_interval_value(y);
         if (!yi_opt) {
-            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         if (!yi_opt) {
-            std::cerr << "Error: register " << y << " not found in the interval environment\n";
+            //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
@@ -433,7 +433,7 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
         auto yi_opt = m_signed.find_interval_value(y);
         auto zi_opt = m_signed.find_interval_value(z);
         if (!yi_opt || !zi_opt) {
-            std::cerr << "Error: registers not found in the interval environment\n";
+            //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
@@ -442,7 +442,7 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
         if (!yi_opt || !zi_opt) {
-            std::cerr << "Error: registers not found in the interval environment\n";
+            //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
         yi = yi_opt->get_interval_value();
