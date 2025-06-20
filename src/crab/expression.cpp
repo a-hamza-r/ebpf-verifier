@@ -11,12 +11,16 @@ std::ostream& operator<<(std::ostream& o, const expression_t& e) {
 }
 
 // get values for all slack variables in the expression
-std::map<symbol_t, mock_interval_t> expression_t::get_slack_intervals() const {
-    std::map<symbol_t, mock_interval_t> slack_intervals;
+std::map<symbol_t, interval_t> expression_t::get_slack_intervals() const {
+    std::map<symbol_t, interval_t> slack_intervals;
     for (const auto &term : _symbol_terms) {
         if (term.first.is_slack()) {
             // assuming that there are no conflicting values
-            slack_intervals[term.first] = (*_slacks)[term.first];
+            // TODO: check what to do in case value is not found
+            auto it = _slacks->find(term.first);
+            if (it != _slacks->end()) {
+                slack_intervals.insert_or_assign(term.first, it->second);
+            }
         }
     }
     return slack_intervals;
@@ -36,7 +40,11 @@ expression_t expression_t::get_equivalent_expression() const {
     symbol_terms_t symbol_terms;
     for (const auto &term : _symbol_terms) {
         if (term.first.is_slack()) {
-            value = value + ((*_slacks)[term.first]).to_interval() * interval_t{static_cast<int>(term.second)};
+            auto it = _slacks->find(term.first);
+            // TODO: check what to do in case value is not found
+            if (it != _slacks->end()) {
+                value = value + (it->second * interval_t{static_cast<int>(term.second)});
+            }
         } else {
             symbol_terms[term.first] = term.second;
         }
@@ -184,8 +192,11 @@ static inline expression_t join(const expression_t* e1, const expression_t &e2,
             new_terms[term.first] = term.second;
         } else if (term.first.is_slack()) {
             // either the symbol was not found in the e2 expression, or the coefficients are different
-            e1_constant_term = e1_constant_term +
-                interval_t{static_cast<int>(term.second)} * (*slacks)[term.first].to_interval();
+            auto it = slacks->find(term.first);
+            if (it != slacks->end()) {
+                e1_constant_term = e1_constant_term +
+                    (interval_t{static_cast<int>(term.second)} * it->second);
+            }
         }
         else {
             // in case where we have symbols other than slack variables, and either the symbol is not
@@ -200,8 +211,11 @@ static inline expression_t join(const expression_t* e1, const expression_t &e2,
         }
         if (term.first.is_slack()) {
             // the slack variable was not handled before, hence we resolve its value
-            e2_constant_term = e2_constant_term +
-                interval_t{static_cast<int>(term.second)} * (*slacks)[term.first].to_interval();
+            auto it = slacks->find(term.first);
+            if (it != slacks->end()) {
+                e2_constant_term = e2_constant_term +
+                    (interval_t{static_cast<int>(term.second)} * it->second);
+            }
         }
         else {
             // in case where we have symbols other than slack variables, and either the symbol is not
@@ -214,7 +228,7 @@ static inline expression_t join(const expression_t* e1, const expression_t &e2,
     symbol_t new_slack = symbol_t::make();
     new_terms[new_slack] = 1;
     // either join or widen
-    (*slacks)[new_slack] = join(e1_constant_term, e2_constant_term);
+    slacks->insert_or_assign(new_slack, join(e1_constant_term, e2_constant_term));
     return expression_t(new_terms, interval_t{0}, slacks);
 }
 

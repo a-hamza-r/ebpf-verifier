@@ -268,7 +268,7 @@ void inference_domain_t::operator()(const Call& u, location_t loc) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
                 auto width_interval = maybe_width_rf->get_interval_value();
 
-                auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
+                auto offset_singleton = ptr_with_off.get_offset().singleton();
                 if (!offset_singleton) {
                     //std::cout << "type error: storing at an unknown offset in stack\n";
                     m_errors.push_back("storing at an unknown offset in stack");
@@ -415,7 +415,7 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
             }
             if (s.access_type == AccessType::read && is_stack_ptr(reg_type)) {
                 auto stack_ptr = std::get<ptr_with_off_t>(*reg_type);
-                auto offset_ptr = stack_ptr.get_offset().to_interval();
+                auto offset_ptr = stack_ptr.get_offset();
                 m_interval.check_valid_access(s, std::move(offset_ptr), width, true);
             }
         }
@@ -543,7 +543,7 @@ void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
         if (is_mapfd_type(maybe_mapfd)) {
             if (is_stack_ptr(maybe_ptr_or_mapfd_basereg)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd_basereg);
-                auto offset_singleton = ptr_with_off.get_offset().to_interval().singleton();
+                auto offset_singleton = ptr_with_off.get_offset().singleton();
                 if (!offset_singleton) {
                     //std::cout << "type error: reading the stack at an unknown offset\n";
                     m_errors.push_back("reading the stack at an unknown offset");
@@ -614,8 +614,7 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
                 if (std::holds_alternative<ptr_with_off_t>(dst_ptr)) {
                     auto dst_ptr_with_off = std::get<ptr_with_off_t>(dst_ptr);
                     auto src_ptr_with_off = std::get<ptr_with_off_t>(src_ptr);
-                    subtracted = dst_ptr_with_off.get_offset().to_interval() -
-                                src_ptr_with_off.get_offset().to_interval();
+                    subtracted = dst_ptr_with_off.get_offset() - src_ptr_with_off.get_offset();
                 }
                 else if (std::holds_alternative<packet_ptr_t>(dst_ptr)) {
                     register_t src_reg = std::get<Reg>(bin.v).v;
@@ -859,7 +858,7 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
 
     auto create_interval = [](std::string lb, std::string ub) {
         if (lb == "" && ub == "") {
-            return crab::mock_interval_t::top();
+            return crab::interval_t::top();
         }
         bound_t lb_num = bound_t::minus_infinity();
         if (lb != "-oo") {
@@ -881,16 +880,15 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
             }
         }
         else if (ub == "+oo") ub_num = bound_t::plus_infinity();
-        return crab::mock_interval_t{lb_num, ub_num};
+        return crab::interval_t{lb_num, ub_num};
     };
 
     auto create_ptr = [create_interval](std::string region, std::string off_lb,
             std::string off_ub, std::string region_sz_lb = "", std::string region_sz_ub = "") {
         auto region_type = string_to_region(region);
-        auto mock_offset = create_interval(off_lb, off_ub);
-        auto mock_region_size = create_interval(region_sz_lb, region_sz_ub);
-        return crab::ptr_with_off_t{region_type, -1, mock_offset, nullness_t::MAYBE_NULL,
-            mock_region_size};
+        auto offset = create_interval(off_lb, off_ub);
+        auto region_size = create_interval(region_sz_lb, region_sz_ub);
+        return crab::ptr_with_off_t{region_type, offset, -1, nullness_t::MAYBE_NULL, region_size};
     };
 
     auto create_mapfd = [create_interval](std::string mapfd_type, std::string lb_mapfd,
@@ -907,7 +905,7 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
     /*
     auto create_pkt_offset = [create_interval](std::string offset_type, std::string offset_lb,
             std::string offset_ub) {
-        auto offset = create_interval(offset_lb, offset_ub).to_interval();
+        auto offset = create_interval(offset_lb, offset_ub);
         if (offset_type == "begin") {
             return dist_t{offset};
         }
@@ -954,12 +952,12 @@ inference_domain_t inference_domain_t::from_predefined_types(const std::set<std:
         }
         else if (regex_match(t, m, regex(REG ":" SNUMBER))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
-            auto num = create_interval(m[2], m[3]).to_interval();
+            auto num = create_interval(m[2], m[3]);
             //typ.insert_in_registers_in_signed_interval_domain(reg, loc, num);
         }
         else if (regex_match(t, m, regex(REG ":" UNUMBER))) {
             auto reg = register_t{static_cast<uint8_t>(std::stoul(m[1]))};
-            auto num = create_interval(m[2], m[3]).to_interval();
+            auto num = create_interval(m[2], m[3]);
             //typ.insert_in_registers_in_unsigned_interval_domain(reg, loc, num);
         }
         else if (regex_match(t, m, regex(REG ":" MAPFD))) {

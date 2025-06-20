@@ -16,7 +16,7 @@ bool constraint_t::contains(const symbol_t &s) const {
 }
 
 // get slack intervals for all symbols in the constraint
-std::map<symbol_t, mock_interval_t> constraint_t::get_slack_intervals() const {
+std::map<symbol_t, interval_t> constraint_t::get_slack_intervals() const {
     return _lhs.get_slack_intervals();
 }
 

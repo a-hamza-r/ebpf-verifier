@@ -12,7 +12,7 @@ namespace crab {
 // x, y, z, ... are symbols, and A, B, C, ... are coefficients.
 // I is an interval.
     
-using slacks_t = std::map<symbol_t, mock_interval_t>;
+using slacks_t = std::map<symbol_t, interval_t>;
 using symbol_terms_t = std::map<symbol_t, int8_t>;
 class expression_t {
   private:
@@ -56,7 +56,7 @@ class expression_t {
     interval_t get_constant_term() const { return _constant_term; }
     const std::shared_ptr<slacks_t>& get_slacks() const { return _slacks; }
     void set_slacks(std::shared_ptr<slacks_t> slacks) { _slacks = slacks; }
-    std::map<symbol_t, mock_interval_t> get_slack_intervals() const;
+    std::map<symbol_t, interval_t> get_slack_intervals() const;
     friend std::ostream& operator<<(std::ostream &, const expression_t&);
 
     static expression_t begin(std::shared_ptr<slacks_t> slacks = nullptr) {

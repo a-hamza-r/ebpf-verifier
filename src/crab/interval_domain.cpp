@@ -1431,7 +1431,7 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
     if (is_stack_ptr(basereg_type)) {
         auto ptr_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
         auto p_offset = ptr_with_off.get_offset();
-        auto load_at = p_offset.to_interval() + interval_t(number_t{offset});
+        auto load_at = p_offset + interval_t(number_t{offset});
         if (load_from_stack(target_register, load_at, width, loc)) return;
     }
     operator-=(target_register);
@@ -1452,7 +1452,7 @@ void interval_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>
     }
 
     auto basereg_ptr_with_off_type = std::get<ptr_with_off_t>(*basereg_type);
-    auto offset_singleton = basereg_ptr_with_off_type.get_offset().to_interval().singleton();
+    auto offset_singleton = basereg_ptr_with_off_type.get_offset().singleton();
     if (!offset_singleton) {
         m_errors.push_back("doing a store with unknown offset");
         return;

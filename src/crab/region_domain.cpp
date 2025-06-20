@@ -224,7 +224,7 @@ bool region_registers_t::is_top() const {
 
 void region_registers_t::insert(register_t reg, const location_t& loc, const ptr_or_mapfd_t& type) {
     register_location_t register_location = register_location_t{reg, loc};
-    (*m_registers_env)[register_location] = type;
+    m_registers_env->insert_or_assign(register_location, type);
     m_cur_register_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
@@ -406,7 +406,7 @@ bool region_stack_t::is_top() const {
 }
 
 void region_stack_t::store(uint64_t key, ptr_or_mapfd_t value, int width) {
-    m_cells[key] = std::make_pair(value, width);
+    m_cells.insert_or_assign(key, std::make_pair(value, width));
 }
 
 size_t region_stack_t::size() const {
@@ -697,7 +697,7 @@ bool region_domain_t::get_map_fd_range(const Reg& map_fd_reg, int32_t* start_fd,
     auto maybe_type = m_registers.find(map_fd_reg.v);
     if (!is_mapfd_type(maybe_type)) return false;
     auto mapfd_type = std::get<mapfd_t>(*maybe_type);
-    const auto& mapfd_interval = mapfd_type.get_mapfd().to_interval();
+    const auto& mapfd_interval = mapfd_type.get_mapfd();
     auto lb = mapfd_interval.lb().number();
     auto ub = mapfd_interval.ub().number();
     if (!lb || !lb->fits<int32_t>() || !ub || !ub->fits<int32_t>())
@@ -811,7 +811,7 @@ void region_domain_t::operator()(const LoadVariable& u, location_t loc) {
         return;
     } else {
         // TODO: verify if the pointer can be null
-        auto type = ptr_with_off_t(region_t::R_SHARED, -1, interval_t{number_t{0}},
+        auto type = ptr_with_off_t(region_t::R_SHARED, interval_t{number_t{0}}, -1,
                               nullness_t::NOT_NULL, interval_t{number_t{desc->value_size}});
         m_registers.insert(u.dst.v, loc, type);
     }
@@ -866,16 +866,16 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
                         goto out;
                     }
                 } else {
-                    auto type = ptr_with_off_t(region_t::R_SHARED, -1,
-                            interval_t{number_t{0}}, nullness_t::MAYBE_NULL,
-                            get_map_value_size(*maybe_fd_reg));
+                    auto type = ptr_with_off_t::shared_region_ptr(interval_t{number_t{0}}, -1,
+                                               nullness_t::NOT_NULL,
+                                               get_map_value_size(*maybe_fd_reg));
                     set_aliases((int)r0, type);
                     m_registers.insert(r0, loc, type);
                 }
             }
         }
         else {
-            auto type = ptr_with_off_t(region_t::R_SHARED, -1, interval_t{number_t{0}},
+            auto type = ptr_with_off_t::shared_region_ptr(interval_t{number_t{0}}, -1,
                     nullness_t::MAYBE_NULL);
             set_aliases((int)r0, type);
             m_registers.insert(r0, loc, type);
@@ -917,7 +917,7 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
         if (std::holds_alternative<ptr_with_off_t>(reg_ptr_or_mapfd_type)) {
             auto ptr_with_off_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
             auto offset = ptr_with_off_type.get_offset();
-            auto offset_to_check = offset.to_interval()+interval_t{s.offset};
+            auto offset_to_check = offset+interval_t{s.offset};
             auto offset_lb = offset_to_check.lb();
             auto offset_plus_width_ub = offset_to_check.ub()+bound_t{width};
             if (ptr_with_off_type.get_region() == region_t::R_STACK) {
@@ -968,10 +968,10 @@ region_domain_t region_domain_t::setup_entry(bool init_r1) {
     location_t loc{label_t::entry, 0};
     region_registers_t typ;
     if (init_r1) {
-        auto ctx_ptr_r1 = ptr_with_off_t(region_t::R_CTX, -1, mock_interval_t{number_t{0}});
+        auto ctx_ptr_r1 = ptr_with_off_t::ctx_region_ptr(interval_t{number_t{0}});
         typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
     }
-    auto stack_ptr_r10 = ptr_with_off_t(region_t::R_STACK, -1,  mock_interval_t{number_t{512}});
+    auto stack_ptr_r10 = ptr_with_off_t::stack_region_ptr(interval_t{number_t{512}});
     typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
 
     return region_domain_t{std::move(typ), region_stack_t::top(),
@@ -1035,8 +1035,7 @@ void region_domain_t::update_ptr_or_mapfd(const ptr_or_mapfd_t& ptr_or_mapfd, co
         location_t loc, register_t reg) {
     if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd)) {
         auto ptr_or_mapfd_with_off = std::get<ptr_with_off_t>(ptr_or_mapfd);
-        auto offset = ptr_or_mapfd_with_off.get_offset();
-        auto updated_offset = offset.to_interval() + change;
+        auto updated_offset = ptr_or_mapfd_with_off.get_offset() + change;
         ptr_or_mapfd_with_off.set_offset(updated_offset);
         m_registers.insert(reg, loc, ptr_or_mapfd_with_off);
     }
@@ -1201,7 +1200,7 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
 
     auto type_with_off = std::get<ptr_with_off_t>(*ptr_or_mapfd_opt);
     auto p_offset = type_with_off.get_offset();
-    auto offset_singleton = p_offset.to_interval().singleton();
+    auto offset_singleton = p_offset.singleton();
 
     if (!offset_singleton) {
         m_registers -= target_register;
@@ -1281,7 +1280,7 @@ void region_domain_t::do_mem_store(const Mem& b) {
 
     // if the code reaches here, we are storing into a stack pointer
     auto basereg_type_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
-    auto offset_singleton = basereg_type_with_off.get_offset().to_interval().singleton();
+    auto offset_singleton = basereg_type_with_off.get_offset().singleton();
     if (!offset_singleton) {
         //std::cout << "type error: storing to a pointer with unknown offset\n";
         m_errors.push_back("storing to a pointer with unknown offset");

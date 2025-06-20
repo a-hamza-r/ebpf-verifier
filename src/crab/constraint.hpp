@@ -34,7 +34,7 @@ class constraint_t {
     bool is_meta_begin_constraint() const;
     bool is_begin_end_constraint() const;
     [[nodiscard]] expression_t get_lhs() const { return _lhs; }
-    std::map<symbol_t, mock_interval_t> get_slack_intervals() const;
+    std::map<symbol_t, interval_t> get_slack_intervals() const;
     bool contains(const symbol_t&) const;
     bool implies(const constraint_t&) const;
     constraint_t operator+(constraint_t) const;

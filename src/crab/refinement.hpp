@@ -51,7 +51,7 @@ class refinement_t {
     bool is_numeric_refinement() const;
     bool is_packet_refinement() const;
     interval_t simplify_for_subtraction(const symbol_t&, const symbol_t&) const;
-    std::map<symbol_t, mock_interval_t> get_slack_intervals() const;
+    std::map<symbol_t, interval_t> get_slack_intervals() const;
     void add_constraint(constraint_t);
     friend std::ostream &operator<<(std::ostream &, const refinement_t&);
 
@@ -80,7 +80,7 @@ class refinement_t {
 
     static refinement_t numeric_refinement(interval_t i, std::shared_ptr<slacks_t> slacks) {
         symbol_t s = symbol_t::make();
-        (*slacks)[s] = i;
+        slacks->insert_or_assign(s, i);
         return numeric_refinement(expression_t(s, slacks));
     }
 

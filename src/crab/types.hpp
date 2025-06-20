@@ -42,12 +42,10 @@ inline std::string region_to_string(const region_t& r) noexcept;
 
 enum class nullness_t { MAYBE_NULL, NOT_NULL, _NULL };
 
-// TODO: make it part of the ptr_with_off_t class as generic pointers
 class packet_ptr_t {
     region_t m_r = region_t::R_PACKET;
 
   public:
-    packet_ptr_t() = default;
     friend std::ostream& operator<<(std::ostream& o, const packet_ptr_t& p);
     // because we only represent one packet pointer, we can always return true/false
     bool operator==(const packet_ptr_t&) const { return true; }
@@ -55,39 +53,30 @@ class packet_ptr_t {
     [[nodiscard]] region_t get_region() const { return m_r; }
 };
 
-class mock_interval_t {
-    bound_t _lb;
-    bound_t _ub;
-
-    public:
-        static mock_interval_t top() {
-            return mock_interval_t(bound_t::minus_infinity(), bound_t::plus_infinity());
-        }
-        [[nodiscard]] bound_t lb() const { return _lb; }
-        [[nodiscard]] bound_t ub() const { return _ub; }
-        mock_interval_t(bound_t lb, bound_t ub) : _lb(lb), _ub(ub) {};
-        mock_interval_t() : _lb(bound_t::minus_infinity()), _ub(bound_t::plus_infinity()) {}
-        mock_interval_t(const mock_interval_t& c) = default;
-        mock_interval_t(const bound_t& b) : _lb(b), _ub(b) {}
-        mock_interval_t& operator=(const mock_interval_t& o) = default;
-        bool operator==(const mock_interval_t& o) const;
-        mock_interval_t(const interval_t& i) : _lb(i.lb()), _ub(i.ub()) {}
-        interval_t to_interval() const { return interval_t(_lb, _ub); }
-};
-
 class ptr_with_off_t {
     region_t m_r;
-    int m_id;
-    mock_interval_t m_offset;
+    interval_t m_offset;
+    // following fields are used for shared pointers, default values used for other pointer types
+    int m_id = -1;
     nullness_t m_nullness = nullness_t::MAYBE_NULL;
-    mock_interval_t m_region_size = mock_interval_t::top();
+    interval_t m_region_size = interval_t::top();
 
   public:
-    ptr_with_off_t() = default;
-    ptr_with_off_t(region_t _r, int _id, mock_interval_t _off,
-            nullness_t _nullness = nullness_t::MAYBE_NULL,
-            mock_interval_t _region_sz = mock_interval_t::top())
-        : m_r(_r), m_id(_id), m_offset(_off), m_nullness(_nullness), m_region_size(_region_sz) {}
+    ptr_with_off_t(region_t _r, interval_t _off) : m_r(_r), m_offset(_off) {}
+    ptr_with_off_t(region_t _r, interval_t _off, int _id, nullness_t _nullness,
+                   interval_t _region_sz)
+        : m_r(_r), m_offset(_off), m_id(_id), m_nullness(_nullness), m_region_size(_region_sz) {}
+    static ptr_with_off_t shared_region_ptr(interval_t _offset, int _id = -1,
+                                            nullness_t _nullness = nullness_t::MAYBE_NULL,
+                                            interval_t _region_sz = interval_t::top()) {
+        return ptr_with_off_t(region_t::R_SHARED, _offset, _id, _nullness, _region_sz);
+    }
+    static ptr_with_off_t ctx_region_ptr(interval_t _offset) {
+        return ptr_with_off_t(region_t::R_CTX, _offset);
+    }
+    static ptr_with_off_t stack_region_ptr(interval_t _offset) {
+        return ptr_with_off_t(region_t::R_STACK, _offset);
+    }
     ptr_with_off_t operator|(const ptr_with_off_t&) const;
     ptr_with_off_t widen(const ptr_with_off_t&) const;
     bool operator<=(const ptr_with_off_t&) const;
@@ -95,10 +84,10 @@ class ptr_with_off_t {
     void set_nullness(nullness_t);
     [[nodiscard]] int get_id() const { return m_id; }
     void set_id(int);
-    [[nodiscard]] mock_interval_t get_region_size() const { return m_region_size; }
-    void set_region_size(mock_interval_t);
-    [[nodiscard]] mock_interval_t get_offset() const { return m_offset; }
-    void set_offset(mock_interval_t);
+    [[nodiscard]] interval_t get_region_size() const { return m_region_size; }
+    void set_region_size(interval_t);
+    [[nodiscard]] interval_t get_offset() const { return m_offset; }
+    void set_offset(interval_t);
     [[nodiscard]] region_t get_region() const { return m_r; }
     void set_region(region_t);
     void write(std::ostream&) const;
@@ -108,7 +97,7 @@ class ptr_with_off_t {
 };
 
 class mapfd_t {
-    mock_interval_t m_mapfd;
+    interval_t m_mapfd;
     EbpfMapValueType m_value_type;
 
   public:
@@ -116,7 +105,7 @@ class mapfd_t {
     mapfd_t operator|(const mapfd_t&) const;
     mapfd_t widen(const mapfd_t&) const;
     bool operator<=(const mapfd_t&) const;
-    mapfd_t(mock_interval_t mapfd, EbpfMapValueType val_type)
+    mapfd_t(interval_t mapfd, EbpfMapValueType val_type)
         : m_mapfd(mapfd), m_value_type(val_type) {}
     friend std::ostream& operator<<(std::ostream&, const mapfd_t&);
     bool operator==(const mapfd_t&) const;
@@ -125,7 +114,7 @@ class mapfd_t {
 
     bool has_type_map_programs() const;
     [[nodiscard]] EbpfMapValueType get_value_type() const { return m_value_type; }
-    [[nodiscard]] mock_interval_t get_mapfd() const { return m_mapfd; }
+    [[nodiscard]] interval_t get_mapfd() const { return m_mapfd; }
 };
 
 using ptr_t = std::variant<packet_ptr_t, ptr_with_off_t>;

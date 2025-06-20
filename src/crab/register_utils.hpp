@@ -32,7 +32,7 @@ class location_t {
     label_t m_bb_label;
     uint32_t m_line_num; // uint32_t is used to represent the line number in the eBPF program
                        // which should be sufficient for ebpf
-    location_t(label_t _label, uint32_t _offset) : m_bb_label(_label), m_line_num(_offset) {}
+    location_t(label_t _label, uint32_t _line_num) : m_bb_label(_label), m_line_num(_line_num) {}
     location_t() : m_bb_label(-2, -2), m_line_num(0) {} // not a valid location
     static location_t top() { return location_t(); }
     bool operator==(const location_t& other) const;
@@ -54,7 +54,6 @@ class register_location_t {
     void write(std::ostream& o) const;
 };
 
-// TODO: get rid of shared_ptr for register_location_t
 using live_registers_t = std::array<std::shared_ptr<register_location_t>, NUM_REGISTERS>;
 
 } // namespace crab

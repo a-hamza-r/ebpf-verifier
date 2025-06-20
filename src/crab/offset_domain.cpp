@@ -688,7 +688,7 @@ void offset_domain_t::do_mem_store(const Mem& b,
     int offset = b.access.offset;
     int width = b.access.width;
     auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
-    auto basereg_off_singleton = basereg_with_off.get_offset().to_interval().singleton();
+    auto basereg_off_singleton = basereg_with_off.get_offset().singleton();
     if (!basereg_off_singleton) return;
     auto store_at = (*basereg_off_singleton + offset).cast_to<uint64_t>();
     auto overlapping_cells = m_stack.find_overlapping_cells(store_at, width);
@@ -718,7 +718,7 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
     int offset = b.access.offset;
     auto type_with_off = std::get<ptr_with_off_t>(*basereg_type);
     auto p_offset = type_with_off.get_offset();
-    auto offset_singleton = p_offset.to_interval().singleton();
+    auto offset_singleton = p_offset.singleton();
     if (is_stack_p) {
         if (!offset_singleton) {
             for (auto const& k : m_stack.get_keys()) {

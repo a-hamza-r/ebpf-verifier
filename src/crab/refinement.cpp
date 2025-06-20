@@ -26,8 +26,8 @@ interval_t refinement_t::get_interval_value() const {
     return interval_t::bottom();
 }
 
-std::map<symbol_t, mock_interval_t> refinement_t::get_slack_intervals() const {
-    std::map<symbol_t, mock_interval_t> slack_intervals = _value.get_slack_intervals();
+std::map<symbol_t, interval_t> refinement_t::get_slack_intervals() const {
+    std::map<symbol_t, interval_t> slack_intervals = _value.get_slack_intervals();
     if (has_constraints) {
         slack_intervals.merge(meta_begin_constraint.get_slack_intervals());
         slack_intervals.merge(begin_end_constraint.get_slack_intervals());
@@ -36,7 +36,7 @@ std::map<symbol_t, mock_interval_t> refinement_t::get_slack_intervals() const {
 }
 
 void refinement_t::write(std::ostream& o) const {
-    std::map<symbol_t, mock_interval_t> slack_intervals = get_slack_intervals();
+    std::map<symbol_t, interval_t> slack_intervals = get_slack_intervals();
     bool has_extra_info = has_constraints || !slack_intervals.empty();
     if (has_extra_info) o << "{";
     if (is_numeric_refinement()) {
@@ -57,8 +57,8 @@ void refinement_t::write(std::ostream& o) const {
     if (n > 0 && has_constraints) {
         o << " & ";
     }
-    for (auto [s, mock_interv] : slack_intervals) {
-        o << s << " in " << mock_interv.to_interval();
+    for (auto [s, interv] : slack_intervals) {
+        o << s << " in " << interv;
         if (i < n - 1) {
             o << " & ";
         }
