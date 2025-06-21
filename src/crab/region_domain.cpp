@@ -106,18 +106,18 @@ region_registers_t region_registers_t::operator|(const region_registers_t& other
                 ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
                 if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
                     auto joined_ptr = ptr_with_off1 | ptr_with_off2;
-                    joined_reg_types.insert(register_t{i}, loc, std::move(joined_ptr));
+                    joined_reg_types.insert(register_t{i}, loc, joined_ptr);
                 }
             }
             else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
                     && std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
                 mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
-                joined_reg_types.insert(register_t{i}, loc, std::move(mapfd1 | mapfd2));
+                joined_reg_types.insert(register_t{i}, loc, mapfd1 | mapfd2);
             }
             else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1)
                     && std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
-                joined_reg_types.insert(register_t{i}, loc, std::move(packet_ptr_t()));
+                joined_reg_types.insert(register_t{i}, loc, packet_ptr_t());
             }
         }
     }
@@ -175,7 +175,7 @@ region_registers_t region_registers_t::widen(const region_registers_t& other) co
                 ptr_with_off_t ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
                 if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
                     auto ptr_with_off = ptr_with_off1.widen(ptr_with_off2);
-                    joined_reg_types.insert(register_t{i}, loc, std::move(ptr_with_off));
+                    joined_reg_types.insert(register_t{i}, loc, ptr_with_off);
                 }
             }
             else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1)
@@ -183,11 +183,11 @@ region_registers_t region_registers_t::widen(const region_registers_t& other) co
                 mapfd_t mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 mapfd_t mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
                 auto map_fd = mapfd1.widen(mapfd2);
-                joined_reg_types.insert(register_t{i}, loc, std::move(map_fd));
+                joined_reg_types.insert(register_t{i}, loc, map_fd);
             }
             else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1)
                     && std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
-                joined_reg_types.insert(register_t{i}, loc, std::move(packet_ptr_t()));
+                joined_reg_types.insert(register_t{i}, loc, packet_ptr_t());
             }
         }
     }
@@ -305,19 +305,18 @@ region_stack_t region_stack_t::operator|(const region_stack_t& other) const {
                 auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
                 auto ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
                 if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
-                    joined_stack.store(kv.first, std::move(ptr_with_off1 | ptr_with_off2),
-                            width_joined);
+                    joined_stack.store(kv.first, ptr_with_off1 | ptr_with_off2, width_joined);
                 }
             }
             else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<mapfd_t>(ptr_or_mapfd2)) {
                 auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
-                joined_stack.store(kv.first, std::move(mapfd1 | mapfd2), width_joined);
+                joined_stack.store(kv.first, mapfd1 | mapfd2, width_joined);
             }
             else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
-                joined_stack.store(kv.first, std::move(packet_ptr_t()), width_joined);
+                joined_stack.store(kv.first, packet_ptr_t(), width_joined);
             }
         }
     }
@@ -348,7 +347,7 @@ region_stack_t region_stack_t::widen(const region_stack_t& other) const {
                 auto ptr_with_off2 = std::get<ptr_with_off_t>(ptr_or_mapfd2);
                 if (ptr_with_off1.get_region() == ptr_with_off2.get_region()) {
                     auto ptr_with_off = ptr_with_off1.widen(ptr_with_off2);
-                    joined_stack.store(kv.first, std::move(ptr_with_off), width_joined);
+                    joined_stack.store(kv.first, ptr_with_off, width_joined);
                 }
             }
             else if (std::holds_alternative<mapfd_t>(ptr_or_mapfd1) &&
@@ -356,11 +355,11 @@ region_stack_t region_stack_t::widen(const region_stack_t& other) const {
                 auto mapfd1 = std::get<mapfd_t>(ptr_or_mapfd1);
                 auto mapfd2 = std::get<mapfd_t>(ptr_or_mapfd2);
                 auto mapfd = mapfd1.widen(mapfd2);
-                joined_stack.store(kv.first, std::move(mapfd), width_joined);
+                joined_stack.store(kv.first, mapfd, width_joined);
             }
             else if (std::holds_alternative<packet_ptr_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<packet_ptr_t>(ptr_or_mapfd2)) {
-                joined_stack.store(kv.first, std::move(packet_ptr_t()), width_joined);
+                joined_stack.store(kv.first, packet_ptr_t(), width_joined);
             }
         }
     }

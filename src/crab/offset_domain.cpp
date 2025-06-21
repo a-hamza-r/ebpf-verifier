@@ -7,7 +7,7 @@ namespace crab {
 
 void offset_registers_t::insert(register_t reg, const location_t& loc, refinement_t rf) {
     register_location_t register_location{reg, loc};
-    (*m_registers_env)[register_location] = rf;
+    m_registers_env->insert_or_assign(register_location, rf);
     m_cur_register_def[reg] = std::make_shared<register_location_t>(register_location);
 }
 
@@ -138,7 +138,7 @@ offset_registers_t offset_registers_t::widen(const offset_registers_t& other) co
 void offset_registers_t::adjust_bb_for_registers(location_t loc) {
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (auto it = find(register_t{i})) {
-            insert(register_t{i}, loc, std::move(*it));
+            insert(register_t{i}, loc, *it);
         }
     }
 }

@@ -48,6 +48,7 @@ class packet_ptr_t {
   public:
     friend std::ostream& operator<<(std::ostream& o, const packet_ptr_t& p);
     // because we only represent one packet pointer, we can always return true/false
+    // TODO: clean this up in future
     bool operator==(const packet_ptr_t&) const { return true; }
     bool operator!=(const packet_ptr_t&) const { return false; }
     [[nodiscard]] region_t get_region() const { return m_r; }
@@ -121,11 +122,11 @@ using ptr_t = std::variant<packet_ptr_t, ptr_with_off_t>;
 
 using ptr_or_mapfd_t = std::variant<ptr_with_off_t, packet_ptr_t, mapfd_t>;
 
-inline bool is_ptr_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
+inline bool is_ptr_type(std::optional<ptr_or_mapfd_t> ptr_or_mapfd) {
     return (ptr_or_mapfd && !std::holds_alternative<mapfd_t>(*ptr_or_mapfd));
 }
 
-inline bool is_mapfd_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd) {
+inline bool is_mapfd_type(std::optional<ptr_or_mapfd_t> ptr_or_mapfd) {
     return (ptr_or_mapfd && std::holds_alternative<mapfd_t>(*ptr_or_mapfd));
 }
 
@@ -142,21 +143,21 @@ inline bool same_region(const ptr_or_mapfd_t& ptr1, const ptr_or_mapfd_t& ptr2) 
     return false;
 }
 
-inline bool is_stack_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
+inline bool is_stack_ptr(std::optional<ptr_or_mapfd_t> ptr) {
     return (ptr && std::holds_alternative<ptr_with_off_t>(*ptr)
             && std::get<ptr_with_off_t>(*ptr).get_region() == region_t::R_STACK);
 }
 
-inline bool is_ctx_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
+inline bool is_ctx_ptr(std::optional<ptr_or_mapfd_t> ptr) {
     return (ptr && std::holds_alternative<ptr_with_off_t>(*ptr)
             && std::get<ptr_with_off_t>(*ptr).get_region() == region_t::R_CTX);
 }
 
-inline bool is_packet_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
+inline bool is_packet_ptr(std::optional<ptr_or_mapfd_t> ptr) {
     return (ptr && std::holds_alternative<packet_ptr_t>(*ptr));
 }
 
-inline bool is_shared_ptr(const std::optional<ptr_or_mapfd_t>& ptr) {
+inline bool is_shared_ptr(std::optional<ptr_or_mapfd_t> ptr) {
     return (ptr && std::holds_alternative<ptr_with_off_t>(*ptr)
             && std::get<ptr_with_off_t>(*ptr).get_region() == region_t::R_SHARED);
 }
@@ -195,6 +196,4 @@ namespace std {
             );
         }
     };
-
-    //crab::ptr_t get_ptr(const crab::ptr_or_mapfd_t& t);
 }
