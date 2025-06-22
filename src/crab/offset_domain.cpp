@@ -625,23 +625,13 @@ void offset_domain_t::operator()(const LoadVariable& u, location_t loc) {
 }
 
 void offset_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {
-    for (const auto& kv : cells) {
-        auto rf = kv.first;
-        auto width = kv.second;
-        auto overlapping_cells = m_stack.find_overlapping_cells(rf, width);
-        m_stack -= overlapping_cells;
+    for (const auto& [offset, width] : cells) {
+        m_stack -= m_stack.find_overlapping_cells(offset, width);
     }
+    m_registers -= register_t{R0_RETURN_VALUE};
     m_registers.scratch_caller_saved_registers();
-    register_t r0{R0_RETURN_VALUE};
     if (u.reallocate_packet) {
-        m_registers -= r0;
         m_registers.forget_packet_pointers(loc);
-    }
-    else if (u.is_map_lookup) {
-        m_registers -= r0;
-    }
-    else {
-        m_registers -= r0;
     }
 }
 

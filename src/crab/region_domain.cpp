@@ -844,12 +844,8 @@ void region_domain_t::set_aliases(int v, ptr_with_off_t& ptr) {
 }
 
 void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {
-    for (const auto& kv : cells) {
-        auto offset = kv.first;
-        auto width = kv.second;
-        auto overlapping_cells
-            = m_stack.find_overlapping_cells(offset, width);
-        m_stack -= overlapping_cells;
+    for (const auto& [offset, width] : cells) {
+        m_stack -= m_stack.find_overlapping_cells(offset, width);
     }
     std::optional<Reg> maybe_fd_reg{};
     for (ArgSingle param : u.singles) {
@@ -863,7 +859,7 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
                 if (global_program_info->platform->get_map_type(*map_type).value_type
                         == EbpfMapValueType::MAP) {
                     if (auto inner_map_fd = get_map_inner_map_fd(*maybe_fd_reg)) {
-                        do_load_mapfd(r0, (int)*inner_map_fd, loc);
+                        do_load_mapfd(r0, to_signed(*inner_map_fd), loc);
                         goto out;
                     }
                 } else {

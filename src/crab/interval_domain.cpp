@@ -673,10 +673,9 @@ void interval_domain_t::scratch_caller_saved_registers() {
 void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_stack,
         location_t loc) {
     refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
-    for (const auto& kv : store_in_stack) {
-        auto offset = kv.first;
-        auto width = kv.second;
+    for (const auto& [offset, width] : store_in_stack) {
         auto overlapping_cells = find_overlapping_cells_in_stack(offset, width);
+        /*
         if (overlapping_cells.empty()) {
             m_signed.store_in_stack(offset, top_rf, width);
             m_unsigned.store_in_stack(offset, top_rf, width);
@@ -684,12 +683,12 @@ void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_sta
         else {
             fill_values_in_stack(overlapping_cells, offset, width);
         }
-        //remove_overlap_in_stack(overlapping_cells, offset, width);
-        //m_signed.store_in_stack(offset, interval_t::top(), width);
-        //m_unsigned.store_in_stack(offset, interval_t::top(), width);
+        */
+        remove_overlap_in_stack(overlapping_cells, offset, width);
+        m_signed.store_in_stack(offset, top_rf, width);
+        m_unsigned.store_in_stack(offset, top_rf, width);
     }
     auto r0 = register_t{R0_RETURN_VALUE};
-    // TODO: Check if packet_reallocate() function call needs handling separately
     if (u.is_map_lookup) {
         operator-=(r0);
     }

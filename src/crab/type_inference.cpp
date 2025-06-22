@@ -258,26 +258,32 @@ void inference_domain_t::operator()(const IncrementLoopCounter &u, location_t lo
 
 void inference_domain_t::operator()(const Call& u, location_t loc) {
 
+    if (is_bottom()) return;
+    std::string loc_str = loc.to_string();
     stack_cells_t stack_values;
     for (ArgPair param : u.pairs) {
         if (param.kind == ArgPair::Kind::PTR_TO_WRITABLE_MEM) {
             auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(param.mem.v);
+            if (!maybe_ptr_or_mapfd) {
+                m_errors.push_back(loc_str + "Argument must be a pointer to writable memory");
+                return;
+            }
             auto maybe_width_rf = m_interval.find_signed_interval_value(param.size.v);
-            if (!maybe_ptr_or_mapfd || !maybe_width_rf) continue;
             if (is_stack_ptr(maybe_ptr_or_mapfd)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
                 auto width_interval = maybe_width_rf->get_interval_value();
 
-                auto offset_singleton = ptr_with_off.get_offset().singleton();
-                if (!offset_singleton) {
-                    //std::cout << "type error: storing at an unknown offset in stack\n";
-                    m_errors.push_back("storing at an unknown offset in stack");
-                    continue;
+                if (const auto offset_singleton = ptr_with_off.get_offset().singleton()) {
+                    uint64_t offset = offset_singleton->cast_to<uint64_t>();
+                    if (const auto single_width = width_interval.singleton()) {
+                        int width = single_width->cast_to<int>();
+                        stack_values.emplace_back(offset, width);
+                    } else {
+                        m_errors.push_back(loc_str + ": Width for stack stores cannot be an interval");
+                    }
                 }
-                auto offset = offset_singleton.value().cast_to<int>();
-                if (auto single_width = width_interval.singleton()) {
-                    int width = single_width.value().cast_to<int>();
-                    stack_values.push_back(std::make_pair(offset, width));
+                else {
+                    m_errors.push_back(loc_str + ": Storing at an unknown offset in stack");
                 }
             }
         }
