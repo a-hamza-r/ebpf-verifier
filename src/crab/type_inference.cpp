@@ -520,52 +520,105 @@ void inference_domain_t::operator()(const ValidSize& u, location_t loc) {
 
 void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
 
-    // TODO: move map-related function to common
-    //auto fd_type = m_region.get_map_type(u.map_fd_reg);
+    // TODO: move map-related function from region domain to common
+    auto fd_type = m_region.get_map_type(u.map_fd_reg);
 
     int width;
+    std::string loc_str = loc.to_string();
     if (u.key) {
         auto key_size = m_region.get_map_key_size(u.map_fd_reg).singleton();
         if (!key_size.has_value()) {
-            m_errors.push_back("Map key size is not singleton");
+            m_errors.push_back(loc_str + ": Map key size is not singleton");
             return;
         }
-        width = key_size.value().cast_to<int>();
+        width = key_size->narrow<int>();
     } else {
         auto value_size = m_region.get_map_value_size(u.map_fd_reg).singleton();
         if (!value_size.has_value()) {
-            m_errors.push_back("Map value size is not singleton");
+            m_errors.push_back(loc_str + ": Map value size is not singleton");
             return;
         }
-        width = value_size.value().cast_to<int>();
+        width = value_size->narrow<int>();
     }
     auto maybe_ptr_or_mapfd_basereg = m_region.find_ptr_or_mapfd_type(u.access_reg.v);
     auto maybe_mapfd = m_region.find_ptr_or_mapfd_type(u.map_fd_reg.v);
     if (maybe_ptr_or_mapfd_basereg && maybe_mapfd) {
-        auto mapfd = maybe_mapfd.value();
+        auto type = *maybe_ptr_or_mapfd_basereg;
         if (is_mapfd_type(maybe_mapfd)) {
-            if (is_stack_ptr(maybe_ptr_or_mapfd_basereg)) {
-                auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd_basereg);
-                auto offset_singleton = ptr_with_off.get_offset().singleton();
-                if (!offset_singleton) {
-                    //std::cout << "type error: reading the stack at an unknown offset\n";
-                    m_errors.push_back("reading the stack at an unknown offset");
+            if (std::holds_alternative<ptr_with_off_t>(type)) {
+                auto ptr_with_off = std::get<ptr_with_off_t>(type);
+                auto region = ptr_with_off.get_region();
+                auto offset_interval = ptr_with_off.get_offset();
+                if (region == region_t::R_STACK) {
+                    // stack
+                    auto offset_singleton = offset_interval.singleton();
+                    if (!offset_singleton) {
+                        m_errors.push_back(loc_str + ": Pointer must be singleton");
+                        return;
+                    }
+                    auto offset = offset_singleton.value().cast_to<uint64_t>();
+                    if (!m_interval.all_numeric_in_stack(offset, width)) {
+                        m_errors.push_back(loc_str + ": Illegal map update with a non-numerical value");
+                        return;
+                    }
+                    else if (thread_local_options.strict && fd_type.has_value()) {
+                        EbpfMapType map_type = global_program_info->platform->get_map_type(*fd_type);
+                        if (map_type.is_array && u.key) {
+                            // Array bounds checks
+                            if (auto cell = m_interval.find_in_stack_signed(offset)) {
+                                auto rf = cell->first;
+                                auto size = cell->second;
+                                auto key_value = rf.get_interval_value();
+                                if (size != sizeof(uint32_t)) {
+                                    m_errors.push_back(loc_str + ": Array map key must be 32 bits");
+                                    return;
+                                }
+                                if (auto max_entries = m_region.get_map_max_entries(u.map_fd_reg).lb().number()) {
+                                    if (key_value.ub() >= *max_entries) {
+                                        m_errors.push_back(loc_str + ": Array index overflow");
+                                    }
+                                } else {
+                                    m_errors.push_back(loc_str + ": Max entries is not finite");
+                                }
+                                if (key_value.lb() < bound_t{number_t{0}}) {
+                                    m_errors.push_back(loc_str + ": Array index underflow");
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     return;
                 }
-                auto offset_to_check = offset_singleton.value().cast_to<uint64_t>();
-                auto it = m_interval.all_numeric_in_stack(offset_to_check, width);
-                if (it) return;
+                else if (region == region_t::R_SHARED) {
+                    // shared
+                    auto offset_lb = offset_interval.lb();
+                    auto offset_ub = offset_interval.ub() + bound_t{width};
+                    if (bound_t{SHARED_BEGIN} <= offset_lb &&
+                        offset_ub <= ptr_with_off.get_region_size().lb()) {
+                        auto nullness = ptr_with_off.get_nullness();
+                        if (nullness != nullness_t::NOT_NULL) {
+                            m_errors.push_back(loc_str + ": Possible null access");
+                        }
+                    }
+                    else {
+                        m_errors.push_back(loc_str + ": Shared region access out of bounds");
+                    }
+                    return;
+                }
             }
-            else if (is_packet_ptr(maybe_ptr_or_mapfd_basereg)) {
-                if (m_offset.check_packet_access(u.access_reg, width, 0, true)) return;
-            }
-            else {
-                m_errors.push_back("Only stack or packet can be used as a parameter");
+            else if (std::holds_alternative<packet_ptr_t>(type)) {
+                // packet
+                if (!m_offset.check_packet_access(u.access_reg, width, 0, true)) {
+                    m_errors.push_back(loc_str + ": Packet access out of bounds");
+                }
                 return;
             }
+            m_errors.push_back(loc_str + ": Only stack, packet or shared regions can be used as a parameter");
+        }
+        else {
+            m_errors.push_back(loc_str + ": Not a mapfd type");
         }
     }
-    m_errors.push_back("map update with a non-numerical value");
 }
 
 void inference_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {

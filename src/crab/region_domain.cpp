@@ -774,10 +774,29 @@ interval_t region_domain_t::get_map_value_size(const Reg& map_fd_reg) const {
 
     interval_t result = crab::interval_t::bottom();
     for (int map_fd = start_fd; map_fd <= end_fd; map_fd++) {
-        if (EbpfMapDescriptor* map = &global_program_info->platform->get_map_descriptor(map_fd))
-            result = result | crab::interval_t(number_t(map->value_size));
-        else
+        if (EbpfMapDescriptor* map = &global_program_info->platform->get_map_descriptor(map_fd)) {
+            result = result | interval_t(map->value_size);
+        } else {
             return interval_t::top();
+        }
+    }
+    return result;
+}
+
+// We can deal with a range of max_entries values.
+interval_t region_domain_t::get_map_max_entries(const Reg& map_fd_reg) const {
+    int start_fd, end_fd;
+    if (!get_map_fd_range(map_fd_reg, &start_fd, &end_fd))
+        return interval_t::top();
+
+    interval_t result = interval_t::bottom();
+    for (int map_fd = start_fd; map_fd <= end_fd; map_fd++) {
+        if (EbpfMapDescriptor* map = &global_program_info->platform->get_map_descriptor(map_fd)) {
+            result = result | interval_t(map->max_entries);
+        }
+        else {
+            return interval_t::top();
+        }
     }
     return result;
 }
