@@ -377,22 +377,23 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
 
 void inference_domain_t::operator()(const FuncConstraint& s, location_t loc) {
     // WARNING: Not implemented yet
-    // This operation is not needed for current benchmarks,
-    // TODO: implement this if needed
 }
 
 void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     auto maybe_ptr_or_mapfd_reg = m_region.find_ptr_or_mapfd_type(u.reg.v);
-    auto maybe_num_type_reg = m_interval.find_unsigned_interval_value(u.reg.v);
-    assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_num_type_reg.has_value());
+    auto maybe_unsigned_reg = m_interval.find_unsigned_interval_value(u.reg.v);
+    auto maybe_signed_reg = m_interval.find_signed_interval_value(u.reg.v);
+    assert(!maybe_ptr_or_mapfd_reg.has_value() || !maybe_unsigned_reg.has_value());
 
+    std::string loc_str = loc.to_string();
     if (is_ptr_type(maybe_ptr_or_mapfd_reg)) {
-        m_errors.push_back("Only numbers can be used as divisors");
+        m_errors.push_back(loc_str + ": Only numbers can be used as divisors");
     }
-    else if (maybe_num_type_reg.has_value() && !thread_local_options.allow_division_by_zero) {
-        auto num_type_reg = maybe_num_type_reg->get_interval_value();
-        if (interval_t{number_t{0}} <= num_type_reg) {
-            m_errors.push_back("Possible division by zero");
+    if (!thread_local_options.allow_division_by_zero) {
+        interval_t to_check = u.is_signed ? maybe_signed_reg->get_interval_value()
+                                          : maybe_unsigned_reg->get_interval_value();
+        if (interval_t{number_t{0}} <= to_check) {
+            m_errors.push_back(loc_str + ": Possible division by zero");
         }
     }
 }
@@ -442,7 +443,7 @@ void inference_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     auto rf_type = m_interval.find_interval_value(s.reg.v);
     assert(!reg_type.has_value() || !rf_type.has_value());
-    m_region.check_type(s, rf_type.has_value());
+    m_region.check_type(s, rf_type.has_value(), loc);
 }
 
 void inference_domain_t::operator()(const Assert& u, location_t loc) {
@@ -456,35 +457,39 @@ void inference_domain_t::operator()(const Comparable& u, location_t loc) {
     auto maybe_num_type2 = m_interval.find_interval_value(u.r2.v);
     assert(!maybe_ptr_or_mapfd1.has_value() || !maybe_num_type1.has_value());
     assert(!maybe_ptr_or_mapfd2.has_value() || !maybe_num_type2.has_value());
-    if (maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2) {
-        if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
-        if (same_region(*maybe_ptr_or_mapfd1, *maybe_ptr_or_mapfd2)) return;
+    bool both_are_ptrs = maybe_ptr_or_mapfd1 && maybe_ptr_or_mapfd2;
+    bool both_are_numbers = maybe_num_type1 && maybe_num_type2;
+    if (both_are_ptrs || both_are_numbers) {
+        if (both_are_ptrs) {
+            if (is_mapfd_type(maybe_ptr_or_mapfd1) && is_mapfd_type(maybe_ptr_or_mapfd2)) return;
+            if (same_region(*maybe_ptr_or_mapfd1, *maybe_ptr_or_mapfd2)) return;
+            m_errors.push_back(loc.to_string() + ": Cannot subtract pointers to non-singleton regions");
+            return;
+        }
+        this->operator()(ValidAccess{u.r1, 0, Imm{0}, false}, loc);
+        this->operator()(ValidAccess{u.r2, 0, Imm{0}, false}, loc);
     }
-    else if (!maybe_ptr_or_mapfd2) {
-        // TODO: interval check here
-        // two numbers can be compared
-        // if r1 is a pointer, r2 must be a number
+    else if (maybe_num_type2) {
+        // _Maybe_ different types, so r2 must be a number.
         return;
     }
-    //std::cout << "type error: Non-comparable types\n";
-    m_errors.push_back("Non-comparable types");
+    m_errors.push_back(loc.to_string() + ": Cannot subtract pointers to different regions");
 }
 
 void inference_domain_t::operator()(const Addable& u, location_t loc) {
-    auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
-    auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
-    auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
-    auto maybe_num_type_num = m_interval.find_interval_value(u.num.v);
+    const auto maybe_ptr_or_mapfd_ptr = m_region.find_ptr_or_mapfd_type(u.ptr.v);
+    const auto maybe_ptr_or_mapfd_num = m_region.find_ptr_or_mapfd_type(u.num.v);
+    const auto maybe_num_type_ptr = m_interval.find_interval_value(u.ptr.v);
+    const auto maybe_num_type_num = m_interval.find_interval_value(u.num.v);
     assert(!maybe_ptr_or_mapfd_ptr.has_value() || !maybe_num_type_ptr.has_value());
     assert(!maybe_ptr_or_mapfd_num.has_value() || !maybe_num_type_num.has_value());
 
     // a -> b <-> !a || b
     // is_ptr(ptr) -> is_num(num) <-> !is_ptr(ptr) || is_num(num)
-    if (!is_ptr_type(maybe_ptr_or_mapfd_ptr) ||
-      (!maybe_ptr_or_mapfd_num.has_value() || maybe_num_type_num.has_value())) {
+    if (!is_ptr_type(maybe_ptr_or_mapfd_ptr) || maybe_num_type_num.has_value()) {
         return;
     }
-    m_errors.push_back("Addable assertion fail");
+    m_errors.push_back(loc.to_string() + ": Only numbers can be added to pointers");
 }
 
 void inference_domain_t::operator()(const ValidStore& u, location_t loc) {
@@ -497,11 +502,10 @@ void inference_domain_t::operator()(const ValidStore& u, location_t loc) {
 
     // a -> b <-> !a || b
     // !is_stack_ptr(mem) -> is_num(val) <-> is_stack_ptr(mem) || is_num(val)
-    if (is_stack_ptr(maybe_ptr_or_mapfd_mem) ||
-            (!maybe_ptr_or_mapfd_val.has_value() || maybe_num_type_val.has_value())) {
+    if (is_stack_ptr(maybe_ptr_or_mapfd_mem) || maybe_num_type_val.has_value()) {
         return;
     }
-    m_errors.push_back("Valid store assertion fail");
+    m_errors.push_back(loc.to_string() + ": Only numbers can be stored to externally-visible regions");
 }
 
 void inference_domain_t::operator()(const ValidSize& u, location_t loc) {

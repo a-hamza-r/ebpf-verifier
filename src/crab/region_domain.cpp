@@ -593,7 +593,9 @@ string_invariant region_domain_t::to_set() {
     return string_invariant{};
 }
 
-void region_domain_t::operator()(const Undefined &u, location_t loc) {}
+void region_domain_t::operator()(const Undefined &u, location_t loc) {
+    // nothing to do here
+}
 
 void region_domain_t::operator()(const Exit &u, location_t loc) {}
 
@@ -676,10 +678,9 @@ void region_domain_t::operator()(const ZeroCtxOffset& u, location_t loc) {
     auto maybe_ptr_or_mapfd = m_registers.find(u.reg.v);
     if (is_ctx_ptr(maybe_ptr_or_mapfd)) {
         auto ctx_ptr = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
-        if (ctx_ptr.get_offset() == interval_t{crab::number_t{0}}) return;
+        if (ctx_ptr.get_offset() == interval_t{number_t{0}}) return;
     }
-    //std::cout << "type error: Zero Offset assertion fail\n";
-    m_errors.push_back("Zero Ctx Offset assertion fail");
+    m_errors.push_back(loc.to_string() + ": Non-zero context offset");
 }
 
 void region_domain_t::operator()(const basic_block_t& bb) {
@@ -1005,7 +1006,7 @@ void region_domain_t::operator()(const TypeConstraint& s, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::check_type(const TypeConstraint& s, bool is_numeric) {
+void region_domain_t::check_type(const TypeConstraint& s, bool is_numeric, location_t loc) {
     auto ptr_or_mapfd_opt = m_registers.find(s.reg.v);
     if (ptr_or_mapfd_opt) {
         // it is a pointer or mapfd
@@ -1050,8 +1051,7 @@ void region_domain_t::check_type(const TypeConstraint& s, bool is_numeric) {
                 || s.types == TypeGroup::mem_or_num)
             return;
     }
-    //std::cout << "type error: type constraint assert fail\n";
-    m_errors.push_back("type constraint assert fail");
+    m_errors.push_back(loc.to_string() + ": Invalid type");
 }
 
 void region_domain_t::update_ptr_or_mapfd(const ptr_or_mapfd_t& ptr_or_mapfd, const interval_t& change,
