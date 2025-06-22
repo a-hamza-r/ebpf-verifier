@@ -197,49 +197,38 @@ static Bin atomic_to_bin(const Atomic& a) {
 }
 
 void inference_domain_t::operator()(const Atomic &u, location_t loc) {
-    // WARNING: Not implemented yet
     if (is_bottom()) return;
     std::optional<ptr_or_mapfd_t> base_reg_opt
         = m_region.find_ptr_or_mapfd_type(u.access.basereg.v);
     std::optional<refinement_t> value_reg_opt = m_interval.find_interval_value(u.valreg.v);
     if (!base_reg_opt || !value_reg_opt) return;
-    if (is_stack_ptr(base_reg_opt)) {
-        if (u.op == Atomic::Op::CMPXCHG) {
-            m_region -= register_t{R0_RETURN_VALUE};
-            m_offset -= register_t{R0_RETURN_VALUE};
-            insert_in_registers_in_interval_domain(register_t{R0_RETURN_VALUE},
-                    loc, refinement_t::numeric_refinement_top());
-        }
-        else if (u.fetch) {
-            insert_in_registers_in_interval_domain(u.valreg.v, loc,
-                                    refinement_t::numeric_refinement_top());
-        }
+
+    // For shared memory regions, this behavior is sound, as the regions are volatile
+    // For stack memory region, we simply havoc values but fine-grained analysis can be done
+    if (u.op == Atomic::Op::CMPXCHG) {
+        register_t r0 = register_t{R0_RETURN_VALUE};
+        m_region -= r0;
+        m_offset -= r0;
+        m_interval -= r0;
+    }
+    else if (u.fetch) {
+        register_t r = register_t{u.valreg.v};
+        m_region -= r;
+        m_offset -= r;
+        m_interval -= r;
+    }
+
+    // Case for shared memory regions.
+    if (!is_stack_ptr(base_reg_opt)) {
         return;
     }
+
     // Fetch the current value into the R11 pseudo-register.
-    const Reg r11{11};
+    constexpr Reg r11{11};
     (*this)(Mem{.access = u.access, .value = r11, .is_load = true}, loc);
 
     // Compute the new value in R11.
     (*this)(atomic_to_bin(u), loc);
-
-    if (u.op == Atomic::Op::CMPXCHG) {
-        // For CMPXCHG, store the original value in r0.
-        (*this)(Mem{.access = u.access, .value = Reg{R0_RETURN_VALUE}, .is_load = true}, loc);
-
-        // For the destination, there are 3 possibilities:
-        // 1) dst.value == r0.value : set R11 to valreg
-        // 2) dst.value != r0.value : don't modify R11
-        // 3) dst.value may or may not == r0.value : set R11 to the union of R11 and valreg
-        // For now we just havoc the value of R11.
-        m_region -= register_t{11};
-        m_offset -= register_t{11};
-        insert_in_registers_in_interval_domain(register_t{11}, loc,
-                refinement_t::numeric_refinement_top());
-    } else if (u.fetch) {
-        // For other FETCH operations, store the original value in the src register.
-        (*this)(Mem{.access = u.access, .value = u.valreg, .is_load = true}, loc);
-    }
 
     // Store the new value back in the original shared memory location.
     // Note that do_mem_store() currently doesn't track shared memory values,
