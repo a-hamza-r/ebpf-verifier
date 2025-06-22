@@ -170,9 +170,9 @@ class region_domain_t final {
     std::optional<uint32_t> get_map_type(const Reg&) const;
     std::optional<uint32_t> get_map_inner_map_fd(const Reg&) const;
     void do_load_mapfd(const register_t&, int, location_t);
-    void do_load(const Mem&, const register_t&, bool, location_t);
-    void do_mem_store(const Mem&);
     void check_type(const TypeConstraint&, bool, location_t);
+    bool do_load(const Mem&, const register_t&, location_t);
+    void do_mem_store(const Mem&, location_t);
     void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,
                 location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);

@@ -159,7 +159,7 @@ class offset_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f) {}
 
-    void do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, location_t);
+    bool do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>&);
     void do_bin(const Bin&, const std::optional<refinement_t>&, const std::optional<refinement_t>&,
                 location_t);

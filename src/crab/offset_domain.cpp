@@ -688,22 +688,24 @@ void offset_domain_t::do_mem_store(const Mem& b,
     int offset = b.access.offset;
     int width = b.access.width;
     auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
-    auto basereg_off_singleton = basereg_with_off.get_offset().singleton();
-    if (!basereg_off_singleton) return;
-    auto store_at = (*basereg_off_singleton + offset).cast_to<uint64_t>();
-    auto overlapping_cells = m_stack.find_overlapping_cells(store_at, width);
-    m_stack -= overlapping_cells;
+    auto offset_reg = basereg_with_off.get_offset();
+    if (auto finite = offset_reg.finite_size()) {
+        int finite_size = finite->cast_to<int>();
+        const number_t lb = offset_reg.lb().number().value();
+        uint64_t lb_n = lb.cast_to<uint64_t>();
+        uint64_t store_at = lb_n + offset;
+        m_stack -= m_stack.find_overlapping_cells(store_at, width + finite_size);
 
-    // TODO: verify if both cases are correct, as it was changed during refactoring
-    if (std::holds_alternative<Reg>(b.value)) {
-        auto target_reg = std::get<Reg>(b.value);
-        rf_info = m_registers.find(target_reg.v);
-        if (rf_info) m_stack.store(store_at, *rf_info, width);
+        if (auto offset_singleton = offset_reg.singleton()) {
+            if (auto target_reg = std::get_if<Reg>(&b.value)) {
+                rf_info = m_registers.find(target_reg->v);
+                if (rf_info) m_stack.store(store_at, *rf_info, width);
+            }
+        }
     }
-    else {}
 }
 
-void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
+bool offset_domain_t::do_load(const Mem& b, const register_t& target_register,
         std::optional<ptr_or_mapfd_t> basereg_type, location_t loc) {
 
     bool is_stack_p = is_stack_ptr(basereg_type);
@@ -711,9 +713,10 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
 
     if (!is_stack_p && !is_ctx_p) {
         m_registers -= target_register;
-        return;
+        return false;
     }
 
+    std::string loc_str = loc.to_string();
     int width = b.access.width;
     int offset = b.access.offset;
     auto type_with_off = std::get<ptr_with_off_t>(*basereg_type);
@@ -721,25 +724,12 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
     auto offset_singleton = p_offset.singleton();
     if (is_stack_p) {
         if (!offset_singleton) {
-            for (auto const& k : m_stack.get_keys()) {
-                auto start = p_offset.lb();
-                auto end = p_offset.ub()+number_t{offset+width-1};
-                interval_t range{start, end};
-                // TODO: fix this
-                /*
-                if (range[number_t{(int)k}]) {
-                    //std::cout << "stack load at unknown offset, and offset range contains pointers\n";
-                    m_errors.push_back("stack load at unknown offset, and offset range contains pointers");
-                    break;
-                }
-                */
-            }
             m_registers -= target_register;
         }
         else {
             if (width != 1 && width != 2 && width != 4 && width != 8) {
                 m_registers -= target_register;
-                return;
+                return false;
             }
             auto ptr_offset = offset_singleton.value();
             auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
@@ -748,41 +738,38 @@ void offset_domain_t::do_load(const Mem& b, const register_t& target_register,
             if (!loaded) {
                 // no field at loaded offset in stack
                 m_registers -= target_register;
-                return;
+                return false;
             }
             m_registers.insert(target_register, loc, loaded->first);
         }
     }
     else {
-        if (!offset_singleton) {
-            for (auto const& k : m_ctx->get_keys()) {
-                auto start = p_offset.lb();
-                auto end = p_offset.ub()+crab::bound_t{offset+width-1};
-                interval_t range{start, end};
-                // TODO: fix this
-                /*
-                if (range[number_t{(int)k}]) {
-                    //std::cout << "ctx load at unknown offset, and offset range contains pointers\n";
-                    m_errors.push_back("ctx load at unknown offset, and offset range contains pointers");
-                    break;
-                }
-                */
-            }
-            m_registers -= target_register;
-        }
-        else {
+        if (offset_singleton) {
             auto ptr_offset = offset_singleton.value();
             auto load_at = (ptr_offset + offset).cast_to<uint64_t>();
 
             auto loaded = m_ctx->find(load_at);
-            if (!loaded) {
-                // no field at loaded offset in ctx
-                m_registers -= target_register;
-                return;
+            if (loaded && width == 4) {
+                m_registers.insert(target_register, loc, *loaded);
+                return false;
             }
-            m_registers.insert(target_register, loc, *loaded);
+            m_registers -= target_register;
+        }
+        // These checks are important to ensure that either we read a complete ptr (loaded before),
+        // or a numeric value (when cells contains nothing).
+        for (auto const& k : m_ctx->get_keys()) {
+            // The value 4 should be dynamic, however, pkt pointers are always stored as 4-byte
+            auto start = p_offset.lb();
+            auto end = p_offset.ub() + bound_t{offset+width-1};
+            if (end < bound_t{k} || start > bound_t{k + 4 - 1}) {
+                // no overlap with stored range
+                continue;
+            }
+            m_errors.push_back(loc_str + ": Load range in ctx contains pointers");
+            return true;
         }
     }
+    return false;
 }
 
 void offset_domain_t::operator()(const Mem& b, location_t loc) {

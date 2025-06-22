@@ -587,15 +587,14 @@ bool unsigned_interval_domain_t::load_from_stack(register_t reg, uint64_t offset
 }
 
 void unsigned_interval_domain_t::store_in_stack(const Mem& b, uint64_t offset, int width) {
-    if (std::holds_alternative<Reg>(b.value)) {
-        auto target_reg = std::get<Reg>(b.value);
-        if (auto rf_opt = m_registers.find(target_reg.v)) {
+    if (auto target_reg = std::get_if<Reg>(&b.value)) {
+        if (auto rf_opt = m_registers.find(target_reg->v)) {
             m_stack.store(offset, *rf_opt, width);
         }
     }
     else {
         auto imm = (uint64_t)std::get<Imm>(b.value).v;
-        auto rf = refinement_t::numeric_refinement(interval_t{number_t{imm}}, m_slacks);
+        auto rf = refinement_t::numeric_refinement(interval_t{imm}, m_slacks);
         m_stack.store(offset, rf, width);
     }
 }

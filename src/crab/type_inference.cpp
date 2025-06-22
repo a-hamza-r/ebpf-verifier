@@ -650,38 +650,42 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
     m_offset.do_bin(bin, dst_signed_rf, src_signed_rf, loc);
 }
 
-void inference_domain_t::do_load(const Mem& b, const Reg& target_reg, bool unknown_ptr,
+void inference_domain_t::do_load(const Mem& b, const Reg& target_reg,
         std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc) {
-    m_region.do_load(b, register_t{target_reg.v}, unknown_ptr, loc);
-    // TODO: replace with a bool value returned from region do_load
-    auto load_in_region = m_region.find_ptr_or_mapfd_type(target_reg.v).has_value();
-    m_interval.do_load(b, register_t{target_reg.v}, basereg_opt, load_in_region, loc);
-    m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, loc);
+    bool loaded_in_region = m_region.do_load(b, register_t{target_reg.v}, loc);
+    bool ptrs_in_range = m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, loc);
+    m_interval.do_load(b, register_t{target_reg.v}, basereg_opt, loaded_in_region, ptrs_in_range,
+                       loc);
 }
 
-void inference_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt) {
-    m_region.do_mem_store(b);
-    // TODO: Before storing into interval domain, check if there is no overlap with packet pointers
+void inference_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt, location_t loc) {
+    m_region.do_mem_store(b, loc);
     m_interval.do_mem_store(b, basereg_opt);
     m_offset.do_mem_store(b, basereg_opt);
 }
 
 void inference_domain_t::operator()(const Mem& b, location_t loc) {
+    if (is_bottom()) return;
     auto basereg = b.access.basereg;
     auto base_ptr_or_mapfd_opt = m_region.find_ptr_or_mapfd_type(basereg.v);
     bool unknown_ptr = !base_ptr_or_mapfd_opt.has_value();
     if (unknown_ptr) {
-        std::string s = std::to_string(static_cast<unsigned int>(basereg.v));
-        m_errors.push_back(
-                std::string("load/store using an unknown pointer, or number - r") + s);
+        m_errors.push_back(loc.to_string() + ": Memory operation at an unknown pointer");
+        if (b.is_load) {
+            const auto reg = std::get<Reg>(b.value);
+            register_t r{reg.v};
+            m_region -= r;
+            m_offset -= r;
+            m_interval -= r;
+        }
+        return;
     }
-    if (std::holds_alternative<Reg>(b.value)) {
-        auto targetreg = std::get<Reg>(b.value);
-        if (b.is_load) do_load(b, targetreg, unknown_ptr, base_ptr_or_mapfd_opt, loc);
-        else if (!unknown_ptr) do_mem_store(b, base_ptr_or_mapfd_opt);
+    if (const auto reg = std::get_if<Reg>(&b.value)) {
+        if (b.is_load) do_load(b, *reg, base_ptr_or_mapfd_opt, loc);
+        else do_mem_store(b, base_ptr_or_mapfd_opt, loc);
     }
-    else if (!unknown_ptr && !b.is_load) {
-        do_mem_store(b, base_ptr_or_mapfd_opt);
+    else {
+        do_mem_store(b, base_ptr_or_mapfd_opt, loc);
     }
 }
 

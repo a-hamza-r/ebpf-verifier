@@ -1196,13 +1196,7 @@ void region_domain_t::do_bin(const Bin& bin,
     return;
 }
 
-void region_domain_t::do_load(const Mem& b, const register_t& target_register, bool unknown_ptr,
-        location_t loc) {
-
-    if (unknown_ptr) {
-        m_registers -= target_register;
-        return;
-    }
+bool region_domain_t::do_load(const Mem& b, const register_t& target_register, location_t loc) {
 
     int width = b.access.width;
     int offset = b.access.offset;
@@ -1214,16 +1208,18 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
     if (!is_ctx_p && !is_stack_p) {
         // loading from either packet or shared region or mapfd does not happen in region domain
         m_registers -= target_register;
-        return;
+        return false;
     }
 
     auto type_with_off = std::get<ptr_with_off_t>(*ptr_or_mapfd_opt);
     auto p_offset = type_with_off.get_offset();
     auto offset_singleton = p_offset.singleton();
 
+    std::string loc_str = loc.to_string();
     if (!offset_singleton) {
+        m_errors.push_back(loc_str + ": Load at an unknown offset");
         m_registers -= target_register;
-        return;
+        return false;
     }
 
     auto ptr_offset = offset_singleton.value();
@@ -1231,13 +1227,21 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
     if (is_stack_p) {
         if (width != 1 && width != 2 && width != 4 && width != 8) {
             m_registers -= target_register;
-            return;
+            m_errors.push_back(loc_str + ": Invalid width for stack load");
+            return false;
+        }
+        if (width != 8) {
+            // we do not support loading pointers from stack with width != 8
+            // can be relaxed, if needed
+            m_registers -= target_register;
+            m_errors.push_back(loc_str + ": Only 8-byte stack loads for pointers are supported");
+            return false;
         }
         auto loaded = m_stack.find(load_at);
         if (!loaded) {
-            // no field at loaded offset in stack
+            // no field at loaded offset in stack, but possibly a number is there
             m_registers -= target_register;
-            return;
+            return false;
         }
         auto ptr_or_mapfd = loaded->first;
         if (is_shared_ptr(ptr_or_mapfd)) {
@@ -1248,26 +1252,36 @@ void region_domain_t::do_load(const Mem& b, const register_t& target_register, b
         else {
             m_registers.insert(target_register, loc, ptr_or_mapfd);
         }
+        return true;
     }
     else {
         if (m_ctx->packet_ptr_at(load_at)) {
+            if (width != 4) {
+                m_registers -= target_register;
+                // Special case for packet pointers, that these are stored into ctx as 4-byte, and
+                // also loaded as 4-byte.
+                // This probably needs to be relaxed in the future.
+                m_errors.push_back(loc_str + ": Only 4-byte ctx loads for pkt pointers are supported");
+                return false;
+            }
             m_registers.insert(target_register, loc, packet_ptr_t{});
+            return true;
         }
         else {
             m_registers -= target_register;
         }
     }
+    return false;
 }
 
 void region_domain_t::operator()(const Mem& m, location_t loc) {
     // nothing to do here
 }
 
-void region_domain_t::do_mem_store(const Mem& b) {
+void region_domain_t::do_mem_store(const Mem& b, location_t loc) {
 
     std::optional<ptr_or_mapfd_t> targetreg_type = {};
-    bool target_is_reg = std::holds_alternative<Reg>(b.value);
-    if (target_is_reg) {
+    if (std::holds_alternative<Reg>(b.value)) {
         auto target_reg = std::get<Reg>(b.value);
         targetreg_type = m_registers.find(target_reg.v);
     }
@@ -1282,13 +1296,14 @@ void region_domain_t::do_mem_store(const Mem& b) {
     bool is_packet_p = is_packet_ptr(maybe_basereg_type);
     bool is_mapfd = is_mapfd_type(maybe_basereg_type);
 
+    std::string loc_str = loc.to_string();
     if (is_mapfd) {
-        m_errors.push_back("storing into a mapfd register is not defined");
+        m_errors.push_back(loc_str + ": Cannot store to a mapfd");
         return;
     }
     if (is_shared_p || is_packet_p || is_ctx_p) {
         if (targetreg_type) {
-            m_errors.push_back("storing a pointer into a shared, packet or ctx pointer");
+            m_errors.push_back(loc_str + ": Cannot store a pointer into regions other than stack");
             return;
         }
         else {
@@ -1299,26 +1314,33 @@ void region_domain_t::do_mem_store(const Mem& b) {
 
     // if the code reaches here, we are storing into a stack pointer
     auto basereg_type_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
-    auto offset_singleton = basereg_type_with_off.get_offset().singleton();
-    if (!offset_singleton) {
-        //std::cout << "type error: storing to a pointer with unknown offset\n";
-        m_errors.push_back("storing to a pointer with unknown offset");
-        return;
-    }
-    auto store_at = (uint64_t)offset+offset_singleton.value().cast_to<uint64_t>();
-    auto overlapping_cells = m_stack.find_overlapping_cells(store_at, width);
-    m_stack -= overlapping_cells;
+    auto offset_reg = basereg_type_with_off.get_offset();
+    if (auto finite = offset_reg.finite_size()) {
+        int finite_size = finite->cast_to<int>();
+        const number_t lb = offset_reg.lb().number().value();
+        uint64_t lb_n = lb.cast_to<uint64_t>();
+        uint64_t store_at = lb_n + offset;
+        m_stack -= m_stack.find_overlapping_cells(store_at, width + finite_size);
 
-    // if targetreg_type is empty, we are storing a number
-    if (!targetreg_type) return;
-    auto type = *targetreg_type;
-    if (is_shared_ptr(type)) {
-        auto shared_ptr = std::get<ptr_with_off_t>(type);
-        set_aliases(store_at+11, shared_ptr);
-        m_stack.store(store_at, shared_ptr, width);
+        auto offset_singleton = offset_reg.singleton();
+        if (!offset_singleton) {
+            m_errors.push_back(loc_str + ": Storing at an unknown offset into stack");
+            return;
+        }
+        // if targetreg_type is empty, we are storing a number
+        if (!targetreg_type) return;
+        auto type = *targetreg_type;
+        if (is_shared_ptr(type)) {
+            auto shared_ptr = std::get<ptr_with_off_t>(type);
+            set_aliases(store_at+11, shared_ptr);
+            m_stack.store(store_at, shared_ptr, width);
+        }
+        else {
+            m_stack.store(store_at, type, width);
+        }
     }
     else {
-        m_stack.store(store_at, type, width);
+        m_errors.push_back(loc_str + ": Storing at an unknown offset into stack");
     }
 }
 

@@ -1377,27 +1377,23 @@ bool interval_domain_t::load_from_stack(register_t reg, interval_t load_at, int 
         }
     }
     auto overlapping_cells = find_overlapping_cells_in_stack(start_offset, width);
-    if (overlapping_cells.size() == 1) {
+    //if (overlapping_cells.size() == 1) {
         // only allow loading from a single cell
         if (all_numeric_in_stack(start_offset, width)) {
             insert_in_registers(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
             return true;
         }
-    }
+    //}
     return false;
 }
 
 void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
-        std::optional<ptr_or_mapfd_t> basereg_type, bool load_in_region, location_t loc) {
-
-    if (!basereg_type) {
-        operator-=(target_register);
-        return;
-    }
+        std::optional<ptr_or_mapfd_t> basereg_type, bool loaded_ptr, bool ptrs_in_ctx_range,
+                                location_t loc) {
 
     // we check if we already loaded a pointer from ctx or stack in region domain,
-        // we then do not store a number
-    if (load_in_region) {
+        // we then do not load a numeric value
+    if (loaded_ptr) {
         operator-=(target_register);
         return;
     }
@@ -1407,10 +1403,10 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
 
     refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (is_ctx_ptr(basereg_type)) {
-        insert_in_registers(target_register, loc, top_rf);
-        return;
-    }
-    if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
+        if (!ptrs_in_ctx_range) {
+            insert_in_registers(target_register, loc, top_rf);
+        }
+    } else if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
         if (width == 1) {
             interval_t to_insert = interval_t(number_t{0}, number_t{UINT8_MAX});
             expression_t e(to_insert, m_slacks);
@@ -1424,13 +1420,10 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
         else {
             insert_in_registers(target_register, loc, refinement_t::numeric_refinement_top(m_slacks));
         }
-        return;
-    }
-
-    if (is_stack_ptr(basereg_type)) {
+    } else if (is_stack_ptr(basereg_type)) {
         auto ptr_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
         auto p_offset = ptr_with_off.get_offset();
-        auto load_at = p_offset + interval_t(number_t{offset});
+        auto load_at = p_offset + interval_t{offset};
         if (load_from_stack(target_register, load_at, width, loc)) return;
     }
     operator-=(target_register);
@@ -1441,25 +1434,29 @@ void interval_domain_t::store_in_stack(const Mem& b, uint64_t store_at, int widt
     m_unsigned.store_in_stack(b, store_at, width);
 }
 
-void interval_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> basereg_type) {
+void interval_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t> maybe_basereg_type) {
     int offset = b.access.offset;
     int width = b.access.width;
 
-    if (!is_stack_ptr(basereg_type)) {
+    if (!is_stack_ptr(maybe_basereg_type)) {
         // we only store for stack pointers
         return;
     }
 
-    auto basereg_ptr_with_off_type = std::get<ptr_with_off_t>(*basereg_type);
-    auto offset_singleton = basereg_ptr_with_off_type.get_offset().singleton();
-    if (!offset_singleton) {
-        m_errors.push_back("doing a store with unknown offset");
-        return;
+    auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
+    auto offset_reg = basereg_with_off.get_offset();
+    if (auto finite = offset_reg.finite_size()) {
+        int finite_size = finite->cast_to<int>();
+        const number_t lb = offset_reg.lb().number().value();
+        uint64_t lb_n = lb.cast_to<uint64_t>();
+        uint64_t store_at = lb_n + offset;
+        auto overlapping_cells = find_overlapping_cells_in_stack(store_at, width + finite_size);
+        remove_overlap_in_stack(overlapping_cells, store_at, width + finite_size);
+
+        if (auto offset_singleton = offset_reg.singleton()) {
+            store_in_stack(b, store_at, width);
+        }
     }
-    auto store_at = (*offset_singleton + offset).cast_to<uint64_t>();
-    auto overlapping_cells = find_overlapping_cells_in_stack(store_at, width);
-    remove_overlap_in_stack(overlapping_cells, store_at, width);
-    store_in_stack(b, store_at, width);
 }
 
 void interval_domain_t::check_valid_access(const ValidAccess& s, interval_t interval,
