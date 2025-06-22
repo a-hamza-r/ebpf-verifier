@@ -617,11 +617,11 @@ void offset_domain_t::operator()(const Un& u, location_t loc) {
 }
 
 void offset_domain_t::operator()(const LoadMapFd& u, location_t loc) {
-    m_registers -= u.dst.v;
+    m_registers -= register_t{u.dst.v};
 }
 
 void offset_domain_t::operator()(const LoadVariable& u, location_t loc) {
-    m_registers -= u.dst.v;
+    m_registers -= register_t{u.dst.v};
 }
 
 void offset_domain_t::do_call(const Call& u, const stack_cells_t& cells, location_t loc) {

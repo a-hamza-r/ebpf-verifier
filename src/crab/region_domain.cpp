@@ -782,17 +782,17 @@ interval_t region_domain_t::get_map_value_size(const Reg& map_fd_reg) const {
     return result;
 }
 
-void region_domain_t::do_load_mapfd(const register_t& dst_reg, int mapfd, location_t loc) {
+void region_domain_t::do_load_mapfd(register_t dst_reg, int mapfd, location_t loc) {
     const auto& platform = global_program_info->platform;
     const EbpfMapDescriptor& desc = platform->get_map_descriptor(mapfd);
     const EbpfMapValueType& map_value_type = platform->get_map_type(desc.type).value_type;
     auto mapfd_interval = interval_t{number_t{mapfd}};
-    auto type = mapfd_t(mapfd_interval, map_value_type);
+    mapfd_t type{mapfd_interval, map_value_type};
     m_registers.insert(dst_reg, loc, type);
 }
 
 void region_domain_t::operator()(const LoadMapFd &u, location_t loc) {
-    do_load_mapfd((register_t)u.dst.v, u.mapfd, loc);
+    do_load_mapfd(register_t{u.dst.v}, u.mapfd, loc);
 }
 
 static EbpfRelocationDescriptor* find_relocation_descriptor(const int relocation_fd) {
