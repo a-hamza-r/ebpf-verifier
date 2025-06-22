@@ -515,7 +515,7 @@ void inference_domain_t::operator()(const ValidSize& u, location_t loc) {
             return;
         }
     }
-    m_errors.push_back("Valid Size assertion fail");
+    m_errors.push_back(loc.to_string() + ": Invalid size");
 }
 
 void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
