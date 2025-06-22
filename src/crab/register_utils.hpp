@@ -7,9 +7,11 @@
 
 namespace crab {
 
-// 11 registers for the eBPF ISA, 1 register used in offset domain to represent r_begin,
-// and 1 pseudo-register for the atomic operations
+// 11 registers for the eBPF ISA, 1 pseudo-register for the atomic operations,
+// and 1 register used in offset domain to represent r_begin.
+// r0, r1, ..., r10, r11, r_begin
 constexpr uint8_t NUM_REGISTERS = 13;
+constexpr uint8_t R12_PKT_BEGIN = 12;
 
 // Represents a register, e.g., r0, r1, ..., r_begin, etc.
 class register_t {
@@ -38,6 +40,7 @@ class location_t {
     bool operator==(const location_t& other) const;
     friend std::ostream& operator<<(std::ostream& o, const location_t& loc);
     void write(std::ostream& o) const;
+    std::string to_string() const;
 };
 
 // Represents a register and a location in the eBPF program

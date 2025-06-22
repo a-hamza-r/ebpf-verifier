@@ -157,8 +157,8 @@ void offset_registers_t::forget_packet_pointers(location_t loc) {
             }
         }
     }
-    insert(BEGIN_REG, loc, refinement_t::begin_with_constraints());
-    // TODO: verify if this is all needed
+    // Reset the constraints on the packet
+    insert(R12_PKT_BEGIN, loc, refinement_t::begin_with_constraints());
 }
 
 void offset_stack_t::set_to_top() {
@@ -292,13 +292,13 @@ offset_stack_t offset_stack_t::widen(const offset_stack_t& other) const {
 offset_ctx_t::offset_ctx_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t> slacks) {
     if (desc == nullptr) return;
     if (desc->data >= 0) {
-        m_ctx_cells[desc->data] = refinement_t::begin(slacks);
+        m_ctx_cells.insert_or_assign(desc->data, refinement_t::begin(slacks));
     }
     if (desc->end >= 0) {
-        m_ctx_cells[desc->end] = refinement_t::end(slacks);
+        m_ctx_cells.insert_or_assign(desc->end, refinement_t::end(slacks));
     }
     if (desc->meta >= 0) {
-        m_ctx_cells[desc->meta] = refinement_t::meta(slacks);
+        m_ctx_cells.insert_or_assign(desc->meta, refinement_t::meta(slacks));
     }
     m_size = std::max(0, desc->size);
 }
@@ -320,7 +320,13 @@ std::optional<refinement_t> offset_ctx_t::find(uint64_t key) const {
 }
 
 offset_domain_t offset_domain_t::setup_entry(std::shared_ptr<slacks_t> slacks) {
-    return offset_domain_t{offset_registers_t{}, offset_stack_t::top(),
+    location_t loc{label_t::entry, 0};
+    offset_registers_t offset_regs;
+    const auto r12_pkt_begin = register_t{R12_PKT_BEGIN};
+    const auto type_begin_rf = refinement_t::begin_with_constraints();
+    offset_regs.insert(r12_pkt_begin, loc, type_begin_rf);
+
+    return offset_domain_t{std::move(offset_regs), offset_stack_t::top(),
             std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor, slacks),
             slacks};
 }
@@ -448,22 +454,22 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
             m_errors.push_back("one of the pointers being compared isn't packet pointer");
             return;
         }
-        auto begin = m_registers.find(register_t{BEGIN_REG});
+        auto begin = m_registers.find(register_t{R12_PKT_BEGIN});
         if (cond.op == Condition::Op::LE) {
             begin->add_constraint(rf_left->assume_le(*rf_right));
-            m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
+            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GT) {
             begin->add_constraint(rf_left->assume_gt(*rf_right));
-            m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
+            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GE) {
             begin->add_constraint(rf_right->assume_le(*rf_left));
-            m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
+            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::LT) {
             begin->add_constraint(rf_right->assume_gt(*rf_left));
-            m_registers.insert(register_t{BEGIN_REG}, loc, std::move(*begin));
+            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         // other comparisons not supported
     }
@@ -485,7 +491,7 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     if (!dst_expr.is_singleton() || !src_expr.is_singleton()) return interval_t::top();
     auto dst_symbol = dst_expr.get_singleton();
     auto src_symbol = src_expr.get_singleton();
-    std::optional<refinement_t> begin_rf = m_registers.find(register_t{BEGIN_REG});
+    std::optional<refinement_t> begin_rf = m_registers.find(register_t{R12_PKT_BEGIN});
     return begin_rf->simplify_for_subtraction(dst_symbol, src_symbol);
 }
 
@@ -655,7 +661,7 @@ void offset_domain_t::operator()(const Packet& u, location_t loc) {
 
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
         bool is_comparison_check) const {
-    auto begin = m_registers.find(register_t{BEGIN_REG});
+    auto begin = m_registers.find(register_t{R12_PKT_BEGIN});
     auto reg = m_registers.find(r.v);
     if (!reg) return false;
     auto toCheck_lb = (*reg + offset).get_value();

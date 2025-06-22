@@ -287,10 +287,16 @@ void inference_domain_t::operator()(const Call& u, location_t loc) {
     m_interval.do_call(u, stack_values, loc);
 }
 
+void inference_domain_t::operator()(const ValidCall& u, location_t loc) {
+    // WARNING: Not implemented yet
+}
+
 void inference_domain_t::operator()(const Callx &u, location_t loc) {
     // WARNING: Not implemented yet
-    // This operation is not needed for current benchmarks,
-    // TODO: implement this if needed
+}
+
+void inference_domain_t::operator()(const CallLocal& u, location_t loc) {
+    // WARNING: Not implemented yet
 }
 
 void inference_domain_t::operator()(const Exit& u, location_t loc) {

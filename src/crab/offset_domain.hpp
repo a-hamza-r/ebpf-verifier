@@ -11,8 +11,6 @@ namespace crab {
 using check_require_func_t = std::function<bool(crab::domains::NumAbsDomain&, const crab::linear_constraint_t&, std::string)>;
 using global_env_offset_registers_t = std::unordered_map<register_location_t, refinement_t>;
 
-constexpr uint8_t BEGIN_REG = 12;
-
 class offset_registers_t {
 
     live_registers_t m_cur_register_def;
@@ -20,11 +18,7 @@ class offset_registers_t {
     bool m_is_bottom = false;
 
     public:
-        offset_registers_t() :
-            m_registers_env(std::make_shared<global_env_offset_registers_t>()) {
-            insert(BEGIN_REG, location_t{label_t::entry, 0},
-                   refinement_t::begin_with_constraints());
-        }
+        offset_registers_t() : m_registers_env(std::make_shared<global_env_offset_registers_t>()) {}
         offset_registers_t(std::shared_ptr<global_env_offset_registers_t> env)
             : m_registers_env(env) {}
         offset_registers_t(const offset_registers_t& other)

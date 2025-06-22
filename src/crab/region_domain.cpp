@@ -73,6 +73,7 @@ void region_registers_t::scratch_caller_saved_registers() {
 }
 
 void region_registers_t::forget_packet_ptrs() {
+    // skip the R12_PKT_BEGIN, as its region type will remain packet_ptr_t
     for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-2; r++) {
         if (is_packet_ptr(find(register_t{r}))) {
             operator-=(register_t{r});
@@ -686,7 +687,7 @@ void region_domain_t::operator()(const basic_block_t& bb) {
 }
 
 void region_domain_t::operator()(const Un& u, location_t loc) {
-    m_registers -= u.dst.v;
+    m_registers -= register_t{u.dst.v};
 }
 
 // Get the start and end of the range of possible map fd values.
@@ -755,10 +756,11 @@ interval_t region_domain_t::get_map_key_size(const Reg& map_fd_reg) const {
 
     interval_t result = interval_t::bottom();
     for (int map_fd = start_fd; map_fd <= end_fd; map_fd++) {
-        if (EbpfMapDescriptor* map = &global_program_info->platform->get_map_descriptor(map_fd))
-            result = result | interval_t(number_t(map->key_size));
-        else
+        if (EbpfMapDescriptor* map = &global_program_info->platform->get_map_descriptor(map_fd)) {
+            result = result | interval_t(map->key_size);
+        } else {
             return interval_t::top();
+        }
     }
     return result;
 }
@@ -806,12 +808,11 @@ void region_domain_t::operator()(const LoadVariable& u, location_t loc) {
     const EbpfRelocationDescriptor* desc = find_relocation_descriptor(u.varfd);
     if (desc == nullptr) {
         throw std::runtime_error(std::string("relocation_fd not found"));
-        m_registers -= u.dst.v;
+        m_registers -= register_t{u.dst.v};
         return;
     } else {
-        // TODO: verify if the pointer can be null
-        auto type = ptr_with_off_t(region_t::R_SHARED, interval_t{number_t{0}}, -1,
-                              nullness_t::NOT_NULL, interval_t{number_t{desc->value_size}});
+        auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::MAYBE_NULL,
+                              interval_t{number_t{desc->value_size}});
         m_registers.insert(u.dst.v, loc, type);
     }
 }
@@ -865,8 +866,7 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
                         goto out;
                     }
                 } else {
-                    auto type = ptr_with_off_t::shared_region_ptr(interval_t{number_t{0}}, -1,
-                                               nullness_t::NOT_NULL,
+                    auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::NOT_NULL,
                                                get_map_value_size(*maybe_fd_reg));
                     set_aliases((int)r0, type);
                     m_registers.insert(r0, loc, type);
@@ -874,8 +874,8 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
             }
         }
         else {
-            auto type = ptr_with_off_t::shared_region_ptr(interval_t{number_t{0}}, -1,
-                    nullness_t::MAYBE_NULL);
+            // here, we only know that the return value is a pointer to a shared region
+            auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::MAYBE_NULL);
             set_aliases((int)r0, type);
             m_registers.insert(r0, loc, type);
         }
@@ -967,11 +967,19 @@ region_domain_t region_domain_t::setup_entry(bool init_r1) {
     location_t loc{label_t::entry, 0};
     region_registers_t typ;
     if (init_r1) {
-        auto ctx_ptr_r1 = ptr_with_off_t::ctx_region_ptr(interval_t{number_t{0}});
-        typ.insert(register_t{R1_ARG}, loc, ctx_ptr_r1);
+        const auto reg_r1 = register_t{R1_ARG};
+        const auto ctx_begin_ptr = ptr_with_off_t::ctx_region_ptr(CTX_BEGIN);
+        typ.insert(reg_r1, loc, ctx_begin_ptr);
     }
-    auto stack_ptr_r10 = ptr_with_off_t::stack_region_ptr(interval_t{number_t{512}});
-    typ.insert(register_t{R10_STACK_POINTER}, loc, stack_ptr_r10);
+    const auto reg_r10 = register_t{R10_STACK_POINTER};
+    const auto stack_end_ptr = ptr_with_off_t::stack_region_ptr(STACK_END);
+    typ.insert(reg_r10, loc, stack_end_ptr);
+
+    // Initialize R12 to point to the pkt_begin pointer, which is mainly needed in offset domain;
+    // however, for consistency, the type is stored in the region domain.
+    const auto reg_r12 = register_t{R12_PKT_BEGIN};
+    const auto packet_begin_ptr = packet_ptr_t();
+    typ.insert(reg_r12, loc, packet_begin_ptr);
 
     return region_domain_t{std::move(typ), region_stack_t::top(),
         std::make_shared<region_ctx_t>(global_program_info->type.context_descriptor)};

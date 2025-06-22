@@ -12,6 +12,7 @@
 namespace crab {
 
 constexpr int STACK_BEGIN = 0;
+constexpr int STACK_END = 512;
 constexpr int CTX_BEGIN = 0;
 constexpr int PACKET_BEGIN = 0;
 constexpr int SHARED_BEGIN = 0;
@@ -67,16 +68,19 @@ class ptr_with_off_t {
     ptr_with_off_t(region_t _r, interval_t _off, int _id, nullness_t _nullness,
                    interval_t _region_sz)
         : m_r(_r), m_offset(_off), m_id(_id), m_nullness(_nullness), m_region_size(_region_sz) {}
-    static ptr_with_off_t shared_region_ptr(interval_t _offset, int _id = -1,
+    static ptr_with_off_t shared_region_ptr(int _offset, int _id = -1,
                                             nullness_t _nullness = nullness_t::MAYBE_NULL,
                                             interval_t _region_sz = interval_t::top()) {
-        return ptr_with_off_t(region_t::R_SHARED, _offset, _id, _nullness, _region_sz);
+        interval_t offset_interval{number_t{_offset}};
+        return ptr_with_off_t(region_t::R_SHARED, offset_interval, _id, _nullness, _region_sz);
     }
-    static ptr_with_off_t ctx_region_ptr(interval_t _offset) {
-        return ptr_with_off_t(region_t::R_CTX, _offset);
+    static ptr_with_off_t ctx_region_ptr(int _offset) {
+        interval_t offset_interval{number_t{_offset}};
+        return ptr_with_off_t(region_t::R_CTX, offset_interval);
     }
-    static ptr_with_off_t stack_region_ptr(interval_t _offset) {
-        return ptr_with_off_t(region_t::R_STACK, _offset);
+    static ptr_with_off_t stack_region_ptr(int _offset) {
+        interval_t offset_interval{number_t{_offset}};
+        return ptr_with_off_t(region_t::R_STACK, offset_interval);
     }
     ptr_with_off_t operator|(const ptr_with_off_t&) const;
     ptr_with_off_t widen(const ptr_with_off_t&) const;

@@ -83,7 +83,7 @@ class inference_domain_t final {
     void operator()(const LoadVariable&, location_t loc = location_t::top());
     void operator()(const Atomic&, location_t loc = location_t::top());
     void operator()(const Call&, location_t loc = location_t::top());
-    void operator()(const CallLocal&, location_t loc = location_t::top()) {}
+    void operator()(const CallLocal&, location_t loc = location_t::top());
     void operator()(const Callx&, location_t loc = location_t::top());
     void operator()(const Exit&, location_t loc = location_t::top());
     void operator()(const Jmp&, location_t loc = location_t::top());
@@ -97,7 +97,7 @@ class inference_domain_t final {
     void operator()(const ValidStore&, location_t loc = location_t::top());
     void operator()(const TypeConstraint&, location_t loc = location_t::top());
     void operator()(const ValidSize&, location_t loc = location_t::top());
-    void operator()(const ValidCall&, location_t loc = location_t::top()) {}
+    void operator()(const ValidCall&, location_t loc = location_t::top());
     void operator()(const ValidMapKeyValue&, location_t loc = location_t::top());
     void operator()(const ZeroCtxOffset&, location_t loc = location_t::top());
     void operator()(const ValidDivisor&, location_t loc = location_t::top());

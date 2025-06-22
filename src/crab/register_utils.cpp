@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "register_utils.hpp"
+#include <sstream>
 
 namespace crab {
 
@@ -20,6 +21,12 @@ bool location_t::operator==(const location_t& other) const {
 
 void location_t::write(std::ostream& o) const {
     o << m_line_num << " in " << m_bb_label << " ";
+}
+
+std::string location_t::to_string() const {
+    std::ostringstream oss;
+    write(oss);
+    return oss.str();
 }
 
 std::ostream& operator<<(std::ostream& o, const location_t& loc) {
