@@ -165,7 +165,7 @@ class offset_domain_t final {
                 location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     bool check_packet_access(const Reg&, int, int, bool) const;
-    void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&, int);
+    void check_valid_access(const ValidAccess&, std::optional<ptr_or_mapfd_t>&, int, location_t);
     interval_t compute_packet_subtraction(register_t, register_t) const;
 
     std::vector<uint64_t> get_ctx_keys() const;

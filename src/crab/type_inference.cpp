@@ -398,13 +398,14 @@ void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
 }
 
 void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
+    std::string loc_str = loc.to_string();
     auto reg_type = m_region.find_ptr_or_mapfd_type(s.reg.v);
     if (reg_type) {
         interval_t width_interval = interval_t::bottom();
         if (std::holds_alternative<Reg>(s.width)) {
             auto width_rf = m_interval.find_interval_value(std::get<Reg>(s.width).v);
             if (!width_rf) {
-                m_errors.push_back("width is unknown for valid access");
+                m_errors.push_back(loc_str + ": Width is unknown for valid access");
                 return;
             }
             width_interval = width_rf->get_interval_value();
@@ -415,27 +416,24 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
         }
         if (auto width_number = width_interval.ub().number()) {
             int width = width_number->cast_to<int>();
-            m_region.check_valid_access(s, width);
             if (is_packet_ptr(reg_type)) {
-                m_offset.check_valid_access(s, reg_type, width);
+                m_offset.check_valid_access(s, reg_type, width, loc);
             }
-            if (s.access_type == AccessType::read && is_stack_ptr(reg_type)) {
-                auto stack_ptr = std::get<ptr_with_off_t>(*reg_type);
-                auto offset_ptr = stack_ptr.get_offset();
-                m_interval.check_valid_access(s, std::move(offset_ptr), width, true);
+            else {
+                m_region.check_valid_access(s, width, loc);
             }
         }
         else {
-            m_errors.push_back("width is unknown for valid access");
+            m_errors.push_back(loc_str + ": Width is unknown for valid access");
         }
     }
     else {
         auto rf_type = m_interval.find_interval_value(s.reg.v);
         if (rf_type) {
-            m_interval.check_valid_access(s, rf_type->get_interval_value());
+            m_interval.check_valid_access(s, rf_type->get_interval_value(), loc);
         }
         else {
-            m_errors.push_back("valid access on unknown register");
+            m_errors.push_back(loc_str + ": Access on unknown register");
         }
     }
 }

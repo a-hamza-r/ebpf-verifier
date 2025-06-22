@@ -644,38 +644,18 @@ void signed_interval_domain_t::store_in_stack(const Mem& b, uint64_t offset, int
 }
 
 void signed_interval_domain_t::check_valid_access(const ValidAccess& s, interval_t interval,
-        int width, bool check_stack_all_numeric) {
-
-    if (check_stack_all_numeric) {
-        auto start_interval = interval + interval_t{number_t{s.offset}};
-        if (auto finite_size = start_interval.finite_size()) {
-            if (auto start_interval_lb = start_interval.lb().number()) {
-                auto start_offset = (*start_interval_lb).cast_to<uint64_t>();
-                int width_from_start = finite_size->cast_to<int>() + width;
-                if (!m_stack.all_numeric(start_offset, width_from_start)) {
-                    m_errors.push_back("Stack access not numeric");
-                }
+        location_t loc) {
+    std::string loc_str = loc.to_string();
+    bool is_comparison_check = s.width == (Value)Imm{0};
+    if (!is_comparison_check) {
+        if (s.or_null) {
+            if (auto singleton = interval.singleton()) {
+                if (*singleton == number_t{0}) return;
             }
-            else {
-                m_errors.push_back("Offset information not available");
-            }
+            m_errors.push_back(loc_str + ": Non-null number");
         }
         else {
-            m_errors.push_back("Register interval not finite for stack access");
-        }
-    }
-    else {
-        bool is_comparison_check = s.width == (Value)Imm{0};
-        if (!is_comparison_check) {
-            if (s.or_null) {
-                if (auto singleton = interval.singleton()) {
-                    if (*singleton == number_t{0}) return;
-                }
-                m_errors.push_back("Non-null number");
-            }
-            else {
-                m_errors.push_back("Only pointers can be dereferenced");
-            }
+            m_errors.push_back(loc_str + ": Only pointers can be dereferenced");
         }
     }
 }

@@ -907,56 +907,72 @@ void region_domain_t::operator()(const Packet& u, location_t loc) {
     m_registers.scratch_caller_saved_registers();
 }
 
-void region_domain_t::check_valid_access(const ValidAccess &s, int width) {
+void region_domain_t::check_valid_access(const ValidAccess &s, int width, location_t loc) {
     bool is_comparison_check = s.width == (Value)Imm{0};
-
-    auto maybe_ptr_or_mapfd_type = m_registers.find(s.reg.v);
-    if (maybe_ptr_or_mapfd_type) {
-        auto reg_ptr_or_mapfd_type = *maybe_ptr_or_mapfd_type;
-        if (std::holds_alternative<ptr_with_off_t>(reg_ptr_or_mapfd_type)) {
-            auto ptr_with_off_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
-            auto offset = ptr_with_off_type.get_offset();
-            auto offset_to_check = offset+interval_t{s.offset};
-            auto offset_lb = offset_to_check.lb();
-            auto offset_plus_width_ub = offset_to_check.ub()+bound_t{width};
-            if (ptr_with_off_type.get_region() == region_t::R_STACK) {
-                if (bound_t{STACK_BEGIN} <= offset_lb
-                        && offset_plus_width_ub <= bound_t{EBPF_STACK_SIZE})
-                    return;
+    std::string loc_str = loc.to_string();
+    // we reach here only if the register is a pointer or mapfd
+    auto reg_ptr_or_mapfd_type = *(m_registers.find(s.reg.v));
+    if (std::holds_alternative<ptr_with_off_t>(reg_ptr_or_mapfd_type)) {
+        auto ptr_with_off_type = std::get<ptr_with_off_t>(reg_ptr_or_mapfd_type);
+        auto offset = ptr_with_off_type.get_offset();
+        auto offset_to_check = offset+interval_t{s.offset};
+        auto offset_lb = offset_to_check.lb();
+        auto offset_plus_width_ub = offset_to_check.ub()+bound_t{width};
+        if (ptr_with_off_type.get_region() == region_t::R_STACK) {
+            if (!(bound_t{STACK_BEGIN} <= offset_lb)) {
+                m_errors.push_back(loc_str + ": Lower bound must be at least " +
+                                   std::to_string(STACK_BEGIN));
+                return;
             }
-            else if (ptr_with_off_type.get_region() == region_t::R_CTX) {
-                if (bound_t{CTX_BEGIN} <= offset_lb
-                        && offset_plus_width_ub <= bound_t{get_ctx_size()})
-                    return;
+            if (!(offset_plus_width_ub <= bound_t{EBPF_STACK_SIZE})) {
+                m_errors.push_back(loc_str + ": Upper bound must be at most " +
+                                   std::to_string(EBPF_STACK_SIZE));
+                return;
             }
-            else { // shared
-                if (crab::bound_t{SHARED_BEGIN} <= offset_lb &&
-                        offset_plus_width_ub <= ptr_with_off_type.get_region_size().lb()) {
-                    if (!is_comparison_check && !s.or_null) {
-                        auto nullness = ptr_with_off_type.get_nullness();
-                        if (nullness != nullness_t::NOT_NULL) {
-                            m_errors.push_back("possible null access");
-                        }
-                        return;
-                    }
-                    return;
+        }
+        else if (ptr_with_off_type.get_region() == region_t::R_CTX) {
+            if (!(bound_t{CTX_BEGIN} <= offset_lb)) {
+                m_errors.push_back(loc_str + ": Lower bound must be at least " +
+                                   std::to_string(CTX_BEGIN));
+                return;
+            }
+            if (!(offset_plus_width_ub <= bound_t{get_ctx_size()})) {
+                m_errors.push_back(loc_str + ": Upper bound must be at most " +
+                                   std::to_string(get_ctx_size()));
+                return;
+            }
+        }
+        else { // shared
+            if (!(bound_t{SHARED_BEGIN} <= offset_lb)) {
+                m_errors.push_back(loc_str + ": Lower bound must be at least " +
+                                   std::to_string(SHARED_BEGIN));
+                return;
+            }
+            if (!(offset_plus_width_ub <= ptr_with_off_type.get_region_size().lb())) {
+                auto number_lb = ptr_with_off_type.get_region_size().lb().number();
+                int lb_value = number_lb->cast_to<int>();
+                m_errors.push_back(loc_str + ": Upper bound must be at most " +
+                                   std::to_string(lb_value));
+                return;
+            }
+            if (!is_comparison_check && !s.or_null) {
+                auto nullness = ptr_with_off_type.get_nullness();
+                if (nullness == nullness_t::NOT_NULL) {
+                    m_errors.push_back(loc_str + ": Possible null access");
                 }
             }
         }
-        else if (std::holds_alternative<packet_ptr_t>(reg_ptr_or_mapfd_type)) {
-            // We do not handle packet ptr access in region domain
-            return;
-        }
-        else {
-            // mapfd
-            if (is_comparison_check) return;
-            //std::cout << "type error: FDs cannot be dereferenced directly\n";
+    }
+    else if (std::holds_alternative<packet_ptr_t>(reg_ptr_or_mapfd_type)) {
+        // We do not handle packet ptr access in region domain
+        return;
+    }
+    else {
+        // mapfd
+        if (!is_comparison_check) {
             m_errors.push_back("FDs cannot be dereferenced directly");
         }
-        //std::cout << "type error: valid access assert fail\n";
-        m_errors.push_back("valid access assert fail");
     }
-
 }
 
 void region_domain_t::operator()(const ValidAccess &s, location_t loc) {

@@ -145,7 +145,7 @@ class signed_interval_domain_t final {
     string_invariant to_set();
     void set_require_check(check_require_func_t f);
 
-    void check_valid_access(const ValidAccess&, interval_t, int, bool);
+    void check_valid_access(const ValidAccess&, interval_t, location_t);
     std::optional<refinement_t> find_interval_value(register_t) const;
     std::optional<refinement_t> find_interval_at_loc(const register_location_t reg) const;
     std::optional<signed_interval_stack_cell_t> find_in_stack(uint64_t) const;
