@@ -309,10 +309,9 @@ void inference_domain_t::operator()(const Packet& u, location_t loc) {
 }
 
 static inline bool same_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd1,
-        const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd2,
-        const std::optional<refinement_t>& interval1,
-        const std::optional<refinement_t>& interval2) {
-    if (is_mapfd_type(ptr_or_mapfd1) && is_mapfd_type(ptr_or_mapfd2)) return false;
+        std::optional<ptr_or_mapfd_t> ptr_or_mapfd2, std::optional<refinement_t> interval1,
+        std::optional<refinement_t> interval2) {
+    if (is_mapfd_type(ptr_or_mapfd1) && is_mapfd_type(ptr_or_mapfd2)) return true;
     if (ptr_or_mapfd1 && ptr_or_mapfd2 && same_region(*ptr_or_mapfd1, *ptr_or_mapfd2))
         return true;
     if (interval1 && interval2) return true;
@@ -321,27 +320,33 @@ static inline bool same_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd1,
 
 void inference_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
-    const auto& maybe_left_type = m_region.find_ptr_or_mapfd_type(cond.left.v);
-    const auto& maybe_left_rf = m_interval.find_interval_value(cond.left.v);
-    assert(!maybe_left_type.has_value() || !maybe_left_rf.has_value());
-    if (std::holds_alternative<Reg>(cond.right)) {
-        const auto& right_reg = std::get<Reg>(cond.right);
-        const auto& maybe_right_type = m_region.find_ptr_or_mapfd_type(right_reg.v);
-        const auto& maybe_right_rf = m_interval.find_interval_value(right_reg.v);
-        assert(!maybe_right_type.has_value() || !maybe_right_rf.has_value());
-        // TODO: it does not handle for mapfd yet
-        if (same_type(maybe_left_type, maybe_right_type, maybe_left_rf, maybe_right_rf)) {
+    const auto maybe_left_ptr = m_region.find_ptr_or_mapfd_type(cond.left.v);
+    const auto maybe_left_rf = m_interval.find_interval_value(cond.left.v);
+    assert(!maybe_left_ptr.has_value() || !maybe_left_rf.has_value());
+    if (const auto pright_reg = std::get_if<Reg>(&cond.right)) {
+        const auto maybe_right_ptr = m_region.find_ptr_or_mapfd_type(pright_reg->v);
+        const auto maybe_right_rf = m_interval.find_interval_value(pright_reg->v);
+        assert(!maybe_right_ptr.has_value() || !maybe_right_rf.has_value());
+        if (same_type(maybe_left_ptr, maybe_right_ptr, maybe_left_rf, maybe_right_rf)) {
             if (maybe_left_rf) {
                 // both numbers
                 m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v},
                         cond.right, loc);
             }
-            else if (maybe_left_type) {
-                if (is_packet_ptr(maybe_left_type)) {
+            else if (maybe_left_ptr) {
+                if (is_packet_ptr(maybe_left_ptr)) {
                     // both packet pointers
                     m_offset(s, loc);
                 }
+                else if (is_mapfd_type(maybe_left_ptr)) {
+                    CRAB_ERROR("Mapfd type is not supported in inference domain");
+                    // both mapfds
+                }
+                else if (is_stack_ptr(maybe_left_ptr) || is_ctx_ptr(maybe_left_ptr)) {
+                    CRAB_ERROR("Assume on stack/ctx pointers is not supported in inference domain");
+                }
                 else {
+                    CRAB_ERROR("Assume on shared pointers is not supported in inference domain");
                     // other cases, not implemented yet
                 }
             }
@@ -350,18 +355,19 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
             // We should only reach here if `--assume-assert` is off
             assert(!thread_local_options.assume_assertions || is_bottom());
             // be sound in any case, it happens to flush out bugs:
-            m_region.set_registers_to_top();
+            set_to_top();
         }
     }
     else {
-        if (is_shared_ptr(maybe_left_type)) {
+        if (is_shared_ptr(maybe_left_ptr)) {
             // left is a shared pointer
-            int64_t imm = static_cast<int64_t>(std::get<Imm>(cond.right).v);
-            auto shared_ptr = std::get<ptr_with_off_t>(*maybe_left_type);
-            m_region.assume_cst(cond.op, std::move(shared_ptr), imm, cond.left.v, loc);
+            const int64_t imm = gsl::narrow_cast<int64_t>(std::get<Imm>(cond.right).v);
+            auto shared_ptr = std::get<ptr_with_off_t>(*maybe_left_ptr);
+            m_region.assume_cst(cond.op, shared_ptr, imm, cond.left.v, loc);
         }
-        if (is_mapfd_type(maybe_left_type)) {
-            // left is  a mapfd
+        if (is_mapfd_type(maybe_left_ptr)) {
+            CRAB_ERROR("Mapfd type is not supported in inference domain");
+            // left is a mapfd
             // TODO: need to work with values
         }
         else if (maybe_left_rf) {

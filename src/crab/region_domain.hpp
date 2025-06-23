@@ -177,7 +177,7 @@ class region_domain_t final {
     void do_bin(const Bin&, std::optional<interval_t>, std::optional<interval_t>, location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void check_valid_access(const ValidAccess &, int, location_t);
-    void assume_cst(Condition::Op, ptr_with_off_t&&, int64_t, register_t, location_t);
+    void assume_cst(Condition::Op, ptr_with_off_t, int64_t, register_t, location_t);
     void update_ptr_or_mapfd(const ptr_or_mapfd_t&, const interval_t&, location_t, register_t);
 
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_type(register_t) const;

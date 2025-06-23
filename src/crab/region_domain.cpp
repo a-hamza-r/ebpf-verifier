@@ -602,7 +602,7 @@ void region_domain_t::operator()(const Exit &u, location_t loc) {}
 void region_domain_t::operator()(const Jmp &u, location_t loc) {}
 
 
-void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t&& shared_ptr, int64_t imm,
+void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t shared_ptr, int64_t imm,
         register_t left, location_t loc) {
     // we only reach here when the ptr is shared ptr
     auto nullness = shared_ptr.get_nullness();
