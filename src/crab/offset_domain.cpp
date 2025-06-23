@@ -495,21 +495,21 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     return begin_rf->simplify_for_subtraction(dst_symbol, src_symbol);
 }
 
-void offset_domain_t::do_bin(const Bin& bin, const std::optional<refinement_t>& numeric_rf_dst,
-                             const std::optional<refinement_t>& numeric_rf_src, location_t loc) {
+void offset_domain_t::do_bin(const Bin& bin, std::optional<refinement_t> dst_rf_numeric_opt,
+                             std::optional<refinement_t> src_rf_numeric_opt, location_t loc) {
 
     using Op = Bin::Op;
 
     auto dst_register = register_t{bin.dst.v};
 
-    if (std::holds_alternative<Imm>(bin.v)) {
+    if (auto pimm = std::get_if<Imm>(&bin.v)) {
         int64_t imm;
         if (bin.is64) {
             // Use the full signed value.
-            imm = static_cast<int64_t>(std::get<Imm>(bin.v).v);
+            imm = to_signed(pimm->v);
         } else {
             // Use only the low 32 bits of the value.
-            imm = static_cast<int>(std::get<Imm>(bin.v).v);
+            imm = gsl::narrow_cast<int32_t>(imm);
         }
         auto imm_interval = interval_t{imm};
         switch (bin.op) {
@@ -521,8 +521,8 @@ void offset_domain_t::do_bin(const Bin& bin, const std::optional<refinement_t>& 
             case Op::ADD: {
                 // ra += imm
                 if (imm == 0) break;
-                if (auto dst_rf_opt = m_registers.find(dst_register)) {
-                    m_registers.insert(dst_register, loc, *dst_rf_opt + imm_interval);
+                if (auto dst_rf_ptr_opt = m_registers.find(dst_register)) {
+                    m_registers.insert(dst_register, loc, *dst_rf_ptr_opt + imm_interval);
                 }
                 else {
                     m_registers -= dst_register;
@@ -532,8 +532,8 @@ void offset_domain_t::do_bin(const Bin& bin, const std::optional<refinement_t>& 
             case Op::SUB: {
                 // ra -= imm
                 if (imm == 0) break;
-                if (auto dst_rf_opt = m_registers.find(dst_register)) {
-                    m_registers.insert(dst_register, loc, *dst_rf_opt + (-imm_interval));
+                if (auto dst_rf_ptr_opt = m_registers.find(dst_register)) {
+                    m_registers.insert(dst_register, loc, *dst_rf_ptr_opt + (-imm_interval));
                 }
                 else {
                     m_registers -= dst_register;
@@ -552,8 +552,8 @@ void offset_domain_t::do_bin(const Bin& bin, const std::optional<refinement_t>& 
         switch (bin.op) {
             case Op::MOV: {
                 // ra = rb
-                if (auto src_rf_opt = m_registers.find(src.v)) {
-                    m_registers.insert(dst_register, loc, *src_rf_opt);
+                if (auto src_rf_ptr_opt = m_registers.find(src.v)) {
+                    m_registers.insert(dst_register, loc, *src_rf_ptr_opt);
                 }
                 else {
                     m_registers -= dst_register;
@@ -562,17 +562,17 @@ void offset_domain_t::do_bin(const Bin& bin, const std::optional<refinement_t>& 
             }
             case Op::ADD: {
                 // ra += rb
-                auto dst_rf_opt = m_registers.find(dst_register);
-                auto src_rf_opt = m_registers.find(src.v);
-                if (dst_rf_opt.has_value() && src_rf_opt.has_value()) {
+                auto dst_rf_ptr_opt = m_registers.find(dst_register);
+                auto src_rf_ptr_opt = m_registers.find(src.v);
+                if (dst_rf_ptr_opt.has_value() && src_rf_ptr_opt.has_value()) {
                     // possibly adding two pointers
                     set_to_bottom();
                 }
-                else if (dst_rf_opt.has_value() && numeric_rf_src.has_value()) {
-                    m_registers.insert(dst_register, loc, *dst_rf_opt + *numeric_rf_src);
+                else if (dst_rf_ptr_opt.has_value() && src_rf_numeric_opt.has_value()) {
+                    m_registers.insert(dst_register, loc, *dst_rf_ptr_opt + *src_rf_numeric_opt);
                 }
-                else if (numeric_rf_dst.has_value() && src_rf_opt.has_value()) {
-                    m_registers.insert(dst_register, loc, *numeric_rf_dst + *src_rf_opt);
+                else if (dst_rf_numeric_opt.has_value() && src_rf_ptr_opt.has_value()) {
+                    m_registers.insert(dst_register, loc, *dst_rf_numeric_opt + *src_rf_ptr_opt);
                 }
                 else {
                     m_registers -= dst_register;
@@ -581,16 +581,16 @@ void offset_domain_t::do_bin(const Bin& bin, const std::optional<refinement_t>& 
             }
             case Op::SUB: {
                 // ra -= rb
-                auto dst_rf_opt = m_registers.find(dst_register);
-                auto src_rf_opt = m_registers.find(src.v);
-                if (dst_rf_opt.has_value() && src_rf_opt.has_value()) {
+                auto dst_rf_ptr_opt = m_registers.find(dst_register);
+                auto src_rf_ptr_opt = m_registers.find(src.v);
+                if (dst_rf_ptr_opt.has_value() && src_rf_ptr_opt.has_value()) {
                     // possibly subtracting two pointers
                     m_registers -= dst_register;
                 }
-                else if (dst_rf_opt.has_value() && numeric_rf_src.has_value()) {
-                    m_registers.insert(dst_register, loc, *dst_rf_opt - *numeric_rf_src);
+                else if (dst_rf_ptr_opt.has_value() && src_rf_numeric_opt.has_value()) {
+                    m_registers.insert(dst_register, loc, *dst_rf_ptr_opt - *src_rf_numeric_opt);
                 }
-                else {
+                else { // when dst is numeric, we keep no information about subtraction
                     m_registers -= dst_register;
                 }
                 break;

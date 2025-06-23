@@ -655,6 +655,7 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
         dst_signed_interval = dst_signed_rf->get_interval_value();
     }
 
+    std::string loc_str = loc.to_string();
     std::optional<interval_t> subtracted;
     using Op = Bin::Op;
     // ptr -= ptr
@@ -664,7 +665,7 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
             auto src_ptr = *src_ptr_or_mapfd;
             if (std::holds_alternative<mapfd_t>(dst_ptr)
                     && std::holds_alternative<mapfd_t>(src_ptr)) {
-                m_errors.push_back("mapfd registers subtraction not defined");
+                m_errors.push_back(loc_str + ": Subtraction between mapfds is not allowed");
             }
             else if (same_region(dst_ptr, src_ptr)) {
                 if (std::holds_alternative<ptr_with_off_t>(dst_ptr)) {
@@ -679,7 +680,7 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
                 }
                 else {
                     // This should not happen as same_region only allows non-shared pointers
-                    m_errors.push_back("subtraction between pointers of different region");
+                    m_errors.push_back(loc_str + ": Subtraction between pointers of different regions");
                 }
             }
             m_region -= dst_register;

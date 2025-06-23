@@ -1540,7 +1540,7 @@ void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_wi
     insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
 }
 
-void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& subtracted_opt,
+void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtracted_opt,
                                location_t loc) {
     
     using Op = Bin::Op;
@@ -1572,6 +1572,7 @@ void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& 
         return;
     }
 
+    std::string loc_str = loc.to_string();
     if (auto pimm = std::get_if<Imm>(&bin.v)) {
         int64_t imm;
         if (bin.is64) {
@@ -1582,7 +1583,7 @@ void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& 
             imm = gsl::narrow_cast<int32_t>(pimm->v);
             bitwise_and(dst_register, number_t{std::numeric_limits<uint32_t>::max()}, loc);
         }
-        auto imm_interval = interval_t{number_t{imm}};
+        auto imm_interval = interval_t{imm};
         switch (bin.op) {
             case Op::MOV: {
                 // ra = imm
@@ -1594,20 +1595,16 @@ void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& 
             }
             case Op::MOVSX8:
             case Op::MOVSX16:
-            case Op::MOVSX32: m_errors.push_back("MOVSX not implemented"); break;
+            case Op::MOVSX32: m_errors.push_back(loc_str + ": Unsupported Operation"); break;
             case Op::ADD: {
                 // ra += imm
-                if (imm == 0) {
-                    return;
-                }
+                if (imm == 0) return;
                 add_overflow(dst_register, number_t{gsl::narrow<int>(imm)}, finite_width, loc);
                 break;
             }
             case Op::SUB: {
                 // ra -= imm
-                if (imm == 0) {
-                    return;
-                }
+                if (imm == 0) return;
                 add_overflow(dst_register, number_t{gsl::narrow<int>(-imm)}, finite_width, loc);
                 break;
             }
@@ -1675,6 +1672,7 @@ void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& 
             case Op::ARSH: {
                 // ra >>>= imm
                 //ashr(dst_register, gsl::narrow<int32_t>(imm), finite_width, loc);
+                // TODO: implement ARSH
                 m_signed.insert_in_registers(dst_register, loc,
                                              refinement_t::numeric_refinement_top(m_slacks));
                 m_unsigned.insert_in_registers(dst_register, loc,
@@ -1813,6 +1811,7 @@ void interval_domain_t::do_bin(const Bin& bin, const std::optional<interval_t>& 
                 //    ashr(dst_register, src_register, finite_width, loc);
                 //    break;
                 //}
+                // TODO: implement ARSH
                 m_signed.insert_in_registers(dst_register, loc,
                                              refinement_t::numeric_refinement_top(m_slacks));
                 m_unsigned.insert_in_registers(dst_register, loc,

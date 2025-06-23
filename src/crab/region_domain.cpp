@@ -1081,7 +1081,7 @@ void region_domain_t::update_ptr_or_mapfd(const ptr_or_mapfd_t& ptr_or_mapfd, co
         m_registers.insert(reg, loc, ptr_or_mapfd);
     }
     else {
-        m_errors.push_back("mapfd register cannot be incremented/decremented");
+        m_errors.push_back(loc.to_string() + ": Cannot update mapfd type through arithmetic");
         m_registers -= reg;
     }
 }
@@ -1091,15 +1091,14 @@ void region_domain_t::operator()(const Bin& b, location_t loc) {
 }
 
 void region_domain_t::do_bin(const Bin& bin,
-                             const std::optional<interval_t>& dst_signed_interval_opt,
-                             const std::optional<interval_t>& src_signed_interval_opt,
+                             std::optional<interval_t> dst_signed_interval_opt,
+                             std::optional<interval_t> src_signed_interval_opt,
                              location_t loc) {
 
     auto dst_register = register_t{bin.dst.v};
     auto dst_ptr_or_mapfd_opt = m_registers.find(dst_register);
-    bool is_numeric_dst = !(dst_ptr_or_mapfd_opt.has_value());
-    bool is_numeric_src = std::holds_alternative<Imm>(bin.v) ||
-        !(find_ptr_or_mapfd_type(register_t{std::get<Reg>(bin.v).v}).has_value());
+    bool is_numeric_dst = dst_signed_interval_opt.has_value();
+    bool is_numeric_src = std::holds_alternative<Imm>(bin.v) || src_signed_interval_opt.has_value();
 
     if (is_numeric_dst && is_numeric_src) {
         m_registers -= dst_register;
@@ -1108,16 +1107,16 @@ void region_domain_t::do_bin(const Bin& bin,
 
     using Op = Bin::Op;
 
-    if (std::holds_alternative<Imm>(bin.v)) {
+    if (auto pimm = std::get_if<Imm>(&bin.v)) {
         int64_t imm;
         if (bin.is64) {
             // Use the full signed value.
-            imm = static_cast<int64_t>(std::get<Imm>(bin.v).v);
+            imm = to_signed(pimm->v);
         } else {
             // Use only the low 32 bits of the value.
-            imm = static_cast<int>(std::get<Imm>(bin.v).v);
+            imm = gsl::narrow_cast<int64_t>(pimm->v);
         }
-        auto imm_interval = interval_t{number_t{imm}};
+        auto imm_interval = interval_t{imm};
         switch (bin.op) {
             case Op::MOV: {
                 // ra = imm, we forget the type in the region domain
@@ -1201,7 +1200,7 @@ void region_domain_t::do_bin(const Bin& bin,
                 }
                 else {
                     // ptr -= ptr
-                    // this case already handled in type domain
+                    // this case already handled in the inference domain
                 }
                 break;
             }

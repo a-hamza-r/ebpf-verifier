@@ -161,7 +161,7 @@ class offset_domain_t final {
 
     bool do_load(const Mem&, const register_t&, std::optional<ptr_or_mapfd_t>, location_t);
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>&);
-    void do_bin(const Bin&, const std::optional<refinement_t>&, const std::optional<refinement_t>&,
+    void do_bin(const Bin&, std::optional<refinement_t>, std::optional<refinement_t>,
                 location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     bool check_packet_access(const Reg&, int, int, bool) const;

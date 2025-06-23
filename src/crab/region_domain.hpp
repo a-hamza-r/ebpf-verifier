@@ -174,8 +174,7 @@ class region_domain_t final {
     void do_load_mapfd(register_t, int, location_t);
     bool do_load(const Mem&, const register_t&, location_t);
     void do_mem_store(const Mem&, location_t);
-    void do_bin(const Bin&, const std::optional<interval_t>&, const std::optional<interval_t>&,
-                location_t);
+    void do_bin(const Bin&, std::optional<interval_t>, std::optional<interval_t>, location_t);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void check_valid_access(const ValidAccess &, int, location_t);
     void assume_cst(Condition::Op, ptr_with_off_t&&, int64_t, register_t, location_t);
