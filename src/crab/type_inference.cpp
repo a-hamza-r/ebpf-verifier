@@ -97,20 +97,21 @@ string_invariant inference_domain_t::to_set() const {
         auto maybe_rf = m_offset.find_refinement_info(register_t{i});
         if (maybe_ptr_or_mapfd.has_value()) {
             std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, {}, false);
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, {}, false, m_slacks);
             result.insert(elem.str());
         }
         auto maybe_signed_interval = m_interval.find_signed_interval_value(register_t{i});
         if (maybe_signed_interval.has_value()) {
             std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, maybe_signed_interval, true);
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, maybe_signed_interval, true,
+                           m_slacks);
             result.insert(elem.str());
         }
         auto maybe_unsigned_interval = m_interval.find_unsigned_interval_value(register_t{i});
         if (maybe_unsigned_interval.has_value()) {
             std::stringstream elem;
             print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf,
-                    maybe_unsigned_interval, false);
+                    maybe_unsigned_interval, false, m_slacks);
             result.insert(elem.str());
         }
     }
@@ -125,10 +126,11 @@ string_invariant inference_domain_t::to_set() const {
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
             elem << "stack";
             if (rf) {
-                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, rf->first);
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, rf->first,
+                                              m_slacks);
             }
             else {
-                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd);
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, {}, m_slacks);
             }
         }
         result.insert(elem.str());
@@ -142,7 +144,7 @@ string_invariant inference_domain_t::to_set() const {
             auto signed_interval_cells = maybe_interval_cells_signed.value();
             elem << "stack";
             print_numeric_memory_cell(elem, k, k+signed_interval_cells.second,
-                    signed_interval_cells.first, true);
+                    signed_interval_cells.first, true, m_slacks);
             result.insert(elem.str());
         }
         auto maybe_interval_cells_unsigned = m_interval.find_in_stack_unsigned(k);
@@ -151,7 +153,7 @@ string_invariant inference_domain_t::to_set() const {
             auto unsigned_interval_cells = maybe_interval_cells_unsigned.value();
             elem << "stack";
             print_numeric_memory_cell(elem, k, k+unsigned_interval_cells.second,
-                    unsigned_interval_cells.first, false);
+                    unsigned_interval_cells.first, false, m_slacks);
             result.insert(elem.str());
         }
     }
@@ -260,7 +262,7 @@ void inference_domain_t::operator()(const Call& u, location_t loc) {
             auto maybe_width_rf = m_interval.find_signed_interval_value(param.size.v);
             if (is_stack_ptr(maybe_ptr_or_mapfd)) {
                 auto ptr_with_off = std::get<ptr_with_off_t>(*maybe_ptr_or_mapfd);
-                auto width_interval = maybe_width_rf->get_interval_value();
+                auto width_interval = maybe_width_rf->get_interval_value(m_slacks);
 
                 if (const auto offset_singleton = ptr_with_off.get_offset().singleton()) {
                     uint64_t offset = offset_singleton->cast_to<uint64_t>();
@@ -391,8 +393,8 @@ void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
         m_errors.push_back(loc_str + ": Only numbers can be used as divisors");
     }
     if (!thread_local_options.allow_division_by_zero) {
-        interval_t to_check = u.is_signed ? maybe_signed_reg->get_interval_value()
-                                          : maybe_unsigned_reg->get_interval_value();
+        interval_t to_check = u.is_signed ? maybe_signed_reg->get_interval_value(m_slacks)
+                                          : maybe_unsigned_reg->get_interval_value(m_slacks);
         if (interval_t{number_t{0}} <= to_check) {
             m_errors.push_back(loc_str + ": Possible division by zero");
         }
@@ -410,7 +412,7 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
                 m_errors.push_back(loc_str + ": Width is unknown for valid access");
                 return;
             }
-            width_interval = width_rf->get_interval_value();
+            width_interval = width_rf->get_interval_value(m_slacks);
         }
         else {
             auto imm = std::get<Imm>(s.width); 
@@ -432,7 +434,7 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
     else {
         auto rf_type = m_interval.find_interval_value(s.reg.v);
         if (rf_type) {
-            m_interval.check_valid_access(s, rf_type->get_interval_value(), loc);
+            m_interval.check_valid_access(s, rf_type->get_interval_value(m_slacks), loc);
         }
         else {
             m_errors.push_back(loc_str + ": Access on unknown register");
@@ -515,7 +517,7 @@ void inference_domain_t::operator()(const ValidSize& u, location_t loc) {
     assert(!maybe_ptr_or_mapfd || !maybe_num_type);
 
     if (maybe_num_type) {
-        auto reg_value = maybe_num_type->get_interval_value();
+        auto reg_value = maybe_num_type->get_interval_value(m_slacks);
         if ((u.can_be_zero && reg_value.lb() >= bound_t{number_t{0}})
                 || (!u.can_be_zero && reg_value.lb() > bound_t{number_t{0}})) {
             return;
@@ -574,7 +576,7 @@ void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
                             if (auto cell = m_interval.find_in_stack_signed(offset)) {
                                 auto rf = cell->first;
                                 auto size = cell->second;
-                                auto key_value = rf.get_interval_value();
+                                auto key_value = rf.get_interval_value(m_slacks);
                                 if (size != sizeof(uint32_t)) {
                                     m_errors.push_back(loc_str + ": Array map key must be 32 bits");
                                     return;
@@ -652,13 +654,13 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
         src_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(r.v);
         src_signed_rf = m_interval.find_signed_interval_value(r.v);
         if (src_signed_rf) {
-            src_signed_interval = src_signed_rf->get_interval_value();
+            src_signed_interval = src_signed_rf->get_interval_value(m_slacks);
         }
     }
     auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(dst_register);
     auto dst_signed_rf = m_interval.find_signed_interval_value(dst_register);
     if (dst_signed_rf) {
-        dst_signed_interval = dst_signed_rf->get_interval_value();
+        dst_signed_interval = dst_signed_rf->get_interval_value(m_slacks);
     }
 
     std::string loc_str = loc.to_string();
@@ -745,7 +747,7 @@ void inference_domain_t::print_ctx(std::ostream& o) const {
         auto dist = m_offset.find_in_ctx(k);
         if (dist) {
             o << "\t\t";
-            print_non_numeric_memory_cell(o, k, k+3, packet_ptr_t{}, dist);
+            print_non_numeric_memory_cell(o, k, k+3, packet_ptr_t{}, dist, m_slacks);
             o << ",\n";
         }
     }
@@ -766,10 +768,11 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             o << "\t\t";
             if (dist) {
                 print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd),
-                        std::optional<refinement_t>(dist->first));
+                        std::optional<refinement_t>(dist->first), m_slacks);
             }
             else {
-                print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd));
+                print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd), {},
+                        m_slacks);
             }
             o << ",\n";
         }
@@ -780,7 +783,7 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             auto interval_cells = maybe_signed_interval_cells.value();
             o << "\t\t";
             print_numeric_memory_cell(o, k, k+interval_cells.second-1,
-                    interval_cells.first, true);
+                    interval_cells.first, true, m_slacks);
             o << ",\n";
         }
         auto maybe_unsigned_interval_cells = m_interval.find_in_stack_unsigned(k);
@@ -788,7 +791,7 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             auto interval_cells = maybe_unsigned_interval_cells.value();
             o << "\t\t";
             print_numeric_memory_cell(o, k, k+interval_cells.second-1,
-                    interval_cells.first, false);
+                    interval_cells.first, false, m_slacks);
             o << ",\n";
         }
     }
@@ -1113,9 +1116,11 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
             auto region = find_ptr_or_mapfd_at_loc(r0_reg);
             auto rf = find_refinement_at_loc(r0_reg);
             auto signed_interval = find_signed_interval_at_loc(r0_reg);
-            print_annotated(o, std::get<Call>(statement), region, rf, signed_interval, true);
+            print_annotated(o, std::get<Call>(statement), region, rf, signed_interval, true,
+                            m_slacks);
             auto unsigned_interval = find_unsigned_interval_at_loc(r0_reg);
-            //print_annotated(o, std::get<Call>(statement), region, unsigned_interval, false);
+            //print_annotated(o, std::get<Call>(statement), region, unsigned_interval, false,
+            //                            m_slacks);
         }
         else if (std::holds_alternative<Bin>(statement)) {
             auto b = std::get<Bin>(statement);
@@ -1123,9 +1128,9 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
             auto region = find_ptr_or_mapfd_at_loc(register_location);
             auto rf = find_refinement_at_loc(register_location);
             auto signed_interval = find_signed_interval_at_loc(register_location);
-            print_annotated(o, b, region, rf, signed_interval, true);
+            print_annotated(o, b, region, rf, signed_interval, true, m_slacks);
             auto unsigned_interval = find_unsigned_interval_at_loc(register_location);
-            //print_annotated(o, b, region, rf, unsigned_interval, false);
+            //print_annotated(o, b, region, rf, unsigned_interval, false, m_slacks);
         }
         else if (std::holds_alternative<Mem>(statement)) {
             auto u = std::get<Mem>(statement);
@@ -1135,9 +1140,9 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
                 auto region = find_ptr_or_mapfd_at_loc(target_reg_loc);
                 auto rf = find_refinement_at_loc(target_reg_loc);
                 auto signed_interval = find_signed_interval_at_loc(target_reg_loc);
-                print_annotated(o, u, region, rf, signed_interval, true);
+                print_annotated(o, u, region, rf, signed_interval, true, m_slacks);
                 auto unsigned_interval = find_unsigned_interval_at_loc(target_reg_loc);
-                //print_annotated(o, u, region, rf, unsigned_interval, false);
+                //print_annotated(o, u, region, rf, unsigned_interval, false, m_slacks);
             }
             else print_instr(o, u);
         }
@@ -1151,9 +1156,9 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
             auto u = std::get<Un>(statement);
             auto reg = crab::register_location_t(u.dst.v, loc);
             auto signed_interval = find_signed_interval_at_loc(reg);
-            print_annotated(o, u, signed_interval, true);
+            print_annotated(o, u, signed_interval, true, m_slacks);
             auto unsigned_interval = find_unsigned_interval_at_loc(reg);
-            print_annotated(o, u, unsigned_interval, false);
+            print_annotated(o, u, unsigned_interval, false, m_slacks);
         }
         else print_instr(o, statement);
     }

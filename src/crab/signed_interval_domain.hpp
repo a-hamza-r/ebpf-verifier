@@ -46,10 +46,12 @@ class signed_interval_registers_t {
     std::optional<refinement_t> find(register_t key) const;
     void insert(register_t, const location_t&, refinement_t);
     void operator-=(register_t);
-    signed_interval_registers_t operator|(const signed_interval_registers_t& other) const;
+    signed_interval_registers_t join(const signed_interval_registers_t& other,
+            std::shared_ptr<slacks_t>) const;
     void adjust_bb_for_registers(location_t);
-    bool operator<=(const signed_interval_registers_t& other) const;
-    signed_interval_registers_t widen(const signed_interval_registers_t& other) const;
+    bool inclusion(const signed_interval_registers_t& other, std::shared_ptr<slacks_t>) const;
+    signed_interval_registers_t widen(const signed_interval_registers_t& other,
+                                      std::shared_ptr<slacks_t>) const;
 };
 
 using signed_interval_stack_cell_t = std::pair<refinement_t, int>;    // intervals with width
@@ -72,14 +74,16 @@ class signed_interval_stack_t {
     void store(uint64_t, refinement_t, int);
     void operator-=(uint64_t);
     bool all_numeric(uint64_t, int) const;
-    signed_interval_stack_t operator|(const signed_interval_stack_t& other) const;
+    signed_interval_stack_t join(const signed_interval_stack_t& other,
+            std::shared_ptr<slacks_t>) const;
     [[nodiscard]] std::vector<uint64_t> get_keys() const;
     size_t size() const;
     std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
     void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values(const std::vector<uint64_t>&, uint64_t, int);
-    bool operator<=(const signed_interval_stack_t& other) const;
-    signed_interval_stack_t widen(const signed_interval_stack_t& other) const;
+    bool inclusion(const signed_interval_stack_t& other, std::shared_ptr<slacks_t> slacks) const;
+    signed_interval_stack_t widen(const signed_interval_stack_t& other,
+                                  std::shared_ptr<slacks_t> slacks) const;
 };
 
 class signed_interval_domain_t final {

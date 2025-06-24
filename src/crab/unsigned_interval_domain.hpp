@@ -46,10 +46,13 @@ class unsigned_interval_registers_t {
     std::optional<refinement_t> find(register_t key) const;
     void insert(register_t, const location_t&, refinement_t);
     void operator-=(register_t);
-    unsigned_interval_registers_t operator|(const unsigned_interval_registers_t& other) const;
+    unsigned_interval_registers_t join(const unsigned_interval_registers_t& other,
+                                       std::shared_ptr<slacks_t> slacks) const;
     void adjust_bb_for_registers(location_t);
-    bool operator<=(const unsigned_interval_registers_t& other) const;
-    unsigned_interval_registers_t widen(const unsigned_interval_registers_t& other) const;
+    bool inclusion(const unsigned_interval_registers_t& other,
+                   std::shared_ptr<slacks_t> slacks) const;
+    unsigned_interval_registers_t widen(const unsigned_interval_registers_t& other,
+                                        std::shared_ptr<slacks_t> slacks) const;
 };
 
 using unsigned_interval_stack_cell_t = std::pair<refinement_t, int>;    // intervals with width
@@ -71,13 +74,16 @@ class unsigned_interval_stack_t {
     std::optional<unsigned_interval_stack_cell_t> find(uint64_t) const;
     void store(uint64_t, refinement_t, int);
     void operator-=(uint64_t);
-    unsigned_interval_stack_t operator|(const unsigned_interval_stack_t& other) const;
+    unsigned_interval_stack_t join(const unsigned_interval_stack_t& other,
+                                      std::shared_ptr<slacks_t> slacks) const;
     [[nodiscard]] std::vector<uint64_t> get_keys() const;
     size_t size() const;
     void remove_overlap(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values(const std::vector<uint64_t>&, uint64_t, int);
-    bool operator<=(const unsigned_interval_stack_t& other) const;
-    unsigned_interval_stack_t widen(const unsigned_interval_stack_t& other) const;
+    bool inclusion(const unsigned_interval_stack_t& other,
+                   std::shared_ptr<slacks_t> slacks) const;
+    unsigned_interval_stack_t widen(const unsigned_interval_stack_t& other,
+                                    std::shared_ptr<slacks_t> slacks) const;
 };
 
 class unsigned_interval_domain_t final {

@@ -209,7 +209,7 @@ interval_domain_t interval_domain_t::setup_entry(std::shared_ptr<slacks_t> slack
 void interval_domain_t::overflow_bounds(const register_t& lhs, number_t span, const int finite_width, location_t loc, bool is_signed) {
     auto rf_opt = is_signed ? m_signed.find_interval_value(lhs) : m_unsigned.find_interval_value(lhs);
     if (!rf_opt) return;
-    interval_t interval = rf_opt->get_interval_value();
+    interval_t interval = rf_opt->get_interval_value(m_slacks);
     // numeric_refinement_top() represents interval_t::top()
     refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (interval.ub() - interval.lb() >= span) {
@@ -300,8 +300,8 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
             //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
-        zi = zi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
+        zi = zi_opt->get_interval_value(m_slacks);
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
@@ -309,8 +309,8 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
             //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
-        zi = zi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
+        zi = zi_opt->get_interval_value(m_slacks);
     }
 
     switch (op) {
@@ -358,14 +358,14 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
             //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         if (!yi_opt) {
             //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
     }
 
     switch (op) {
@@ -396,14 +396,14 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
             //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         if (!yi_opt) {
             //std::cerr << "Error: register " << y << " not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
     }
     interval_t zi{number_t{k.cast_to<uint64_t>()}};
 
@@ -436,8 +436,8 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
             //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
-        zi = zi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
+        zi = zi_opt->get_interval_value(m_slacks);
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
@@ -445,8 +445,8 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
             //std::cerr << "Error: registers not found in the interval environment\n";
             return;
         }
-        yi = yi_opt->get_interval_value();
-        zi = zi_opt->get_interval_value();
+        yi = yi_opt->get_interval_value(m_slacks);
+        zi = zi_opt->get_interval_value(m_slacks);
     }
 
     switch (op) {
@@ -533,7 +533,7 @@ void interval_domain_t::sub(const register_t& lhs, const number_t& op2, location
 // Add/subtract with overflow are both signed and unsigned. We can use either one of the two to compute the
 // result before adjusting for overflow, though if one is top we want to use the other to retain precision.
 void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
-    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
     if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
     } else {
@@ -542,7 +542,7 @@ void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op
 }
 
 void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
-    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
     if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
     } else {
@@ -551,7 +551,7 @@ void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2,
 }
 
 void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
-    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
     if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
     } else {
@@ -560,7 +560,7 @@ void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op
 }
 
 void interval_domain_t::sub_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
-    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value();
+    interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
     if (!lhs_signed.is_top()) {
         apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
     } else {
@@ -1294,14 +1294,14 @@ void interval_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
         Value right, location_t loc) {
     using Op = Condition::Op;
 
-    auto left_signed = find_signed_interval_value(left)->get_interval_value();
-    auto left_unsigned = find_unsigned_interval_value(left)->get_interval_value();
+    auto left_signed = find_signed_interval_value(left)->get_interval_value(m_slacks);
+    auto left_unsigned = find_unsigned_interval_value(left)->get_interval_value(m_slacks);
     auto right_signed = interval_t::bottom();
     auto right_unsigned = interval_t::bottom();
     if (std::holds_alternative<Reg>(right)) {
         auto right_reg = register_t{std::get<Reg>(right).v};
-        right_signed = find_signed_interval_value(right_reg)->get_interval_value();
-        right_unsigned = find_unsigned_interval_value(right_reg)->get_interval_value();
+        right_signed = find_signed_interval_value(right_reg)->get_interval_value(m_slacks);
+        right_unsigned = find_unsigned_interval_value(right_reg)->get_interval_value(m_slacks);
     } else if (std::holds_alternative<Imm>(right)) {
         auto right_imm = std::get<Imm>(right).v;
         right_signed = interval_t{number_t{right_imm}};
@@ -1401,24 +1401,23 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
     int offset = b.access.offset;
     auto basereg_ptr_or_mapfd_type = basereg_type.value();
 
-    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (is_ctx_ptr(basereg_type)) {
         if (!ptrs_in_ctx_range) {
+            refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
             insert_in_registers(target_register, loc, top_rf);
         }
     } else if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
         if (width == 1) {
-            interval_t to_insert = interval_t(number_t{0}, number_t{UINT8_MAX});
-            expression_t e(to_insert, m_slacks);
+            expression_t e(interval_t{number_t{0}, number_t{UINT8_MAX}});
             insert_in_registers(target_register, loc, refinement_t::numeric_refinement(e));
         }
         else if (width == 2) {
-            interval_t to_insert = interval_t(number_t{0}, number_t{UINT16_MAX});
-            expression_t e(to_insert, m_slacks);
+            expression_t e(interval_t{number_t{0}, number_t{UINT16_MAX}});
             insert_in_registers(target_register, loc, refinement_t::numeric_refinement(e));
         }
         else {
-            insert_in_registers(target_register, loc, refinement_t::numeric_refinement_top(m_slacks));
+            refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+            insert_in_registers(target_register, loc, top_rf);
         }
     } else if (is_stack_ptr(basereg_type)) {
         auto ptr_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
@@ -1471,7 +1470,7 @@ void interval_domain_t::shl(const register_t& reg, int imm, const int finite_wid
     imm &= finite_width - 1;
 
     if (auto interval_opt = find_unsigned_interval_value(reg)) {
-        interval_t interval = interval_opt->get_interval_value();
+        interval_t interval = interval_opt->get_interval_value(m_slacks);
         if (interval.finite_size()) {
             const number_t lb = interval.lb().number().value();
             const number_t ub = interval.ub().number().value();
@@ -1508,7 +1507,7 @@ void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_wi
     imm &= finite_width - 1;
 
     if (auto interval_opt = find_unsigned_interval_value(reg)) {
-        interval_t interval = interval_opt->get_interval_value();
+        interval_t interval = interval_opt->get_interval_value(m_slacks);
         number_t lb_n{0};
         number_t ub_n{std::numeric_limits<uint64_t>::max() >> imm};
         if (interval.finite_size()) {
@@ -1639,7 +1638,7 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                 if (gsl::narrow<int32_t>(imm) > 0) {
                     // AND with immediate is only a 32-bit operation so svalue and uvalue
                     // are the same.
-                    auto dst_signed = m_signed.find_interval_value(dst_register)->get_interval_value();
+                    auto dst_signed = m_signed.find_interval_value(dst_register)->get_interval_value(m_slacks);
                     auto lb = dst_signed.lb().number().value();
                     auto ub = dst_signed.ub().number().value();
                     dst_signed = dst_signed & interval_t{number_t{0}, number_t{imm}};
@@ -1767,7 +1766,7 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
             case Op::LSH: {
                 // ra <<= rb
                 if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
-                    auto src_unsigned = src_unsigned_interval_opt->get_interval_value();
+                    auto src_unsigned = src_unsigned_interval_opt->get_interval_value(m_slacks);
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
                         uint64_t imm = sn->cast_to<int32_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= std::numeric_limits<int32_t>::max()) {
@@ -1786,7 +1785,7 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
             case Op::RSH: {
                 // ra >>= rb
                 if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
-                    auto src_unsigned = src_unsigned_interval_opt->get_interval_value();
+                    auto src_unsigned = src_unsigned_interval_opt->get_interval_value(m_slacks);
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
                         uint64_t imm = sn->cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= std::numeric_limits<int32_t>::max()) {

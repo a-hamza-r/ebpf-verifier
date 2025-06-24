@@ -74,20 +74,22 @@ void offset_registers_t::operator-=(register_t to_forget) {
     m_cur_register_def[to_forget] = nullptr;
 }
 
-bool offset_registers_t::operator<=(const offset_registers_t& other) const {
+bool offset_registers_t::inclusion(const offset_registers_t& other,
+                                   std::shared_ptr<slacks_t> slacks) const {
     for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (other.m_cur_register_def[i] == nullptr) continue;
         if (m_cur_register_def[i] == nullptr) return false;
         auto it1 = find(*(m_cur_register_def[i]));
         auto it2 = other.find(*(other.m_cur_register_def[i]));
         if (it1 && it2) {
-            if (!(it1->operator<=(*it2))) return false;
+            if (!(it1->inclusion(*it2, slacks))) return false;
         }
     }
     return true;
 }
 
-offset_registers_t offset_registers_t::operator|(const offset_registers_t& other) const {
+offset_registers_t offset_registers_t::join(const offset_registers_t& other,
+                                            std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -104,14 +106,15 @@ offset_registers_t offset_registers_t::operator|(const offset_registers_t& other
         if (it1 && it2) {
             auto rf1 = *it1, rf2 = *it2;
             if (rf1.same_type(rf2)) {
-                joined_state.insert(register_t{i}, loc, rf1 | rf2);
+                joined_state.insert(register_t{i}, loc, rf1.join(rf2, slacks));
             }
         }
     }
     return joined_state;
 }
 
-offset_registers_t offset_registers_t::widen(const offset_registers_t& other) const {
+offset_registers_t offset_registers_t::widen(const offset_registers_t& other,
+                                             std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -128,7 +131,7 @@ offset_registers_t offset_registers_t::widen(const offset_registers_t& other) co
         if (it1 && it2) {
             auto rf1 = *it1, rf2 = *it2;
             if (rf1.same_type(rf2)) {
-                joined_state.insert(register_t{i}, loc, rf1.widen(rf2));
+                joined_state.insert(register_t{i}, loc, rf1.widen(rf2, slacks));
             }
         }
     }
@@ -217,7 +220,7 @@ void offset_stack_t::operator-=(const std::vector<uint64_t>& keys) {
     }
 }
 
-bool offset_stack_t::operator<=(const offset_stack_t& other) const {
+bool offset_stack_t::inclusion(const offset_stack_t& other, std::shared_ptr<slacks_t> slacks) const {
     size_t size1 = m_stack_cells.size();
     size_t size2 = other.m_stack_cells.size();
     if (size2 > size1) return false;
@@ -228,12 +231,13 @@ bool offset_stack_t::operator<=(const offset_stack_t& other) const {
         auto rf2 = kv.second.first;
         auto width1 = it->second.second;
         auto width2 = kv.second.second;
-        if (!(rf1 <= rf2) || width1 != width2) return false;
+        if (!(rf1.inclusion(rf2, slacks) && width1 == width2)) return false;
     }
     return true;
 }
 
-offset_stack_t offset_stack_t::operator|(const offset_stack_t& other) const {
+offset_stack_t offset_stack_t::join(const offset_stack_t& other,
+                                    std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -254,14 +258,15 @@ offset_stack_t offset_stack_t::operator|(const offset_stack_t& other) const {
             // TODO: for numerical values, the width does not have to be the same
             // hence, handle accordingly
             if (rf1.same_type(rf2) && width1 == width2) {
-                out_stack_rfs.insert({kv.first, std::make_pair(rf1 | rf2, width1)});
+                out_stack_rfs.insert({kv.first, std::make_pair(rf1.join(rf2, slacks), width1)});
             }
         }
     }
     return offset_stack_t(std::move(out_stack_rfs));
 }
 
-offset_stack_t offset_stack_t::widen(const offset_stack_t& other) const {
+offset_stack_t offset_stack_t::widen(const offset_stack_t& other,
+                                     std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -282,23 +287,23 @@ offset_stack_t offset_stack_t::widen(const offset_stack_t& other) const {
             // TODO: for numerical values, the width does not have to be the same
             // hence, handle accordingly
             if (rf1.same_type(rf2) && width1 == width2) {
-                out_stack_rfs.insert({kv.first, std::make_pair(rf1.widen(rf2), width1)});
+                out_stack_rfs.insert({kv.first, std::make_pair(rf1.widen(rf2, slacks), width1)});
             }
         }
     }
     return offset_stack_t(std::move(out_stack_rfs));
 }
 
-offset_ctx_t::offset_ctx_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t> slacks) {
+offset_ctx_t::offset_ctx_t(const ebpf_context_descriptor_t* desc) {
     if (desc == nullptr) return;
     if (desc->data >= 0) {
-        m_ctx_cells.insert_or_assign(desc->data, refinement_t::begin(slacks));
+        m_ctx_cells.insert_or_assign(desc->data, refinement_t::begin());
     }
     if (desc->end >= 0) {
-        m_ctx_cells.insert_or_assign(desc->end, refinement_t::end(slacks));
+        m_ctx_cells.insert_or_assign(desc->end, refinement_t::end());
     }
     if (desc->meta >= 0) {
-        m_ctx_cells.insert_or_assign(desc->meta, refinement_t::meta(slacks));
+        m_ctx_cells.insert_or_assign(desc->meta, refinement_t::meta());
     }
     m_size = std::max(0, desc->size);
 }
@@ -327,7 +332,7 @@ offset_domain_t offset_domain_t::setup_entry(std::shared_ptr<slacks_t> slacks) {
     offset_regs.insert(r12_pkt_begin, loc, type_begin_rf);
 
     return offset_domain_t{std::move(offset_regs), offset_stack_t::top(),
-            std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor, slacks),
+            std::make_shared<offset_ctx_t>(global_program_info->type.context_descriptor),
             slacks};
 }
 
@@ -361,7 +366,8 @@ bool offset_domain_t::is_top() const {
 
 // inclusion
 bool offset_domain_t::operator<=(const offset_domain_t& other) const {
-    return (m_registers <= other.m_registers && m_stack <= other.m_stack);
+    return (m_registers.inclusion(other.m_registers, m_slacks)
+    && m_stack.inclusion(other.m_stack, m_slacks));
 }
 
 // join
@@ -384,7 +390,8 @@ offset_domain_t offset_domain_t::operator|(const offset_domain_t& other) const {
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return offset_domain_t(m_registers | other.m_registers, m_stack | other.m_stack, m_ctx, m_slacks);
+    return offset_domain_t(m_registers.join(other.m_registers, m_slacks),
+                           m_stack.join(other.m_stack, m_slacks), m_ctx, m_slacks);
 }
 
 offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
@@ -393,9 +400,10 @@ offset_domain_t offset_domain_t::operator|(offset_domain_t&& other) const {
     } else if (other.is_bottom() || is_top()) {
         return *this;
     }
+    // TODO: check if slacks need to be moved
     return offset_domain_t(
-        m_registers | std::move(other.m_registers),
-        m_stack | std::move(other.m_stack),
+        m_registers.join(std::move(other.m_registers), m_slacks),
+        m_stack.join(std::move(other.m_stack), m_slacks),
         std::move(other.m_ctx),
         std::move(other.m_slacks)
     );
@@ -415,8 +423,8 @@ offset_domain_t offset_domain_t::widen(const offset_domain_t& other, bool to_con
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return offset_domain_t(m_registers.widen(other.m_registers),
-            m_stack.widen(other.m_stack), m_ctx, m_slacks);
+    return offset_domain_t(m_registers.widen(other.m_registers, m_slacks),
+            m_stack.widen(other.m_stack, m_slacks), m_ctx, m_slacks);
 }
 
 // narrowing
@@ -456,19 +464,19 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
         }
         auto begin = m_registers.find(register_t{R12_PKT_BEGIN});
         if (cond.op == Condition::Op::LE) {
-            begin->add_constraint(rf_left->assume_le(*rf_right));
+            begin->add_constraint(rf_left->assume_le(*rf_right), m_slacks);
             m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GT) {
-            begin->add_constraint(rf_left->assume_gt(*rf_right));
+            begin->add_constraint(rf_left->assume_gt(*rf_right), m_slacks);
             m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GE) {
-            begin->add_constraint(rf_right->assume_le(*rf_left));
+            begin->add_constraint(rf_right->assume_le(*rf_left), m_slacks);
             m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::LT) {
-            begin->add_constraint(rf_right->assume_gt(*rf_left));
+            begin->add_constraint(rf_right->assume_gt(*rf_left), m_slacks);
             m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
         }
         // other comparisons not supported
@@ -481,8 +489,8 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     if (!dst_rf || !src_rf) return interval_t::bottom();
     expression_t dst_expr = dst_rf->get_value();
     expression_t src_expr = src_rf->get_value();
-    refinement_t result_rf = *dst_rf - *src_rf;
-    expression_t result_expr = result_rf.get_value().get_equivalent_expression();
+    refinement_t result_rf = dst_rf->subtract(*src_rf, m_slacks);
+    expression_t result_expr = result_rf.get_value().get_equivalent_expression(m_slacks);
     if (result_expr.is_constant()) {
         return result_expr.get_constant_term();
     }
@@ -492,7 +500,7 @@ interval_t offset_domain_t::compute_packet_subtraction(register_t dst, register_
     auto dst_symbol = dst_expr.get_singleton();
     auto src_symbol = src_expr.get_singleton();
     std::optional<refinement_t> begin_rf = m_registers.find(register_t{R12_PKT_BEGIN});
-    return begin_rf->simplify_for_subtraction(dst_symbol, src_symbol);
+    return begin_rf->simplify_for_subtraction(dst_symbol, src_symbol, m_slacks);
 }
 
 void offset_domain_t::do_bin(const Bin& bin, std::optional<refinement_t> dst_rf_numeric_opt,
@@ -569,10 +577,10 @@ void offset_domain_t::do_bin(const Bin& bin, std::optional<refinement_t> dst_rf_
                     set_to_bottom();
                 }
                 else if (dst_rf_ptr_opt.has_value() && src_rf_numeric_opt.has_value()) {
-                    m_registers.insert(dst_register, loc, *dst_rf_ptr_opt + *src_rf_numeric_opt);
+                    m_registers.insert(dst_register, loc, dst_rf_ptr_opt->add(*src_rf_numeric_opt, m_slacks));
                 }
                 else if (dst_rf_numeric_opt.has_value() && src_rf_ptr_opt.has_value()) {
-                    m_registers.insert(dst_register, loc, *dst_rf_numeric_opt + *src_rf_ptr_opt);
+                    m_registers.insert(dst_register, loc, dst_rf_numeric_opt->add(*src_rf_ptr_opt, m_slacks));
                 }
                 else {
                     m_registers -= dst_register;
@@ -588,7 +596,7 @@ void offset_domain_t::do_bin(const Bin& bin, std::optional<refinement_t> dst_rf_
                     m_registers -= dst_register;
                 }
                 else if (dst_rf_ptr_opt.has_value() && src_rf_numeric_opt.has_value()) {
-                    m_registers.insert(dst_register, loc, *dst_rf_ptr_opt - *src_rf_numeric_opt);
+                    m_registers.insert(dst_register, loc, dst_rf_ptr_opt->subtract(*src_rf_numeric_opt, m_slacks));
                 }
                 else { // when dst is numeric, we keep no information about subtraction
                     m_registers -= dst_register;
@@ -656,7 +664,8 @@ bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
     if (!reg) return false;
     auto check_lb = *reg + offset;
     auto check_ub = check_lb + width;
-    return begin->safe_access(check_lb.get_value(), check_ub.get_value(), is_comparison_check);
+    return begin->safe_access(check_lb.get_value(), check_ub.get_value(), is_comparison_check,
+                              m_slacks);
 }
 
 void offset_domain_t::check_valid_access(const ValidAccess& s,

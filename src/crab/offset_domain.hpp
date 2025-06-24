@@ -40,9 +40,9 @@ class offset_registers_t {
         }
         offset_registers_t(offset_registers_t&& other) = default;
         offset_registers_t& operator=(offset_registers_t&& other) = default;
-        offset_registers_t operator|(const offset_registers_t&) const;
-        bool operator<=(const offset_registers_t&) const;
-        offset_registers_t widen(const offset_registers_t&) const;
+        offset_registers_t join(const offset_registers_t&, std::shared_ptr<slacks_t>) const;
+        bool inclusion(const offset_registers_t&, std::shared_ptr<slacks_t>) const;
+        offset_registers_t widen(const offset_registers_t&, std::shared_ptr<slacks_t>) const;
         void operator-=(register_t);
         void set_to_top();
         void set_to_bottom();
@@ -77,9 +77,9 @@ class offset_stack_t {
         bool is_bottom() const;
         bool is_top() const;
         static offset_stack_t top();
-        offset_stack_t operator|(const offset_stack_t&) const;
-        bool operator<=(const offset_stack_t&) const;
-        offset_stack_t widen(const offset_stack_t&) const;
+        offset_stack_t join(const offset_stack_t&, std::shared_ptr<slacks_t>) const;
+        bool inclusion(const offset_stack_t&, std::shared_ptr<slacks_t>) const;
+        offset_stack_t widen(const offset_stack_t&, std::shared_ptr<slacks_t>) const;
         std::vector<uint64_t> find_overlapping_cells(uint64_t, int) const;
         std::vector<uint64_t> get_keys() const;
 };
@@ -90,7 +90,7 @@ class offset_ctx_t {
     size_t m_size = 0;
 
     public:
-        offset_ctx_t(const ebpf_context_descriptor_t* desc, std::shared_ptr<slacks_t>);
+        offset_ctx_t(const ebpf_context_descriptor_t* desc);
         std::optional<refinement_t> find(uint64_t) const;
         size_t get_size() const { return m_size; }
         std::vector<uint64_t> get_keys() const;

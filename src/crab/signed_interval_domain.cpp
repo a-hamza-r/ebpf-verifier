@@ -48,7 +48,8 @@ std::optional<refinement_t> signed_interval_registers_t::find(register_t key) co
     return find(reg);
 }
 
-bool signed_interval_registers_t::operator<=(const signed_interval_registers_t& other) const {
+bool signed_interval_registers_t::inclusion(const signed_interval_registers_t& other,
+                                            std::shared_ptr<slacks_t> slacks) const {
     for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
         if (other.m_cur_register_def[i] == nullptr) continue;
         if (m_cur_register_def[i] == nullptr) return false;
@@ -56,13 +57,16 @@ bool signed_interval_registers_t::operator<=(const signed_interval_registers_t& 
         auto it2 = other.find(*(m_cur_register_def[i]));
         if (it1 && it2) {
             refinement_t rf1 = it1.value(), rf2 = it2.value();
-            if (!(rf1 <= rf2)) return false;
+            if (!(rf1.inclusion(rf2, slacks))) {
+                return false;
+            }
         }
     }
     return true;
 }
 
-signed_interval_registers_t signed_interval_registers_t::operator|(const signed_interval_registers_t& other) const {
+signed_interval_registers_t signed_interval_registers_t::join(
+    const signed_interval_registers_t& other, std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -76,13 +80,14 @@ signed_interval_registers_t signed_interval_registers_t::operator|(const signed_
         auto it2 = other.find(*(other.m_cur_register_def[i]));
         if (it1 && it2) {
             refinement_t rf1 = it1.value(), rf2 = it2.value();
-            refinements_joined.insert(register_t{i}, loc, rf1 | rf2);
+            refinements_joined.insert(register_t{i}, loc, rf1.join(rf2, slacks));
         }
     }
     return refinements_joined;
 }
 
-signed_interval_registers_t signed_interval_registers_t::widen(const signed_interval_registers_t& other) const {
+signed_interval_registers_t signed_interval_registers_t::widen(
+    const signed_interval_registers_t& other, std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -96,7 +101,7 @@ signed_interval_registers_t signed_interval_registers_t::widen(const signed_inte
         auto it2 = other.find(*(other.m_cur_register_def[i]));
         if (it1 && it2) {
             refinement_t rf1 = it1.value(), rf2 = it2.value();
-            refinements_joined.insert(register_t{i}, loc, rf1.widen(rf2));
+            refinements_joined.insert(register_t{i}, loc, rf1.widen(rf2, slacks));
         }
     }
     return refinements_joined;
@@ -233,7 +238,8 @@ std::vector<uint64_t> signed_interval_stack_t::find_overlapping_cells(uint64_t s
     return overlapping_cells;
 }
 
-bool signed_interval_stack_t::operator<=(const signed_interval_stack_t& other) const {
+bool signed_interval_stack_t::inclusion(const signed_interval_stack_t& other,
+                                        std::shared_ptr<slacks_t> slacks) const {
     size_t size1 = size(), size2 = other.size();
     if (size2 > size1) return false;
     for (auto const &kv : other.m_cells) {
@@ -245,7 +251,9 @@ bool signed_interval_stack_t::operator<=(const signed_interval_stack_t& other) c
         auto rf2 = cells2.first;
         auto width1 = cells1.second; auto width2 = cells2.second;
         if (width1 != width2) return false;
-        if (!(rf1 <= rf2)) return false;
+        if (!(rf1.inclusion(rf2, slacks))) {
+            return false;
+        }
     }
     return true;
 }
@@ -292,7 +300,8 @@ static inline void join_stack(const signed_interval_stack_t& stack1, uint64_t ke
     }
 }
 
-signed_interval_stack_t signed_interval_stack_t::operator|(const signed_interval_stack_t& other) const {
+signed_interval_stack_t signed_interval_stack_t::join(const signed_interval_stack_t& other,
+                                                      std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -305,12 +314,15 @@ signed_interval_stack_t signed_interval_stack_t::operator|(const signed_interval
     while (i < static_cast<int>(stack1_keys.size()) && j < static_cast<int>(stack2_keys.size())) {
         int key1 = stack1_keys[i], key2 = stack2_keys[j];
         join_stack(*this, key1, i, other, key2, j, refinements_joined,
-                [](const refinement_t& a, const refinement_t& b) { return a | b; });
+                   [slacks](const refinement_t& a, const refinement_t& b) {
+                    return a.join(b, slacks);
+                });
     }
     return signed_interval_stack_t(std::move(refinements_joined));
 }
 
-signed_interval_stack_t signed_interval_stack_t::widen(const signed_interval_stack_t& other) const {
+signed_interval_stack_t signed_interval_stack_t::widen(const signed_interval_stack_t& other,
+                                                        std::shared_ptr<slacks_t> slacks) const {
     if (is_bottom() || other.is_top()) {
         return other;
     } else if (other.is_bottom() || is_top()) {
@@ -323,7 +335,9 @@ signed_interval_stack_t signed_interval_stack_t::widen(const signed_interval_sta
     while (i < static_cast<int>(stack1_keys.size()) && j < static_cast<int>(stack2_keys.size())) {
         int key1 = stack1_keys[i], key2 = stack2_keys[j];
         join_stack(*this, key1, i, other, key2, j, refinements_joined,
-                [](const refinement_t& a, const refinement_t& b) { return a.widen(b); });
+                [slacks](const refinement_t& a, const refinement_t& b) {
+                   return a.widen(b, slacks);
+                });
     }
     return signed_interval_stack_t(std::move(refinements_joined));
 }
@@ -439,7 +453,8 @@ void signed_interval_domain_t::store_in_stack(uint64_t key, interval_t interval,
 }
 
 bool signed_interval_domain_t::operator<=(const signed_interval_domain_t& abs) const {
-    return (m_registers <= abs.m_registers && m_stack <= abs.m_stack);
+    return (m_registers.inclusion(abs.m_registers, m_slacks) &&
+            m_stack.inclusion(abs.m_stack, m_slacks));
 }
 
 void signed_interval_domain_t::operator|=(const signed_interval_domain_t& abs) {
@@ -463,8 +478,8 @@ signed_interval_domain_t signed_interval_domain_t::operator|(const signed_interv
         return *this;
     }
     return signed_interval_domain_t(
-        m_registers | other.m_registers,
-        m_stack | other.m_stack,
+        m_registers.join(other.m_registers, m_slacks),
+        m_stack.join(other.m_stack, m_slacks),
         m_slacks);
 }
 
@@ -475,9 +490,10 @@ signed_interval_domain_t signed_interval_domain_t::operator|(signed_interval_dom
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
+    // TODO: check if we can use move semantics for m_slacks
     return signed_interval_domain_t(
-        m_registers | std::move(other.m_registers),
-        m_stack | std::move(other.m_stack),
+        m_registers.join(std::move(other.m_registers), m_slacks),
+        m_stack.join(std::move(other.m_stack), m_slacks),
         std::move(other.m_slacks));
 }
 
@@ -493,8 +509,8 @@ signed_interval_domain_t signed_interval_domain_t::widen(const signed_interval_d
     else if (other.is_bottom() || is_top()) {
         return *this;
     }
-    return signed_interval_domain_t(m_registers.widen(other.m_registers),
-            m_stack.widen(other.m_stack), m_slacks);
+    return signed_interval_domain_t(m_registers.widen(other.m_registers, m_slacks),
+            m_stack.widen(other.m_stack, m_slacks), m_slacks);
 }
 
 signed_interval_domain_t signed_interval_domain_t::narrow(const signed_interval_domain_t& other) const {
@@ -543,7 +559,7 @@ void signed_interval_domain_t::operator()(const Un& u, location_t loc) {
 
     auto rf_opt = m_registers.find(u.dst.v);
     if (!rf_opt) return;
-    auto interval = rf_opt->get_interval_value();
+    auto interval = rf_opt->get_interval_value(m_slacks);
     if (interval.is_bottom()) {
         m_registers.insert(u.dst.v, loc, top_rf);
         return;

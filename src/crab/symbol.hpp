@@ -3,7 +3,6 @@
 #pragma once
 
 #include <iostream>
-#include <vector>
 
 namespace crab {
 
@@ -13,11 +12,11 @@ class symbol_t final {
     explicit symbol_t(uint64_t id) : _id(id) {}
 
   public:
-    [[nodiscard]] std::size_t hash() const { return _id; }
+    [[nodiscard]] std::size_t hash() const {
+        return std::hash<uint64_t>()(_id);
+    }
     bool operator==(symbol_t o) const { return _id == o._id; }
     bool operator!=(symbol_t o) const { return (!(operator==(o))); }
-    bool operator<(symbol_t o) const { return _id < o._id; }
-    bool operator>(symbol_t o) const { return _id > o._id; }
     operator uint64_t() const { return _id; }
 
   private:
