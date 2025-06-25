@@ -80,6 +80,10 @@ refinement_t refinement_t::operator+(int n) const {
     return operator+(interval_t{n});
 }
 
+refinement_t refinement_t::operator-(interval_t i) const {
+    return operator+(-i);
+}
+
 refinement_t refinement_t::add(const refinement_t &other, std::shared_ptr<slacks_t> slacks) const {
     expression_t new_value = _value + other._value;
     refinement_type_t new_type = (_type == other._type) ? _type

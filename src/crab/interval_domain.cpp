@@ -1607,13 +1607,33 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
             case Op::ADD: {
                 // ra += imm
                 if (imm == 0) return;
-                add_overflow(dst_register, number_t{gsl::narrow<int>(imm)}, finite_width, loc);
+                //add_overflow(dst_register, number_t{gsl::narrow<int>(imm)}, finite_width, loc);
+                auto rf_signed = m_signed.find_interval_value(dst_register);
+                auto rf_unsigned = m_unsigned.find_interval_value(dst_register);
+                // TODO: possibly more checks are needed here
+                if (rf_signed && rf_unsigned) {
+                    m_signed.insert_in_registers(dst_register, loc, *rf_signed + imm_interval);
+                    m_unsigned.insert_in_registers(dst_register, loc, *rf_unsigned + imm_interval);
+                }
+                else {
+                    operator-=(dst_register);
+                }
                 break;
             }
             case Op::SUB: {
                 // ra -= imm
                 if (imm == 0) return;
-                add_overflow(dst_register, number_t{gsl::narrow<int>(-imm)}, finite_width, loc);
+                //add_overflow(dst_register, number_t{gsl::narrow<int>(-imm)}, finite_width, loc);
+                // TODO: possibly more checks are needed here
+                auto rf_signed = m_signed.find_interval_value(dst_register);
+                auto rf_unsigned = m_unsigned.find_interval_value(dst_register);
+                if (rf_signed && rf_unsigned) {
+                    m_signed.insert_in_registers(dst_register, loc, *rf_signed - imm_interval);
+                    m_unsigned.insert_in_registers(dst_register, loc, *rf_unsigned - imm_interval);
+                }
+                else {
+                    operator-=(dst_register);
+                }
                 break;
             }
             case Op::MUL: {

@@ -36,6 +36,7 @@ class refinement_t {
     [[nodiscard]] expression_t get_value() const { return _value; }
     refinement_t operator+(int n) const;
     refinement_t operator+(interval_t) const;
+    refinement_t operator-(interval_t) const;
     refinement_t add(const refinement_t &other, std::shared_ptr<slacks_t>) const;
     refinement_t subtract(const refinement_t &other, std::shared_ptr<slacks_t>) const;
     refinement_t join(const refinement_t &other, std::shared_ptr<slacks_t>) const;
