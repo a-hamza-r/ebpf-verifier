@@ -258,7 +258,12 @@ constraint_t refinement_t::construct_meta_end_constraint() const {
 
 bool refinement_t::check_consistent(const constraint_t& c, std::shared_ptr<slacks_t> slacks) const {
     if (c.is_unsat(slacks)) {
+        // The constraint is unsatisfiable
         return false;
+    }
+    if (c.is_sat(slacks)) {
+        // This checks if the constraint is trivially satisfiable, like -1 <= 0
+        return true;
     }
     else if (c.contains_single_pkt_symbol()) {
         // This is a specific case containing single packet symbol, we can substitute all possible
