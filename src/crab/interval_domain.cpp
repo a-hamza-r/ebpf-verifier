@@ -1550,6 +1550,7 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
     auto dst_register = register_t{bin.dst.v};
     auto finite_width = (bin.is64 ? 64 : 32);
 
+    // computing ptr -= ptr, and storing resultant as a numeric value
     if (subtracted_opt.has_value()) {
         interval_t dst_signed = *subtracted_opt;
         interval_t dst_unsigned = *subtracted_opt;
@@ -1569,7 +1570,10 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
     bool is_numeric_src = std::holds_alternative<Imm>(bin.v) ||
             find_signed_interval_value(register_t{std::get<Reg>(bin.v).v}).has_value();
 
-    if (!is_numeric_dst && bin.op != Op::MOV) {
+    if ((bin.op != Op::MOV && !is_numeric_dst) || (bin.op == Op::MOV && !is_numeric_src)) {
+        // Either the operation is not MOV, then dst must be numeric for storing into interval
+        // domain, or the operation is MOV and the src is not numeric, then we do not get
+        // a numeric value in dst.
         operator-=(dst_register);
         return;
     }

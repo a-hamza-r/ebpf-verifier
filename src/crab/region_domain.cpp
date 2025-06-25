@@ -1097,6 +1097,7 @@ void region_domain_t::do_bin(const Bin& bin,
 
     auto dst_register = register_t{bin.dst.v};
     auto dst_ptr_or_mapfd_opt = m_registers.find(dst_register);
+    bool is_ptr_or_mapfd_dst = dst_ptr_or_mapfd_opt.has_value();
     bool is_numeric_dst = dst_signed_interval_opt.has_value();
     bool is_numeric_src = std::holds_alternative<Imm>(bin.v) || src_signed_interval_opt.has_value();
 
@@ -1126,7 +1127,7 @@ void region_domain_t::do_bin(const Bin& bin,
             case Op::ADD: {
                 // ra += imm
                 if (imm == 0) break;
-                if (!is_numeric_dst) {
+                if (is_ptr_or_mapfd_dst) {
                     update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, imm_interval, loc, dst_register);
                 }
                 else {
@@ -1137,7 +1138,7 @@ void region_domain_t::do_bin(const Bin& bin,
             case Op::SUB: {
                 // ra -= imm
                 if (imm == 0) break;
-                if (!is_numeric_dst) {
+                if (is_ptr_or_mapfd_dst) {
                     update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, -imm_interval, loc, dst_register);
                 }
                 else {
@@ -1155,10 +1156,11 @@ void region_domain_t::do_bin(const Bin& bin,
     else {
         auto src_register = register_t{std::get<Reg>(bin.v).v};
         auto src_ptr_or_mapfd_opt = m_registers.find(src_register);
+        bool is_ptr_or_mapfd_src = src_ptr_or_mapfd_opt.has_value();
         switch (bin.op) {
             case Op::MOV: {
                 // ra = rb
-                if (!is_numeric_src) {
+                if (is_ptr_or_mapfd_src) {
                     if (is_shared_ptr(*src_ptr_or_mapfd_opt)) {
                         auto shared_ptr = std::get<ptr_with_off_t>(*src_ptr_or_mapfd_opt);
                         set_aliases(dst_register, shared_ptr);
@@ -1175,15 +1177,15 @@ void region_domain_t::do_bin(const Bin& bin,
             }
             case Op::ADD: {
                 // ra += rb
-                if (!is_numeric_dst && is_numeric_src) {
+                if (is_ptr_or_mapfd_dst && is_numeric_src) {
                     update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, *src_signed_interval_opt, loc,
                                         dst_register);
                 }
-                else if (is_numeric_dst && !is_numeric_src) {
+                else if (is_numeric_dst && is_ptr_or_mapfd_src) {
                     update_ptr_or_mapfd(*src_ptr_or_mapfd_opt, *dst_signed_interval_opt, loc,
                                         dst_register);
                 }
-                else if (!is_numeric_dst && !is_numeric_src) {
+                else if (is_ptr_or_mapfd_dst && is_ptr_or_mapfd_src) {
                     // possibly adding two pointers
                     set_to_bottom();
                 }
@@ -1191,11 +1193,11 @@ void region_domain_t::do_bin(const Bin& bin,
             }
             case Op::SUB: {
                 // ra -= rb
-                if (!is_numeric_dst && is_numeric_src) {
+                if (is_ptr_or_mapfd_dst && is_numeric_src) {
                     update_ptr_or_mapfd(*dst_ptr_or_mapfd_opt, -(*src_signed_interval_opt),
                                         loc, dst_register);
                 }
-                else if (is_numeric_dst && !is_numeric_src) {
+                else if (is_numeric_dst && is_ptr_or_mapfd_src) {
                     m_registers -= dst_register;
                 }
                 else {
