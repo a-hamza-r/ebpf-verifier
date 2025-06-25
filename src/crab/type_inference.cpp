@@ -471,6 +471,7 @@ void inference_domain_t::operator()(const Comparable& u, location_t loc) {
         }
         this->operator()(ValidAccess{u.r1, 0, Imm{0}, false}, loc);
         this->operator()(ValidAccess{u.r2, 0, Imm{0}, false}, loc);
+        return;
     }
     else if (maybe_num_type2) {
         // _Maybe_ different types, so r2 must be a number.
