@@ -402,6 +402,7 @@ void unsigned_interval_domain_t::store_in_stack(uint64_t key, refinement_t rf, i
 }
 
 void unsigned_interval_domain_t::store_in_stack(uint64_t key, interval_t interval, int width) {
+    // TODO: check if new slacks are created only when needed
     refinement_t rf = refinement_t::numeric_refinement(interval, m_slacks);
     m_stack.store(key, rf, width);
 }

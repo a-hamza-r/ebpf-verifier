@@ -448,6 +448,8 @@ void signed_interval_domain_t::store_in_stack(uint64_t key, refinement_t interva
 }
 
 void signed_interval_domain_t::store_in_stack(uint64_t key, interval_t interval, int width) {
+    // TODO: check if this is only done if new slack variables are created,
+    // otherwise, we shouldn't create new slacks.
     refinement_t rf = refinement_t::numeric_refinement(interval, m_slacks);
     m_stack.store(key, rf, width);
 }

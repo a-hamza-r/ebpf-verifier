@@ -1248,17 +1248,17 @@ bool region_domain_t::do_load(const Mem& b, const register_t& target_register, l
             m_errors.push_back(loc_str + ": Invalid width for stack load");
             return false;
         }
+        auto loaded = m_stack.find(load_at);
+        if (!loaded) {
+            // no field at loaded offset in stack, but possibly a number is there
+            m_registers -= target_register;
+            return false;
+        }
         if (width != 8) {
             // we do not support loading pointers from stack with width != 8
             // can be relaxed, if needed
             m_registers -= target_register;
             m_errors.push_back(loc_str + ": Only 8-byte stack loads for pointers are supported");
-            return false;
-        }
-        auto loaded = m_stack.find(load_at);
-        if (!loaded) {
-            // no field at loaded offset in stack, but possibly a number is there
-            m_registers -= target_register;
             return false;
         }
         auto ptr_or_mapfd = loaded->first;

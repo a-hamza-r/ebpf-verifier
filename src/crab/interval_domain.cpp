@@ -1405,19 +1405,23 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
         if (!ptrs_in_ctx_range) {
             refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
             insert_in_registers(target_register, loc, top_rf);
+            return;
         }
     } else if (is_packet_ptr(basereg_type) || is_shared_ptr(basereg_type)) {
         if (width == 1) {
             expression_t e(interval_t{number_t{0}, number_t{UINT8_MAX}});
             insert_in_registers(target_register, loc, refinement_t::numeric_refinement(e));
+            return;
         }
         else if (width == 2) {
             expression_t e(interval_t{number_t{0}, number_t{UINT16_MAX}});
             insert_in_registers(target_register, loc, refinement_t::numeric_refinement(e));
+            return;
         }
         else {
             refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
             insert_in_registers(target_register, loc, top_rf);
+            return;
         }
     } else if (is_stack_ptr(basereg_type)) {
         auto ptr_with_off = std::get<ptr_with_off_t>(basereg_ptr_or_mapfd_type);
@@ -1441,7 +1445,6 @@ void interval_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>
         // we only store for stack pointers
         return;
     }
-
     auto basereg_with_off = std::get<ptr_with_off_t>(*maybe_basereg_type);
     auto offset_reg = basereg_with_off.get_offset();
     if (auto finite = offset_reg.finite_size()) {
