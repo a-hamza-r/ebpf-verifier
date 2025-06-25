@@ -1237,7 +1237,7 @@ bool region_domain_t::do_load(const Mem& b, const register_t& target_register, l
 
     std::string loc_str = loc.to_string();
     if (!offset_singleton) {
-        m_errors.push_back(loc_str + ": Load at an unknown offset");
+        // We cannot load a pointer from an unknown offset
         m_registers -= target_register;
         return false;
     }
