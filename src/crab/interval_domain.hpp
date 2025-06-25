@@ -132,7 +132,7 @@ class interval_domain_t final {
     void do_mem_store(const Mem&, std::optional<ptr_or_mapfd_t>);
     void do_call(const Call&, const stack_cells_t&, location_t);
     void do_bin(const Bin&, std::optional<interval_t>, location_t);
-    void check_valid_access(const ValidAccess&, interval_t, location_t);
+    void check_valid_access(const ValidAccess&, interval_t, interval_t, int, bool, location_t);
     void assume_cst(Condition::Op, bool, register_t, Value, location_t);
     void assume_signed_cst(Condition::Op, bool, const interval_t&, const interval_t&,
             const interval_t&, const interval_t&, register_t, Value, location_t);

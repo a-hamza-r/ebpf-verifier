@@ -660,19 +660,40 @@ void signed_interval_domain_t::store_in_stack(const Mem& b, uint64_t offset, int
     }
 }
 
-void signed_interval_domain_t::check_valid_access(const ValidAccess& s, interval_t interval,
-        location_t loc) {
+void signed_interval_domain_t::check_valid_access(const ValidAccess& s, interval_t stack_offset,
+                                                  interval_t reg_interval_value, int width,
+                                                  bool check_stack_all_numeric, location_t loc) {
     std::string loc_str = loc.to_string();
-    bool is_comparison_check = s.width == (Value)Imm{0};
-    if (!is_comparison_check) {
-        if (s.or_null) {
-            if (auto singleton = interval.singleton()) {
-                if (*singleton == number_t{0}) return;
+    if (check_stack_all_numeric) {
+        auto start_interval = stack_offset + interval_t{s.offset};
+        if (auto finite_size = start_interval.finite_size()) {
+            if (auto start_interval_lb = start_interval.lb().number()) {
+                auto start_offset = (*start_interval_lb).cast_to<uint64_t>();
+                int width_from_start = finite_size->cast_to<int>() + width;
+                if (!m_stack.all_numeric(start_offset, width_from_start)) {
+                    m_errors.push_back(loc_str + ": Stack access not numeric");
+                }
             }
-            m_errors.push_back(loc_str + ": Non-null number");
+            else {
+                m_errors.push_back(loc_str + ": Offset information not available");
+            }
         }
         else {
-            m_errors.push_back(loc_str + ": Only pointers can be dereferenced");
+            m_errors.push_back(loc_str + ": Register interval not finite for stack access");
+        }
+    }
+    else {
+        bool is_comparison_check = s.width == (Value)Imm{0};
+        if (!is_comparison_check) {
+            if (s.or_null) {
+                if (auto singleton = reg_interval_value.singleton()) {
+                    if (*singleton == number_t{0}) return;
+                }
+                m_errors.push_back(loc_str + ": Non-null number");
+            }
+            else {
+                m_errors.push_back(loc_str + ": Only pointers can be dereferenced");
+            }
         }
     }
 }

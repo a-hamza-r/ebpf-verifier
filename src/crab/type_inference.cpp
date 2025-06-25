@@ -416,7 +416,7 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
         }
         else {
             auto imm = std::get<Imm>(s.width); 
-            width_interval = interval_t{number_t{imm.v}};
+            width_interval = interval_t{imm.v};
         }
         if (auto width_number = width_interval.ub().number()) {
             int width = width_number->cast_to<int>();
@@ -425,6 +425,12 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
             }
             else {
                 m_region.check_valid_access(s, width, loc);
+                if (is_stack_ptr(reg_type) && s.access_type == AccessType::read) {
+                    auto stack_ptr = std::get<ptr_with_off_t>(*reg_type);
+                    auto offset_ptr = stack_ptr.get_offset();
+                    m_interval.check_valid_access(s, offset_ptr, interval_t::bottom(), width, true,
+                                                  loc);
+                }
             }
         }
         else {
@@ -434,7 +440,8 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
     else {
         auto rf_type = m_interval.find_interval_value(s.reg.v);
         if (rf_type) {
-            m_interval.check_valid_access(s, rf_type->get_interval_value(m_slacks), loc);
+            m_interval.check_valid_access(s, interval_t::bottom(),
+                                          rf_type->get_interval_value(m_slacks), 0, false, loc);
         }
         else {
             m_errors.push_back(loc_str + ": Access on unknown register");

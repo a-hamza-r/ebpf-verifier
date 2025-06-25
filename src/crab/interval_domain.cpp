@@ -1461,10 +1461,12 @@ void interval_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>
     }
 }
 
-void interval_domain_t::check_valid_access(const ValidAccess& s, interval_t interval,
-        location_t loc) {
+void interval_domain_t::check_valid_access(const ValidAccess& s, interval_t stack_offset,
+                                           interval_t reg_interval_value, int width,
+                                           bool check_stack_all_numeric, location_t loc) {
     // access can be checked only in the signed domain
-    m_signed.check_valid_access(s, interval, loc);
+    m_signed.check_valid_access(s, stack_offset, reg_interval_value, width,
+                                check_stack_all_numeric, loc);
 }
 
 
