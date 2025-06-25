@@ -48,6 +48,8 @@ class expression_t {
     int get_num_terms() const { return _symbol_terms.size(); }
     int8_t get_coefficient(const symbol_t &s) const;
     bool is_singleton() const;
+    bool contains_single_pkt_symbol() const;
+    expression_t substitute_for_pkt_symbols() const;
     bool contains(const symbol_t &s) const;
     symbol_t get_singleton() const;
     std::vector<symbol_t> get_slacks() const;

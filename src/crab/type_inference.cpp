@@ -421,7 +421,7 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
         if (auto width_number = width_interval.ub().number()) {
             int width = width_number->cast_to<int>();
             if (is_packet_ptr(reg_type)) {
-                m_offset.check_valid_access(s, reg_type, width, loc);
+                m_offset.check_valid_access(s, width, loc);
             }
             else {
                 m_region.check_valid_access(s, width, loc);
@@ -616,7 +616,7 @@ void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
             }
             else if (std::holds_alternative<packet_ptr_t>(type)) {
                 // packet
-                if (!m_offset.check_packet_access(u.access_reg, width, 0, true)) {
+                if (!m_offset.check_packet_access(u.access_reg, width, 0, true, loc)) {
                     m_errors.push_back(loc_str + ": Packet access out of bounds");
                 }
                 return;

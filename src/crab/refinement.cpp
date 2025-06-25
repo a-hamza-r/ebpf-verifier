@@ -146,7 +146,7 @@ interval_t refinement_t::simplify_for_subtraction(const symbol_t& dst, const sym
 static constraint_t solve_constraints(constraint_t c1, constraint_t c2, 
                                       std::shared_ptr<slacks_t> slacks) {
     // We are adding c2 to a system already containing c1
-    if (c1.is_unsat(c2, slacks)) {
+    if (c1.is_inconsistent(c2, slacks)) {
         // c1 and c2 are unsatisfiable
         // e.g., c1 := begin + 14 <= end and c2 := begin + 14 > end
         return constraint_t::false_constraint();
@@ -257,8 +257,16 @@ constraint_t refinement_t::construct_meta_end_constraint() const {
 }
 
 bool refinement_t::check_consistent(const constraint_t& c, std::shared_ptr<slacks_t> slacks) const {
-    if (c.is_bottom(slacks)) {
+    if (c.is_unsat(slacks)) {
         return false;
+    }
+    else if (c.contains_single_pkt_symbol()) {
+        // This is a specific case containing single packet symbol, we can substitute all possible
+        // values for the symbol, and check if the constraint is satisfiable
+        // for example, for begin + 14 <= 65535, we can substitute begin with 0
+        // for end <= 65535, we can substitute end with [0, 65535] and check
+        constraint_t new_c = c.substitute_for_pkt_symbols();
+        return new_c.is_sat(slacks);
     }
     else if (c.is_begin_end_constraint()) {
         return _begin_end_constraint.implies(c, slacks);
@@ -271,8 +279,10 @@ bool refinement_t::check_consistent(const constraint_t& c, std::shared_ptr<slack
     }
 }
 
-bool refinement_t::safe_access(const expression_t& access_lb, const expression_t& access_ub,
-                               bool is_comparison_check, std::shared_ptr<slacks_t> slacks) const {
+std::pair<bool, bool> refinement_t::safe_access(const expression_t& access_lb,
+                                                const expression_t& access_ub,
+                                                bool is_comparison_check,
+                                                std::shared_ptr<slacks_t> slacks) const {
     // access is at least meta
     constraint_t lb = constraint_t(expression_t::meta(), access_lb);
     bool lb_satisfied = check_consistent(lb, slacks);
@@ -283,7 +293,7 @@ bool refinement_t::safe_access(const expression_t& access_lb, const expression_t
         : constraint_t(access_ub, expression_t::end());
     bool ub_satisfied = check_consistent(ub, slacks);
 
-    return lb_satisfied && ub_satisfied;
+    return {lb_satisfied, ub_satisfied};
 }
 
 bool refinement_t::check_eq(const refinement_t &other, std::shared_ptr<slacks_t> slacks) const {

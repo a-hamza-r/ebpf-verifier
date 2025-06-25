@@ -99,11 +99,22 @@ constraint_t constraint_t::widen(const constraint_t &other, std::shared_ptr<slac
     }
 }
 
+bool constraint_t::contains_single_pkt_symbol() const {
+    // check if the contraint contains a single packet symbol: begin, end, or meta
+    return _lhs.contains_single_pkt_symbol();
+}
+
+constraint_t constraint_t::substitute_for_pkt_symbols() const {
+    return constraint_t(_lhs.substitute_for_pkt_symbols());
+}
+
 bool constraint_t::is_meta_begin_constraint() const {
+    // Handles following case: meta + sth <= begin
     return _lhs.contains(symbol_t::meta()) && _lhs.contains(symbol_t::begin());
 }
 
 bool constraint_t::is_begin_end_constraint() const {
+    // Handles following case: begin + sth <= end
     return _lhs.contains(symbol_t::begin()) && _lhs.contains(symbol_t::end());
 }
 
@@ -112,7 +123,7 @@ bool constraint_t::check_eq(const constraint_t &other, std::shared_ptr<slacks_t>
     return _lhs.check_eq(other.get_lhs(), slacks);
 }
 
-bool constraint_t::is_bottom(std::shared_ptr<slacks_t> slacks) const {
+bool constraint_t::is_unsat(std::shared_ptr<slacks_t> slacks) const {
     if (this->check_eq(constraint_t::false_constraint(), slacks)) {
         return true; // false constraint is bottom
     }
@@ -120,13 +131,21 @@ bool constraint_t::is_bottom(std::shared_ptr<slacks_t> slacks) const {
     return _lhs.check_gt(_rhs, slacks);
 }
 
+bool constraint_t::is_sat(std::shared_ptr<slacks_t> slacks) const {
+    if (this->check_eq(constraint_t::true_constraint(), slacks)) {
+        return true; // true constraint is always satisfiable
+    }
+    // lhs <= rhs is satisfiable
+    return _lhs.check_le(_rhs, slacks);
+}
+
 constraint_t constraint_t::operator+(constraint_t c2) const {
     return constraint_t(_lhs + c2.get_lhs());
 }
 
-bool constraint_t::is_unsat(constraint_t other, std::shared_ptr<slacks_t> slacks) const {
+bool constraint_t::is_inconsistent(constraint_t other, std::shared_ptr<slacks_t> slacks) const {
     // check if the other constraint is unsat with this constraint
-    return operator+(other).is_bottom(slacks);
+    return operator+(other).is_unsat(slacks);
 }
 
 bool constraint_t::implies(const constraint_t& other, std::shared_ptr<slacks_t> slacks) const {
@@ -138,7 +157,7 @@ bool constraint_t::implies(const constraint_t& other, std::shared_ptr<slacks_t> 
         return true;
     }
     // c1 => c2 iff c1 and not c2 is unsat
-    return is_unsat(std::move(other.negate()), slacks);
+    return is_inconsistent(std::move(other.negate()), slacks);
 }
 
 void constraint_t::write(std::ostream &o) const {

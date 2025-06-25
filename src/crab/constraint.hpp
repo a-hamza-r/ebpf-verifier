@@ -33,14 +33,17 @@ class constraint_t {
 
     bool is_meta_begin_constraint() const;
     bool is_begin_end_constraint() const;
+    bool contains_single_pkt_symbol() const;
+    constraint_t substitute_for_pkt_symbols() const;
     [[nodiscard]] expression_t get_lhs() const { return _lhs; }
     std::vector<symbol_t> get_slacks() const;
     bool contains(const symbol_t&) const;
     bool implies(const constraint_t&, std::shared_ptr<slacks_t>) const;
     constraint_t operator+(constraint_t) const;
     bool check_eq(const constraint_t&, std::shared_ptr<slacks_t>) const;
-    bool is_unsat(constraint_t, std::shared_ptr<slacks_t>) const;
-    bool is_bottom(std::shared_ptr<slacks_t>) const;
+    bool is_inconsistent(constraint_t, std::shared_ptr<slacks_t>) const;
+    bool is_sat(std::shared_ptr<slacks_t>) const;
+    bool is_unsat(std::shared_ptr<slacks_t>) const;
     interval_t compute_subtraction(const symbol_t&, const symbol_t&,
                                    std::shared_ptr<slacks_t>) const;
     [[nodiscard]] constraint_t negate() const;

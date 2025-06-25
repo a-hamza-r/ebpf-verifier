@@ -46,7 +46,7 @@ class refinement_t {
     bool check_eq(const refinement_t &other, std::shared_ptr<slacks_t>) const;
     void write(std::ostream &o, std::shared_ptr<slacks_t>) const;
     bool same_type(const refinement_t &other) const;
-    bool safe_access(const expression_t&, const expression_t&, bool,
+    std::pair<bool, bool> safe_access(const expression_t&, const expression_t&, bool,
                      std::shared_ptr<slacks_t>) const;
     bool check_consistent(const constraint_t&, std::shared_ptr<slacks_t>) const;
     constraint_t construct_meta_end_constraint() const;

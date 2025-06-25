@@ -658,27 +658,37 @@ void offset_domain_t::operator()(const Packet& u, location_t loc) {
 }
 
 bool offset_domain_t::check_packet_access(const Reg& r, int width, int offset,
-        bool is_comparison_check) const {
+        bool is_comparison_check, location_t loc) {
     auto begin = m_registers.find(register_t{R12_PKT_BEGIN});
+    std::string loc_str = loc.to_string();
     auto reg = m_registers.find(r.v);
-    if (!reg) return false;
+    if (!reg) {
+        m_errors.push_back(loc_str + ": Checking valid access on unknown register");
+        return false;
+    }
     auto check_lb = *reg + offset;
     auto check_ub = check_lb + width;
-    return begin->safe_access(check_lb.get_value(), check_ub.get_value(), is_comparison_check,
-                              m_slacks);
+    auto [check_lb_satisfied, check_ub_satisfied] = begin->safe_access(check_lb.get_value(),
+                                            check_ub.get_value(), is_comparison_check, m_slacks);
+    if (!check_lb_satisfied) {
+        m_errors.push_back(loc_str + ": Lower bound must be at least meta_offset");
+        return false;
+    }
+    if (!check_ub_satisfied) {
+        if (is_comparison_check) {
+            m_errors.push_back(loc_str + ": Upper bound must be at most " +
+                               std::to_string(MAX_PACKET_SIZE));
+        } else {
+            m_errors.push_back(loc_str + ": Upper bound must be at most packet size");
+        }
+        return false;
+    }
+    return true;
 }
 
-void offset_domain_t::check_valid_access(const ValidAccess& s,
-        std::optional<ptr_or_mapfd_t>& reg_type, int w, location_t loc) {
+void offset_domain_t::check_valid_access(const ValidAccess& s, int w, location_t loc) {
     bool is_comparison_check = s.width == (Value)Imm{0};
-    if (!check_packet_access(s.reg, w, s.offset, is_comparison_check)) {
-        std::string loc_str = loc.to_string();
-        if (is_comparison_check) {
-            m_errors.push_back(loc_str + ": Lower bound must be at least meta_offset and upper bound must be at most " + std::to_string(MAX_PACKET_SIZE));
-        } else {
-            m_errors.push_back(loc_str + ": Lower bound must be at least meta_offset and upper bound must be at most packet size");
-        }
-    }
+    check_packet_access(s.reg, w, s.offset, is_comparison_check, loc);
 }
 
 void offset_domain_t::operator()(const Assert &u, location_t loc) {

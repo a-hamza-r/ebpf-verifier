@@ -103,6 +103,42 @@ bool expression_t::check_gt(const expression_t &other, std::shared_ptr<slacks_t>
     return false;
 }
 
+bool expression_t::contains_single_pkt_symbol() const {
+    // check if the expression contains only one packet symbol: begin, end, or meta
+    // However, this might still contain other slack symbols.
+    int contains_single = 0;
+    int8_t coeff = 0;
+    for (const auto &[s, v] : _symbol_terms) {
+        if (!s.is_slack()) {
+            contains_single++;
+            coeff = v;
+        }
+    }
+    return (contains_single == 1 && (coeff == 1 || coeff == -1));
+}
+
+expression_t expression_t::substitute_for_pkt_symbols() const {
+    // substitute packet symbols with their values
+    interval_t begin_value = interval_t{0};
+    interval_t end_value = interval_t{0, MAX_PACKET_SIZE};
+    interval_t meta_value = interval_t{-MAX_META_SIZE, 0};
+    interval_t constant_term = _constant_term;
+    symbol_terms_t new_terms;
+
+    for (const auto &[s, v] : _symbol_terms) {
+        if (s == symbol_t::begin()) {
+            constant_term = constant_term + begin_value * interval_t{static_cast<int>(v)};
+        } else if (s == symbol_t::end()) {
+            constant_term = constant_term + end_value * interval_t{static_cast<int>(v)};
+        } else if (s == symbol_t::meta()) {
+            constant_term = constant_term + meta_value * interval_t{static_cast<int>(v)};
+        } else {
+            new_terms[s] = v; // keep other symbols as they are
+        }
+    }
+    return expression_t(new_terms, constant_term);
+}
+
 // check if an expression contains a single symbol, which can be slack or packet symbol
 bool expression_t::is_singleton() const {
     return _symbol_terms.size() == 1 && _constant_term == interval_t{0};
