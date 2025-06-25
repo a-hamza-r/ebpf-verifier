@@ -778,8 +778,8 @@ bool offset_domain_t::do_load(const Mem& b, const register_t& target_register,
         // or a numeric value (when cells contains nothing).
         for (auto const& k : m_ctx->get_keys()) {
             // The value 4 should be dynamic, however, pkt pointers are always stored as 4-byte
-            auto start = p_offset.lb();
-            auto end = p_offset.ub() + bound_t{offset+width-1};
+            auto start = p_offset.lb() + bound_t{offset};
+            auto end = start + bound_t{width-1};
             if (end < bound_t{k} || start > bound_t{k + 4 - 1}) {
                 // no overlap with stored range
                 continue;
