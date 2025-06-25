@@ -155,7 +155,7 @@ void offset_registers_t::scratch_caller_saved_registers() {
 void offset_registers_t::forget_packet_pointers(location_t loc) {
     for (uint8_t r = R0_RETURN_VALUE; r < NUM_REGISTERS-2; r++) {
         if (auto it = find(register_t{r})) {
-            if (it->get_type() == refinement_type_t::PACKET) {
+            if (it->is_packet_refinement()) {
                 operator-=(register_t{r});
             }
         }
