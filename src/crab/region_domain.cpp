@@ -641,7 +641,7 @@ void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t shared_ptr, in
     if (imm == 0) {
         if (op == Condition::Op::EQ) {
             if (nullness == nullness_t::_NULL) {
-                //m_registers.set_to_top();
+                // m_registers.set_to_top();
             }
             else if (nullness == nullness_t::NOT_NULL) {
                 m_registers.set_to_bottom();
@@ -653,7 +653,7 @@ void region_domain_t::assume_cst(Condition::Op op, ptr_with_off_t shared_ptr, in
         }
         else if (op == Condition::Op::NE) {
             if (nullness == nullness_t::NOT_NULL) {
-                //m_registers.set_to_top();
+                // m_registers.set_to_top();
             }
             else if (nullness == nullness_t::_NULL) {
                 m_registers.set_to_bottom();
@@ -882,7 +882,7 @@ void region_domain_t::do_call(const Call& u, const stack_cells_t& cells, locatio
                         goto out;
                     }
                 } else {
-                    auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::NOT_NULL,
+                    auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::MAYBE_NULL,
                                                get_map_value_size(*maybe_fd_reg));
                     set_aliases((int)r0, type);
                     m_registers.insert(r0, loc, type);
@@ -973,7 +973,7 @@ void region_domain_t::check_valid_access(const ValidAccess &s, int width, locati
             }
             if (!is_comparison_check && !s.or_null) {
                 auto nullness = ptr_with_off_type.get_nullness();
-                if (nullness == nullness_t::NOT_NULL) {
+                if (!(nullness == nullness_t::NOT_NULL)) {
                     m_errors.push_back(loc_str + ": Possible null access");
                 }
             }
