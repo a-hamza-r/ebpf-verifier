@@ -340,11 +340,8 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
                     // both packet pointers
                     m_offset(s, loc);
                 }
-                else if (is_mapfd_type(maybe_left_ptr)) {
-                    CRAB_ERROR("Mapfd type is not supported in inference domain");
-                    // both mapfds
-                }
                 else if (is_stack_ptr(maybe_left_ptr) || is_ctx_ptr(maybe_left_ptr)) {
+                    // TODO: fix this if these scenarios do not occur
                     CRAB_ERROR("Assume on stack/ctx pointers is not supported in inference domain");
                 }
                 else {
@@ -368,7 +365,6 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
             m_region.assume_cst(cond.op, shared_ptr, imm, cond.left.v, loc);
         }
         if (is_mapfd_type(maybe_left_ptr)) {
-            CRAB_ERROR("Mapfd type is not supported in inference domain");
             // left is a mapfd
             // TODO: need to work with values
         }
