@@ -255,8 +255,6 @@ offset_stack_t offset_stack_t::join(const offset_stack_t& other,
             auto rf2 = rf_cells2.first;
             int width1 = rf_cells1.second;
             int width2 = rf_cells2.second;
-            // TODO: for numerical values, the width does not have to be the same
-            // hence, handle accordingly
             if (rf1.same_type(rf2) && width1 == width2) {
                 out_stack_rfs.insert({kv.first, std::make_pair(rf1.join(rf2, slacks), width1)});
             }
@@ -284,8 +282,6 @@ offset_stack_t offset_stack_t::widen(const offset_stack_t& other,
             auto rf2 = rf_cells2.first;
             int width1 = rf_cells1.second;
             int width2 = rf_cells2.second;
-            // TODO: for numerical values, the width does not have to be the same
-            // hence, handle accordingly
             if (rf1.same_type(rf2) && width1 == width2) {
                 out_stack_rfs.insert({kv.first, std::make_pair(rf1.widen(rf2, slacks), width1)});
             }

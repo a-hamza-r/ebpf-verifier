@@ -299,8 +299,11 @@ region_stack_t region_stack_t::operator|(const region_stack_t& other) const {
             auto ptr_or_mapfd2 = ptr_or_mapfd_stack_cell2.first;
             int width1 = ptr_or_mapfd_stack_cell1.second;
             int width2 = ptr_or_mapfd_stack_cell2.second;
-            // this should be fixed in the future
-            int width_joined = std::min(width1, width2);
+            if (width1 != width2) {
+                // we only join pointers with the same width
+                continue;
+            }
+            int width_joined = width1;
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
                 auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
@@ -340,8 +343,11 @@ region_stack_t region_stack_t::widen(const region_stack_t& other) const {
             auto ptr_or_mapfd2 = ptr_or_mapfd_cells2.first;
             int width1 = ptr_or_mapfd_cells1.second;
             int width2 = ptr_or_mapfd_cells2.second;
-            // this should be fixed in the future
-            int width_joined = std::min(width1, width2);
+            if (width1 != width2) {
+                // we only widen pointers with the same width
+                continue;
+            }
+            int width_joined = width1;
             if (std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd1) &&
                     std::holds_alternative<ptr_with_off_t>(ptr_or_mapfd2)) {
                 auto ptr_with_off1 = std::get<ptr_with_off_t>(ptr_or_mapfd1);
