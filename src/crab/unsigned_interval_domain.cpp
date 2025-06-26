@@ -502,7 +502,7 @@ constexpr T truncate(T x) noexcept {
 
 void unsigned_interval_domain_t::operator()(const Un& u, location_t loc) {
     // numeric_refinement_top() creates interval_t::top()
-    auto top_rf = refinement_t::numeric_refinement_top(m_slacks);
+    auto top_rf = refinement_t::numeric_refinement_top();
     auto swap_endianness = [&](interval_t& v, auto be_or_le) {
         if (const auto n = v.singleton()) {
             if (n->fits_cast_to<int64_t>()) {

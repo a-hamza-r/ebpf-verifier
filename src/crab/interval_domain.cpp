@@ -217,7 +217,7 @@ void interval_domain_t::overflow_bounds(const register_t& lhs, number_t span, co
     }
     */
     // numeric_refinement_top() represents interval_t::top()
-    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+    refinement_t top_rf = refinement_t::numeric_refinement_top();
     if (interval.ub() - interval.lb() >= span) {
         // Interval covers the full space.
         // We do not forget the interval, as it will remove the information that it is a number.
@@ -709,7 +709,7 @@ void interval_domain_t::scratch_caller_saved_registers() {
 
 void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_stack,
         location_t loc) {
-    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+    refinement_t top_rf = refinement_t::numeric_refinement_top();
     for (const auto& [offset, width] : store_in_stack) {
         auto overlapping_cells = find_overlapping_cells_in_stack(offset, width);
         /*
@@ -737,7 +737,7 @@ void interval_domain_t::do_call(const Call& u, const stack_cells_t& store_in_sta
 
 void interval_domain_t::operator()(const Packet& u, location_t loc) {
     auto r0 = register_t{R0_RETURN_VALUE};
-    insert_in_registers(r0, loc, refinement_t::numeric_refinement_top(m_slacks));
+    insert_in_registers(r0, loc, refinement_t::numeric_refinement_top());
     scratch_caller_saved_registers();
 }
 
@@ -785,7 +785,7 @@ void interval_domain_t::assume_unsigned_lt(bool is64, bool strict,
         register_t left, Value right, location_t loc) {
 
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
-    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+    refinement_t top_rf = refinement_t::numeric_refinement_top();
     if (right_interval <= interval_t::nonnegative(64)) {
         // Both left_interval and right_interval fit in [0, INT_MAX],
         // and can be treated as both signed and unsigned values
@@ -841,7 +841,7 @@ void interval_domain_t::assume_unsigned_gt(bool is64, bool strict,
         const interval_t& right_signed, const interval_t& right_unsigned,
         register_t left, Value right, location_t loc) {
 
-    refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+    refinement_t top_rf = refinement_t::numeric_refinement_top();
     auto positive = interval_t{number_t{0}, bound_t::plus_infinity()};
     if (left_interval <= interval_t::unsigned_int(64) &&
             right_interval <= interval_t::unsigned_int(64)) {
@@ -1418,7 +1418,7 @@ bool interval_domain_t::load_from_stack(register_t reg, interval_t load_at, int 
     //if (overlapping_cells.size() == 1) {
         // only allow loading from a single cell
         if (all_numeric_in_stack(start_offset, width)) {
-            insert_in_registers(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
+            insert_in_registers(reg, loc, refinement_t::numeric_refinement_top());
             return true;
         }
     //}
@@ -1441,7 +1441,7 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
 
     if (is_ctx_ptr(basereg_type)) {
         if (!ptrs_in_ctx_range) {
-            refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+            refinement_t top_rf = refinement_t::numeric_refinement_top();
             insert_in_registers(target_register, loc, top_rf);
             return;
         }
@@ -1457,7 +1457,7 @@ void interval_domain_t::do_load(const Mem& b, const register_t& target_register,
             return;
         }
         else {
-            refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
+            refinement_t top_rf = refinement_t::numeric_refinement_top();
             insert_in_registers(target_register, loc, top_rf);
             return;
         }
@@ -1538,7 +1538,7 @@ void interval_domain_t::shl(const register_t& reg, int imm, const int finite_wid
             if (to_signed(ub_n) >= to_signed(lb_n)) {
                 insert_in_registers_signed(reg, loc, interval_t{lb_n, ub_n});
             } else {
-                insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
+                insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top());
             }
             return;
         }
@@ -1576,12 +1576,12 @@ void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_wi
         if (ub_n.narrow<int64_t>() >= lb_n.narrow<int64_t>()) {
             insert_in_registers_signed(reg, loc, interval_t{lb_n, ub_n});
         } else {
-            insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
+            insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top());
         }
         return;
     }
-    insert_in_registers_unsigned(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
-    insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top(m_slacks));
+    insert_in_registers_unsigned(reg, loc, refinement_t::numeric_refinement_top());
+    insert_in_registers_signed(reg, loc, refinement_t::numeric_refinement_top());
 }
 
 void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtracted_opt,
@@ -1749,9 +1749,9 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                 //ashr(dst_register, gsl::narrow<int32_t>(imm), finite_width, loc);
                 // TODO: implement ARSH
                 m_signed.insert_in_registers(dst_register, loc,
-                                             refinement_t::numeric_refinement_top(m_slacks));
+                                             refinement_t::numeric_refinement_top());
                 m_unsigned.insert_in_registers(dst_register, loc,
-                                               refinement_t::numeric_refinement_top(m_slacks));
+                                               refinement_t::numeric_refinement_top());
                 break;
             }
             default: {
@@ -1770,9 +1770,9 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
             case Op::MOVSX16:
             case Op::MOVSX32:
                 m_signed.insert_in_registers(dst_register, loc,
-                                            refinement_t::numeric_refinement_top(m_slacks));
+                                            refinement_t::numeric_refinement_top());
                 m_unsigned.insert_in_registers(dst_register, loc,
-                                            refinement_t::numeric_refinement_top(m_slacks));
+                                            refinement_t::numeric_refinement_top());
                 break;
             case Op::MOV: {
                 // ra = rb
@@ -1877,9 +1877,9 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                     }
                 }
                 m_signed.insert_in_registers(dst_register, loc,
-                                             refinement_t::numeric_refinement_top(m_slacks));
+                                             refinement_t::numeric_refinement_top());
                 m_unsigned.insert_in_registers(dst_register, loc,
-                                             refinement_t::numeric_refinement_top(m_slacks));
+                                             refinement_t::numeric_refinement_top());
                 break;
             }
             case Op::ARSH: {
@@ -1890,9 +1890,9 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                 //}
                 // TODO: implement ARSH
                 m_signed.insert_in_registers(dst_register, loc,
-                                             refinement_t::numeric_refinement_top(m_slacks));
+                                             refinement_t::numeric_refinement_top());
                 m_unsigned.insert_in_registers(dst_register, loc,
-                                             refinement_t::numeric_refinement_top(m_slacks));
+                                             refinement_t::numeric_refinement_top());
                 break;
             }
             default: {

@@ -95,8 +95,7 @@ class refinement_t {
         return numeric_refinement(expression_t(s));
     }
 
-    static refinement_t numeric_refinement_top(std::shared_ptr<slacks_t> slacks = nullptr) {
-        if (slacks) return numeric_refinement(interval_t::top(), slacks);
+    static refinement_t numeric_refinement_top() {
         // expression_t::top() represents a top interval
         return numeric_refinement(expression_t::top());
     }
