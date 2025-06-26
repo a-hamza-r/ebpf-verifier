@@ -831,8 +831,8 @@ void region_domain_t::operator()(const LoadVariable& u, location_t loc) {
         m_registers -= register_t{u.dst.v};
         return;
     } else {
-        auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::MAYBE_NULL,
-                              interval_t{number_t{desc->value_size}});
+        auto type = ptr_with_off_t::shared_region_ptr(0, -1, nullness_t::NOT_NULL,
+                              interval_t{desc->value_size});
         m_registers.insert(u.dst.v, loc, type);
     }
 }
