@@ -270,7 +270,7 @@ void inference_domain_t::operator()(const Call& u, location_t loc) {
                         int width = single_width->cast_to<int>();
                         stack_values.emplace_back(offset, width);
                     } else {
-                        m_errors.push_back(loc_str + ": Width for stack stores cannot be an interval");
+                        m_errors.push_back(loc_str + ": Width for stack stores is not a constant");
                     }
                 }
                 else {
@@ -391,7 +391,7 @@ void inference_domain_t::operator()(const ValidDivisor& u, location_t loc) {
     if (!thread_local_options.allow_division_by_zero) {
         interval_t to_check = u.is_signed ? maybe_signed_reg->get_interval_value(m_slacks)
                                           : maybe_unsigned_reg->get_interval_value(m_slacks);
-        if (interval_t{number_t{0}} <= to_check) {
+        if (/*to_check.is_bottom() || */interval_t{0} <= to_check) {
             m_errors.push_back(loc_str + ": Possible division by zero");
         }
     }
@@ -409,6 +409,13 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
                 return;
             }
             width_interval = width_rf->get_interval_value(m_slacks);
+            /*
+            if (width_interval.is_bottom()) {
+                // TODO: handle this case better
+                //m_errors.push_back(loc_str + ": Width is unknown for valid access");
+                return;
+            }
+            */
         }
         else {
             auto imm = std::get<Imm>(s.width); 
@@ -436,8 +443,14 @@ void inference_domain_t::operator()(const ValidAccess& s, location_t loc) {
     else {
         auto rf_type = m_interval.find_interval_value(s.reg.v);
         if (rf_type) {
-            m_interval.check_valid_access(s, interval_t::bottom(),
-                                          rf_type->get_interval_value(m_slacks), 0, false, loc);
+            auto interval_val = rf_type->get_interval_value(m_slacks);
+            /*
+            if (interval_val.is_bottom()) {
+                //m_errors.push_back(loc_str + ": Interval value for register is unknown for valid access");
+                return;
+            }
+            */
+            m_interval.check_valid_access(s, interval_t::bottom(), interval_val, 0, false, loc);
         }
         else {
             m_errors.push_back(loc_str + ": Access on unknown register");
@@ -522,8 +535,14 @@ void inference_domain_t::operator()(const ValidSize& u, location_t loc) {
 
     if (maybe_num_type) {
         auto reg_value = maybe_num_type->get_interval_value(m_slacks);
-        if ((u.can_be_zero && reg_value.lb() >= bound_t{number_t{0}})
-                || (!u.can_be_zero && reg_value.lb() > bound_t{number_t{0}})) {
+        //if (!reg_value.is_bottom()) {
+            if ((u.can_be_zero && reg_value.lb() >= bound_t{0})
+                    || (!u.can_be_zero && reg_value.lb() > bound_t{0})) {
+                return;
+            }
+        //}
+        else {
+            // TODO: handle this case better
             return;
         }
     }
@@ -581,7 +600,7 @@ void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
                                 auto rf = cell->first;
                                 auto size = cell->second;
                                 auto key_value = rf.get_interval_value(m_slacks);
-                                if (size != sizeof(uint32_t)) {
+                                if (/*key_value.is_bottom() || */size != sizeof(uint32_t)) {
                                     m_errors.push_back(loc_str + ": Array map key must be 32 bits");
                                     return;
                                 }
@@ -592,7 +611,7 @@ void inference_domain_t::operator()(const ValidMapKeyValue& u, location_t loc) {
                                 } else {
                                     m_errors.push_back(loc_str + ": Max entries is not finite");
                                 }
-                                if (key_value.lb() < bound_t{number_t{0}}) {
+                                if (key_value.lb() < bound_t{0}) {
                                     m_errors.push_back(loc_str + ": Array index underflow");
                                     return;
                                 }
@@ -659,12 +678,27 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
         src_signed_rf = m_interval.find_signed_interval_value(r.v);
         if (src_signed_rf) {
             src_signed_interval = src_signed_rf->get_interval_value(m_slacks);
+            /*
+            if (src_signed_interval->is_bottom()) {
+                // TODO: handle this case better
+                //m_errors.push_back(loc.to_string() + ": Source register has no valid value");
+                return;
+            }
+            */
         }
     }
     auto dst_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(dst_register);
     auto dst_signed_rf = m_interval.find_signed_interval_value(dst_register);
     if (dst_signed_rf) {
         dst_signed_interval = dst_signed_rf->get_interval_value(m_slacks);
+        /*
+        if (dst_signed_interval->is_bottom()) {
+            // TODO: handle this case better
+            //m_errors.push_back(loc.to_string() + ": Destination register has no valid value");
+            m_interval -= dst_register;
+            return;
+        }
+        */
     }
 
     std::string loc_str = loc.to_string();

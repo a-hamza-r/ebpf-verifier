@@ -26,6 +26,10 @@ void print_non_numeric_memory_cell(std::ostream& o, int start, int end,
 void print_numeric_memory_cell(std::ostream& o, int start, int end, crab::refinement_t n,
         bool is_signed, std::shared_ptr<crab::slacks_t> slacks) {
     crab::interval_t i = n.get_interval_value(slacks);
+    if (i.is_bottom()) {
+        o << "[" << start << "-" << end << "] : bottom";
+        return;
+    }
     if (i.is_top()) {
         if (is_signed) {
             o << "[" << start << "-" << end << "] : snumber";
@@ -79,6 +83,10 @@ void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd
 void print_numeric_register(std::ostream& o, Reg r, crab::refinement_t n, bool is_signed,
         std::shared_ptr<crab::slacks_t> slacks) {
     crab::interval_t i = n.get_interval_value(slacks);
+    if (i.is_bottom()) {
+        o << r << " : bottom";
+        return;
+    }
     if (i.is_top()) {
         if (is_signed) {
             o << r << " : snumber";

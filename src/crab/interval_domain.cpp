@@ -210,6 +210,12 @@ void interval_domain_t::overflow_bounds(const register_t& lhs, number_t span, co
     auto rf_opt = is_signed ? m_signed.find_interval_value(lhs) : m_unsigned.find_interval_value(lhs);
     if (!rf_opt) return;
     interval_t interval = rf_opt->get_interval_value(m_slacks);
+    /*
+    if (interval.is_bottom()) {
+        // TODO: Check what to do here
+        return; // No valid interval, nothing to do.
+    }
+    */
     // numeric_refinement_top() represents interval_t::top()
     refinement_t top_rf = refinement_t::numeric_refinement_top(m_slacks);
     if (interval.ub() - interval.lb() >= span) {
@@ -302,6 +308,12 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
         }
         yi = yi_opt->get_interval_value(m_slacks);
         zi = zi_opt->get_interval_value(m_slacks);
+        /*
+        if (yi.is_bottom() || zi.is_bottom()) {
+            // TODO: Check what to do here
+            return;
+        }
+        */
     } else {
         auto yi_opt = m_unsigned.find_interval_value(y);
         auto zi_opt = m_unsigned.find_interval_value(z);
@@ -311,6 +323,12 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
         }
         yi = yi_opt->get_interval_value(m_slacks);
         zi = zi_opt->get_interval_value(m_slacks);
+        /*
+        if (yi.is_bottom() || zi.is_bottom()) {
+            // TODO: Check what to do here
+            return;
+        }
+        */
     }
 
     switch (op) {
@@ -367,6 +385,12 @@ void interval_domain_t::apply(const arith_binaryop_t& op, const register_t& x, c
         }
         yi = yi_opt->get_interval_value(m_slacks);
     }
+    /*
+    if (yi.is_bottom()) {
+        // TODO: Check what to do here
+        return; // No valid interval, nothing to do.
+    }
+    */
 
     switch (op) {
         case arith_binaryop_t::ADD: xi = yi + interval_t{k}; break;
@@ -405,6 +429,12 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
         }
         yi = yi_opt->get_interval_value(m_slacks);
     }
+    /*
+    if (yi.is_bottom()) {
+        // TODO: Check what to do here
+        return; // No valid interval, nothing to do.
+    }
+    */
     interval_t zi{number_t{k.cast_to<uint64_t>()}};
 
     switch (op) {
@@ -448,6 +478,12 @@ void interval_domain_t::apply(const bitwise_binaryop_t& op, const register_t& x,
         yi = yi_opt->get_interval_value(m_slacks);
         zi = zi_opt->get_interval_value(m_slacks);
     }
+    /*
+    if (yi.is_bottom() || zi.is_bottom()) {
+        // TODO: Check what to do here
+        return; // No valid interval, nothing to do.
+    }
+    */
 
     switch (op) {
         case bitwise_binaryop_t::AND: xi = yi.And(zi); break;
@@ -533,8 +569,9 @@ void interval_domain_t::sub(const register_t& lhs, const number_t& op2, location
 // Add/subtract with overflow are both signed and unsigned. We can use either one of the two to compute the
 // result before adjusting for overflow, though if one is top we want to use the other to retain precision.
 void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
+    // TODO: Check what to do with bottom intervals in all add_overflow methods
     interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
-    if (!lhs_signed.is_top()) {
+    if (!lhs_signed.is_top() && !lhs_signed.is_bottom()) {
         apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
@@ -543,7 +580,7 @@ void interval_domain_t::add_overflow(const register_t& lhs, const register_t& op
 
 void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
     interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
-    if (!lhs_signed.is_top()) {
+    if (!lhs_signed.is_top() && !lhs_signed.is_bottom()) {
         apply_signed(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::ADD, lhs, lhs, op2, finite_width, loc);
@@ -552,7 +589,7 @@ void interval_domain_t::add_overflow(const register_t& lhs, const number_t& op2,
 
 void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op2, const int finite_width, location_t loc) {
     interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
-    if (!lhs_signed.is_top()) {
+    if (!lhs_signed.is_top() && !lhs_signed.is_bottom()) {
         apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
@@ -561,7 +598,7 @@ void interval_domain_t::sub_overflow(const register_t& lhs, const register_t& op
 
 void interval_domain_t::sub_overflow(const register_t& lhs, const number_t& op2, const int finite_width, location_t loc) {
     interval_t lhs_signed = m_signed.find_interval_value(lhs)->get_interval_value(m_slacks);
-    if (!lhs_signed.is_top()) {
+    if (!lhs_signed.is_top() && !lhs_signed.is_bottom()) {
         apply_signed(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
     } else {
         apply_unsigned(arith_binaryop_t::SUB, lhs, lhs, op2, finite_width, loc);
@@ -1296,6 +1333,7 @@ void interval_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
 
     auto left_signed = find_signed_interval_value(left)->get_interval_value(m_slacks);
     auto left_unsigned = find_unsigned_interval_value(left)->get_interval_value(m_slacks);
+    // TODO: Check if these intervals can be bottom
     auto right_signed = interval_t::bottom();
     auto right_unsigned = interval_t::bottom();
     if (std::holds_alternative<Reg>(right)) {
@@ -1476,6 +1514,7 @@ void interval_domain_t::shl(const register_t& reg, int imm, const int finite_wid
 
     if (auto interval_opt = find_unsigned_interval_value(reg)) {
         interval_t interval = interval_opt->get_interval_value(m_slacks);
+        // TODO: Check if intervals can be bottom.
         if (interval.finite_size()) {
             const number_t lb = interval.lb().number().value();
             const number_t ub = interval.ub().number().value();
@@ -1513,6 +1552,7 @@ void interval_domain_t::lshr(const register_t& reg, int imm, const int finite_wi
 
     if (auto interval_opt = find_unsigned_interval_value(reg)) {
         interval_t interval = interval_opt->get_interval_value(m_slacks);
+        // TODO: Check if intervals can be bottom.
         number_t lb_n{0};
         number_t ub_n{std::numeric_limits<uint64_t>::max() >> imm};
         if (interval.finite_size()) {
@@ -1668,6 +1708,13 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                     // AND with immediate is only a 32-bit operation so svalue and uvalue
                     // are the same.
                     auto dst_signed = m_signed.find_interval_value(dst_register)->get_interval_value(m_slacks);
+                    /*
+                    if (dst_signed.is_bottom()) {
+                        // If the value is bottom, we cannot refine it further.
+                        operator-=(dst_register);
+                        return;
+                    }
+                    */
                     auto lb = dst_signed.lb().number().value();
                     auto ub = dst_signed.ub().number().value();
                     dst_signed = dst_signed & interval_t{number_t{0}, number_t{imm}};
@@ -1796,6 +1843,7 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                 // ra <<= rb
                 if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
                     auto src_unsigned = src_unsigned_interval_opt->get_interval_value(m_slacks);
+                    // TODO: Check if intervals can be bottom.
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
                         uint64_t imm = sn->cast_to<int32_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= std::numeric_limits<int32_t>::max()) {
@@ -1815,6 +1863,7 @@ void interval_domain_t::do_bin(const Bin& bin, std::optional<interval_t> subtrac
                 // ra >>= rb
                 if (auto src_unsigned_interval_opt = find_unsigned_interval_value(src_register)) {
                     auto src_unsigned = src_unsigned_interval_opt->get_interval_value(m_slacks);
+                    // TODO: Check if intervals can be bottom.
                     if (std::optional<number_t> sn = src_unsigned.singleton()) {
                         uint64_t imm = sn->cast_to<uint64_t>() & (bin.is64 ? 63 : 31);
                         if (imm <= std::numeric_limits<int32_t>::max()) {
