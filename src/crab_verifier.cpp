@@ -100,7 +100,7 @@ static auto get_line_info(const InstructionSeq& insts) {
 }
 
 static void print_report(std::ostream& os, const checks_db& db, const InstructionSeq& prog,
-                         const bool print_line_info) {
+                         const bool print_line_info, bool print_label = true) {
     auto label_to_line_info = get_line_info(prog);
     os << "\n";
     for (auto [label, messages] : db.m_db) {
@@ -111,7 +111,10 @@ static void print_report(std::ostream& os, const checks_db& db, const Instructio
                     os << line_info->second;
                 }
             }
-            os << label << ": " << msg << "\n";
+            if (print_label) {
+                os << label << ": ";
+            }
+            os << msg << "\n";
         }
     }
     os << "\n";
@@ -130,8 +133,9 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, const crab::in
     if (thread_local_options.abstract_domain == abstract_domain_kind::INFERENCE_DOMAIN) {
         db = generate_report_inference_domain(cfg, post_invariants);
         if (thread_local_options.print_invariants) {
-            auto final_state = pre_invariants.at(label_t::exit);
-            final_state.print_ctx(std::cout); final_state.print_stack(std::cout);
+            auto entry_state = pre_invariants.at(label_t::entry);
+            // print the initial state
+            entry_state.print_state(std::cout);
             for (const label_t& label : cfg.sorted_labels()) {
                 post_invariants.at(label).print_annotated_bb(std::cout, cfg.get_node(label));
             }
@@ -272,7 +276,7 @@ ebpf_analyze_program_for_test(abstract_domain_kind domain, std::ostream& os, con
         cfg_t cfg = prepare_cfg(prog, info, options.simplify, false);
         auto [pre_invariants, post_invariants] = run_forward_analyzer(cfg, std::move(entry_inv));
         const checks_db report = get_analysis_report(std::cerr, cfg, pre_invariants, post_invariants);
-        print_report(os, report, prog, false);
+        print_report(os, report, prog, false, domain == abstract_domain_kind::EBPF_DOMAIN);
 
         auto pre_invariant_map = to_string_invariant_map(pre_invariants);
 
@@ -302,7 +306,8 @@ crab_results ebpf_verify_program(std::ostream& os, const InstructionSeq& prog, c
     crab_results results = get_ebpf_report(os, cfg, info, options, prog_opt);
     checks_db& report = results.db;
     if (options->print_failures) {
-        print_report(os, report, prog, options->print_line_info);
+        print_report(os, report, prog, options->print_line_info,
+                     options->abstract_domain == abstract_domain_kind::EBPF_DOMAIN);
     }
     if (stats) {
         stats->total_unreachable = report.total_unreachable;

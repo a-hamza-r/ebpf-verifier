@@ -11,7 +11,12 @@ std::size_t register_t::hash() const {
 }
 
 std::ostream& operator<<(std::ostream& o, const register_t& p) {
-    o << "r" << (int)p;
+    if (p == register_t{R12_PKT_BEGIN}) {
+        o << "r_offset";
+    }
+    else {
+        o << "r" << (int)p;
+    }
     return o;
 }
 
@@ -20,7 +25,7 @@ bool location_t::operator==(const location_t& other) const {
 }
 
 void location_t::write(std::ostream& o) const {
-    o << m_line_num << " in " << m_bb_label << " ";
+    o << "line#" << m_line_num << " in " << m_bb_label << " ";
 }
 
 std::string location_t::to_string() const {

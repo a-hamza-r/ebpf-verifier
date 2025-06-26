@@ -20,7 +20,7 @@ void symbol_t::write(std::ostream& o) const {
     //} else if (is_nu()) {
     //    o << "v";
     } else {
-        o << "a_" << ((uint64_t)_id-3);
+        o << "s_" << ((uint64_t)_id-3);
     }
 }
 

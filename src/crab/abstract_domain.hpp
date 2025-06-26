@@ -58,6 +58,7 @@ class abstract_domain_t {
         virtual std::vector<std::string> get_errors() = 0;
         virtual void print_ctx(std::ostream&) const = 0;
         virtual void print_stack(std::ostream&) const = 0;
+        virtual void print_state(std::ostream&) const = 0;
         virtual void print_annotated_bb(std::ostream&, const basic_block_t& bb) const = 0;
     }; // end class abstract_domain_concept
 
@@ -101,6 +102,7 @@ class abstract_domain_t {
         std::vector<std::string> get_errors() override;
         void print_ctx(std::ostream&) const override;
         void print_stack(std::ostream&) const override;
+        void print_state(std::ostream&) const override;
         void print_annotated_bb(std::ostream&, const basic_block_t& bb) const override;
     }; // end class abstract_domain_model
 
@@ -148,6 +150,7 @@ class abstract_domain_t {
     std::vector<std::string> get_errors();
     void print_ctx(std::ostream&) const;
     void print_stack(std::ostream&) const;
+    void print_state(std::ostream&) const;
     void print_annotated_bb(std::ostream&, const basic_block_t& bb) const;
 
     friend std::ostream& operator<<(std::ostream& o, const abstract_domain_t& dom);

@@ -124,13 +124,14 @@ string_invariant inference_domain_t::to_set() const {
             auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
-            elem << "stack";
+            //elem << "stack";
             if (rf) {
                 print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, rf->first,
-                                              m_slacks);
+                                              m_slacks, region_t::R_STACK);
             }
             else {
-                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, {}, m_slacks);
+                print_non_numeric_memory_cell(elem, k, k+width-1, ptr_or_mapfd, {}, m_slacks,
+                                              region_t::R_STACK);
             }
         }
         result.insert(elem.str());
@@ -142,18 +143,18 @@ string_invariant inference_domain_t::to_set() const {
         if (maybe_interval_cells_signed.has_value()) {
             std::stringstream elem;
             auto signed_interval_cells = maybe_interval_cells_signed.value();
-            elem << "stack";
+            //elem << "stack";
             print_numeric_memory_cell(elem, k, k+signed_interval_cells.second,
-                    signed_interval_cells.first, true, m_slacks);
+                    signed_interval_cells.first, true, m_slacks, region_t::R_STACK);
             result.insert(elem.str());
         }
         auto maybe_interval_cells_unsigned = m_interval.find_in_stack_unsigned(k);
         if (maybe_interval_cells_unsigned.has_value()) {
             std::stringstream elem;
             auto unsigned_interval_cells = maybe_interval_cells_unsigned.value();
-            elem << "stack";
+            //elem << "stack";
             print_numeric_memory_cell(elem, k, k+unsigned_interval_cells.second,
-                    unsigned_interval_cells.first, false, m_slacks);
+                    unsigned_interval_cells.first, false, m_slacks, region_t::R_STACK);
             result.insert(elem.str());
         }
     }
@@ -773,24 +774,53 @@ void inference_domain_t::operator()(const Mem& b, location_t loc) {
     }
 }
 
-void inference_domain_t::print_ctx(std::ostream& o) const {
-    const std::vector<uint64_t>& ctx_keys = m_region.get_ctx_keys();
-    o << "\tctx: {";
-    for (auto const& k : ctx_keys) {
-        auto dist = m_offset.find_in_ctx(k);
-        if (dist) {
-            o << "\t\t";
-            print_non_numeric_memory_cell(o, k, k+3, packet_ptr_t{}, dist, m_slacks);
+void inference_domain_t::print_state(std::ostream& o) const {
+    print_ctx(o);
+    for (uint8_t i = 0; i < NUM_REGISTERS; ++i) {
+        register_t r{i};
+        // we currently only call this function for entry point
+        location_t loc{label_t::entry, 0};
+        register_location_t r_loc{r, loc};
+        auto ptr_or_mapfd = m_region.find_ptr_or_mapfd_at_loc(r_loc);
+        auto pkt_offset = m_offset.find_refinement_at_loc(r_loc);
+        auto signed_interval = m_interval.find_signed_interval_at_loc(r_loc);
+        auto unsigned_interval = m_interval.find_unsigned_interval_at_loc(r_loc);
+        if (!ptr_or_mapfd && !pkt_offset && !signed_interval && !unsigned_interval) {
+            continue; // Skip registers that are not used
+        }
+        o << "\t";
+        if (ptr_or_mapfd) {
+            print_register(o, Reg{i}, ptr_or_mapfd, pkt_offset, {}, false, m_slacks);
+            o << ",\n";
+        }
+        else {
+            print_register(o, Reg{i}, {}, {}, signed_interval, true, m_slacks);
+            o << ",\n";
+            print_register(o, Reg{i}, {}, {}, unsigned_interval, false, m_slacks);
             o << ",\n";
         }
     }
-    o << "\t}\n";
+}
+
+void inference_domain_t::print_ctx(std::ostream& o) const {
+    const std::vector<uint64_t>& ctx_keys = m_region.get_ctx_keys();
+    //o << "\tctx: {";
+    for (auto const& k : ctx_keys) {
+        auto dist = m_offset.find_in_ctx(k);
+        if (dist) {
+            o << "\t";
+            print_non_numeric_memory_cell(o, k, k+3, packet_ptr_t{}, dist, m_slacks,
+                                          region_t::R_CTX);
+            o << ",\n";
+        }
+    }
+    //o << "\t}\n";
 }
 
 void inference_domain_t::print_stack(std::ostream& o) const {
     const std::vector<uint64_t>& stack_keys_region = m_region.get_stack_keys();
     const std::vector<uint64_t>& stack_keys_interval = m_interval.get_stack_keys();
-    o << "\tstack: {\n";
+    //o << "\tstack: {\n";
     for (auto const& k : stack_keys_region) {
         auto maybe_ptr_or_mapfd_cells = m_region.find_in_stack(k);
         auto dist = m_offset.find_in_stack(k);
@@ -798,14 +828,14 @@ void inference_domain_t::print_stack(std::ostream& o) const {
             auto ptr_or_mapfd_cells = maybe_ptr_or_mapfd_cells.value();
             int width = ptr_or_mapfd_cells.second;
             auto ptr_or_mapfd = ptr_or_mapfd_cells.first;
-            o << "\t\t";
+            o << "\t";
             if (dist) {
                 print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd),
-                        std::optional<refinement_t>(dist->first), m_slacks);
+                        std::optional<refinement_t>(dist->first), m_slacks, region_t::R_STACK);
             }
             else {
                 print_non_numeric_memory_cell(o, k, k+width-1, std::move(ptr_or_mapfd), {},
-                        m_slacks);
+                        m_slacks, region_t::R_STACK);
             }
             o << ",\n";
         }
@@ -814,21 +844,21 @@ void inference_domain_t::print_stack(std::ostream& o) const {
         auto maybe_signed_interval_cells = m_interval.find_in_stack_signed(k);
         if (maybe_signed_interval_cells) {
             auto interval_cells = maybe_signed_interval_cells.value();
-            o << "\t\t";
+            o << "\t";
             print_numeric_memory_cell(o, k, k+interval_cells.second-1,
-                    interval_cells.first, true, m_slacks);
+                    interval_cells.first, true, m_slacks, region_t::R_STACK);
             o << ",\n";
         }
         auto maybe_unsigned_interval_cells = m_interval.find_in_stack_unsigned(k);
         if (maybe_unsigned_interval_cells) {
             auto interval_cells = maybe_unsigned_interval_cells.value();
-            o << "\t\t";
+            o << "\t";
             print_numeric_memory_cell(o, k, k+interval_cells.second-1,
-                    interval_cells.first, false, m_slacks);
+                    interval_cells.first, false, m_slacks, region_t::R_STACK);
             o << ",\n";
         }
     }
-    o << "\t}\n";
+    //o << "\t}\n";
 }
 
 void inference_domain_t::adjust_bb_for_types(location_t loc) {

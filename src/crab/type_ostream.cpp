@@ -3,61 +3,80 @@
 
 #include "crab/type_ostream.hpp"
 
+void print_region(std::ostream& o, crab::region_t region) {
+    if (region == crab::region_t::R_STACK) {
+        o << "stack";
+    }
+    else if (region == crab::region_t::R_CTX) {
+        o << "ctx";
+    }
+    else if (region == crab::region_t::R_PACKET) {
+        o << "packet";
+    }
+    else if (region == crab::region_t::R_SHARED) {
+        o << "shared";
+    }
+}
+
 void print_non_numeric_memory_cell(std::ostream& o, int start, int end,
-        const crab::ptr_or_mapfd_t& ptr, std::optional<crab::refinement_t> d,
-                                   std::shared_ptr<crab::slacks_t> slacks) {
+                                   const crab::ptr_or_mapfd_t& ptr,
+                                   std::optional<crab::refinement_t> d,
+                                   std::shared_ptr<crab::slacks_t> slacks,
+                                   crab::region_t region) {
+    print_region(o, region);
+    o << "[" << start << "-" << end << "] : ";
     if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
-        o << "[" << start << "-" << end << "] : " << std::get<crab::ptr_with_off_t>(ptr);
+        o << std::get<crab::ptr_with_off_t>(ptr);
     }
     else if (std::holds_alternative<crab::packet_ptr_t>(ptr)) {
         if (d) {
-            o << "[" << start << "-" << end << "] : ";
-            d->write(o, slacks);
+            d->write(o, slacks, false); // pkt pointers are not un/signed
         }
         else {
-            o << "[" << start << "-" << end << "] : " << std::get<crab::packet_ptr_t>(ptr);
+            o << std::get<crab::packet_ptr_t>(ptr);
         }
     }
     else {
-        o << "[" << start << "-" << end << "] : " << std::get<crab::mapfd_t>(ptr);
+        o << std::get<crab::mapfd_t>(ptr);
     }
 }
 
 void print_numeric_memory_cell(std::ostream& o, int start, int end, crab::refinement_t n,
-        bool is_signed, std::shared_ptr<crab::slacks_t> slacks) {
+        bool is_signed, std::shared_ptr<crab::slacks_t> slacks, crab::region_t region) {
+    print_region(o, region);
     crab::interval_t i = n.get_interval_value(slacks);
+    o << "[" << start << "-" << end << "] : ";
     if (i.is_bottom()) {
-        o << "[" << start << "-" << end << "] : bottom";
+        o << "bottom";
         return;
     }
     if (i.is_top()) {
         if (is_signed) {
-            o << "[" << start << "-" << end << "] : snumber";
+            o << "snumber<-oo, +oo>";
         }
         else {
-            o << "[" << start << "-" << end << "] : unumber";
+            o << "unumber<-oo, +oo>";
         }
     }
     else {
-        // TODO: differentiate between signed and unsigned
-        o << "[" << start << "-" << end << "] : ";
-        n.write(o, slacks);
+        n.write(o, slacks, is_signed);
     }
 }
 
 void print_memory_cell(std::ostream& o, int start, int end,
-        const std::optional<crab::ptr_or_mapfd_t>& p, std::optional<crab::refinement_t> d
-        , std::optional<crab::refinement_t> signed_numeric,
-        std::optional<crab::refinement_t> unsigned_numeric,
-                       std::shared_ptr<crab::slacks_t> slacks) {
+                       std::optional<crab::ptr_or_mapfd_t> p,
+                       std::optional<crab::refinement_t> d,
+                       std::optional<crab::refinement_t> signed_numeric,
+                       std::optional<crab::refinement_t> unsigned_numeric,
+                       std::shared_ptr<crab::slacks_t> slacks, crab::region_t region) {
     if (signed_numeric) {
-        print_numeric_memory_cell(o, start, end, *signed_numeric, true, slacks);
+        print_numeric_memory_cell(o, start, end, *signed_numeric, true, slacks, region);
     }
     if (unsigned_numeric) {
-        print_numeric_memory_cell(o, start, end, *unsigned_numeric, false, slacks);
+        print_numeric_memory_cell(o, start, end, *unsigned_numeric, false, slacks, region);
     }
     else if (p) {
-        print_non_numeric_memory_cell(o, start, end, *p, d, slacks);
+        print_non_numeric_memory_cell(o, start, end, *p, d, slacks, region);
     }
 }
 
@@ -69,7 +88,7 @@ void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd
     else if (std::holds_alternative<crab::packet_ptr_t>(ptr)) {
         if (d) {
             o << r << " : ";
-            d->write(o, slacks);
+            d->write(o, slacks, false); // pkt pointers are not un/signed
         }
         else {
             o << r << " : " << std::get<crab::packet_ptr_t>(ptr);
@@ -89,15 +108,15 @@ void print_numeric_register(std::ostream& o, Reg r, crab::refinement_t n, bool i
     }
     if (i.is_top()) {
         if (is_signed) {
-            o << r << " : snumber";
+            o << r << " : snumber<-oo, +oo>";
         }
         else {
-            o << r << " : unumber";
+            o << r << " : unumber<-oo, +oo>";
         }
     }
     else {
         o << r << " : ";
-        n.write(o, slacks);
+        n.write(o, slacks, is_signed);
     }
 }
 

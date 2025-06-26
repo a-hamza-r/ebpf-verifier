@@ -45,7 +45,7 @@ class refinement_t {
     constraint_t assume_le(const refinement_t &other) const;
     constraint_t assume_gt(const refinement_t &other) const;
     bool check_eq(const refinement_t &other, std::shared_ptr<slacks_t>) const;
-    void write(std::ostream &o, std::shared_ptr<slacks_t>) const;
+    void write(std::ostream &o, std::shared_ptr<slacks_t>, bool) const;
     bool same_type(const refinement_t &other) const;
     std::pair<bool, bool> safe_access(const expression_t&, const expression_t&, bool,
                      std::shared_ptr<slacks_t>) const;

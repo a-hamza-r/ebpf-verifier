@@ -37,12 +37,18 @@ std::vector<symbol_t> refinement_t::get_all_slacks() const {
     return slacks;
 }
 
-void refinement_t::write(std::ostream& o, std::shared_ptr<slacks_t> slack_intervs) const {
+void refinement_t::write(std::ostream& o, std::shared_ptr<slacks_t> slack_intervs,
+                         bool is_signed) const {
     std::vector<symbol_t> slack_vars = get_all_slacks();
     bool has_extra_info = _contains_pkt_constraints || !slack_vars.empty();
-    if (has_extra_info) o << "{";
+    if (has_extra_info) o << "{ ";
     if (is_numeric_refinement()) {
-        o << "num<" << _value << ">";
+        if (is_signed) {
+            o << "snumber<" << _value << ">";
+        }
+        else {
+            o << "unumber<" << _value << ">";
+        }
     }
     else if (is_packet_refinement()) {
         o << "pkt<" << _value << ">";
@@ -67,7 +73,7 @@ void refinement_t::write(std::ostream& o, std::shared_ptr<slacks_t> slack_interv
         }
         i++;
     }
-    if (has_extra_info) o << "}";
+    if (has_extra_info) o << " }";
 }
 
 refinement_t refinement_t::operator+(interval_t i) const {

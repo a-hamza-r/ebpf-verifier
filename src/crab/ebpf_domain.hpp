@@ -85,6 +85,7 @@ class ebpf_domain_t final {
     void write(std::ostream& o) const;
     void print_ctx(const std::ostream& o) const {}
     void print_stack(const std::ostream& o) const {}
+    void print_state(std::ostream& o) const {}
     void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {}
 
     void initialize_loop_counter(const label_t& label);

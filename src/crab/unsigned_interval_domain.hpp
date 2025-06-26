@@ -163,6 +163,7 @@ class unsigned_interval_domain_t final {
     void store_in_stack(const Mem&, uint64_t, int);
     void print_ctx(std::ostream& o) const {};
     void print_stack(std::ostream& o) const {};
+    void print_state(std::ostream& o) const {}
     void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {};
 }; // end unsigned_interval_domain_t
 

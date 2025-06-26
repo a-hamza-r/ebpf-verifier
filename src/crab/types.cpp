@@ -8,13 +8,13 @@ namespace crab {
 inline std::string region_to_string(const region_t& r) noexcept {
     switch (r) {
         case region_t::R_CTX:
-            return "ctx_p";
+            return "ctx";
         case region_t::R_STACK:
-            return "stack_p";
+            return "stk";
         case region_t::R_SHARED:
-            return "shared_p";
+            return "shared";
         case region_t::R_PACKET:
-            return "packet_p";
+            return "pkt";
         default:
             __builtin_unreachable();
     }
@@ -130,7 +130,7 @@ std::ostream& operator<<(std::ostream& o, const ptr_with_off_t& p) {
 }
 
 std::ostream& operator<<(std::ostream& o, const packet_ptr_t& p) {
-    o << "packet_p";
+    o << "pkt";
     return o;
 }
 

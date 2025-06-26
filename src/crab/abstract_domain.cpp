@@ -123,6 +123,11 @@ void abstract_domain_t::abstract_domain_model<Domain>::print_stack(std::ostream&
 }
 
 template <typename Domain>
+void abstract_domain_t::abstract_domain_model<Domain>::print_state(std::ostream& o) const {
+    m_abs_val.print_state(o);
+}
+
+template <typename Domain>
 void abstract_domain_t::abstract_domain_model<Domain>::print_annotated_bb(std::ostream& o,
                                                                 const basic_block_t& bb) const {
     m_abs_val.print_annotated_bb(o, bb);
@@ -316,6 +321,8 @@ void abstract_domain_t::set_require_check(check_require_func_t f) { m_concept->s
 void abstract_domain_t::print_ctx(std::ostream& o) const { m_concept->print_ctx(o); }
 
 void abstract_domain_t::print_stack(std::ostream& o) const { m_concept->print_stack(o); }
+
+void abstract_domain_t::print_state(std::ostream& o) const { m_concept->print_state(o); }
 
 void abstract_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {
     m_concept->print_annotated_bb(o, bb);
