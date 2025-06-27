@@ -95,7 +95,7 @@ region_registers_t region_registers_t::operator|(const region_registers_t& other
     // the bb label, we can fix
     location_t loc = location_t::top();
 
-    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (m_cur_register_def[i] == nullptr || other.m_cur_register_def[i] == nullptr) continue;
         auto maybe_ptr1 = find(register_t{i});
         auto maybe_ptr2 = other.find(register_t{i});
@@ -126,7 +126,7 @@ region_registers_t region_registers_t::operator|(const region_registers_t& other
 }
 
 bool region_registers_t::operator<=(const region_registers_t& other) const {
-    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (other.m_cur_register_def[i] == nullptr) continue;
         if (m_cur_register_def[i] == nullptr) return false;
         auto maybe_ptr1 = find(register_t{i});
@@ -164,7 +164,7 @@ region_registers_t region_registers_t::widen(const region_registers_t& other) co
     region_registers_t joined_reg_types;
 
     location_t loc = location_t::top();
-    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (other.m_cur_register_def[i] == nullptr) continue;
         auto maybe_ptr1 = find(register_t{i});
         auto maybe_ptr2 = other.find(register_t{i});
@@ -241,7 +241,7 @@ std::optional<ptr_or_mapfd_t> region_registers_t::find(register_t key) const {
 }
 
 void region_registers_t::adjust_bb_for_registers(location_t loc) {
-    for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
+    for (uint8_t i = 0; i < NUM_REGISTERS; i++) {
         if (auto it = find(register_t{i})) {
             insert(register_t{i}, loc, *it);
         }

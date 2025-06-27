@@ -455,27 +455,32 @@ void offset_domain_t::operator()(const Assume &b, location_t loc) {
         if (!rf_left || !rf_right) {
             // this should not happen, comparison between a packet pointer and either
             // other region's pointers or numbers; possibly raise type error
-            m_errors.push_back("one of the pointers being compared isn't packet pointer");
+            m_errors.push_back(loc.to_string() + ": Both registers are not packet pointers.");
             return;
         }
-        auto begin = m_registers.find(register_t{R12_PKT_BEGIN});
+        register_t pkt_begin{R12_PKT_BEGIN};
+        auto begin = m_registers.find(pkt_begin);
         if (cond.op == Condition::Op::LE) {
             begin->add_constraint(rf_left->assume_le(*rf_right), m_slacks);
-            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
+            m_registers.insert(pkt_begin, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GT) {
             begin->add_constraint(rf_left->assume_gt(*rf_right), m_slacks);
-            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
+            m_registers.insert(pkt_begin, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::GE) {
             begin->add_constraint(rf_right->assume_le(*rf_left), m_slacks);
-            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
+            m_registers.insert(pkt_begin, loc, std::move(*begin));
         }
         else if (cond.op == Condition::Op::LT) {
             begin->add_constraint(rf_right->assume_gt(*rf_left), m_slacks);
-            m_registers.insert(register_t{R12_PKT_BEGIN}, loc, std::move(*begin));
+            m_registers.insert(pkt_begin, loc, std::move(*begin));
         }
         // other comparisons not supported
+
+        // To keep the info about the packet pointer, we store the types here again
+        m_registers.insert(register_t{cond.left.v}, loc, *rf_left);
+        m_registers.insert(register_t{right_reg}, loc, *rf_right);
     }
 }
 

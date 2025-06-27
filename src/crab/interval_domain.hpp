@@ -174,7 +174,7 @@ class interval_domain_t final {
     void remove_overlap_in_stack(const std::vector<uint64_t>&, uint64_t, int);
     void fill_values_in_stack(const std::vector<uint64_t>&, uint64_t, int);
     void print_stack(std::ostream& o) const {};
-    void print_state(std::ostream& o) const {}
+    void print_state_init(std::ostream& o, label_t) const {}
     void print_ctx(std::ostream& o) const {};
     void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {};
     [[nodiscard]] std::vector<std::string>& get_errors() {

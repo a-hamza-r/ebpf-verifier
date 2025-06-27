@@ -1331,15 +1331,21 @@ void interval_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
         Value right, location_t loc) {
     using Op = Condition::Op;
 
-    auto left_signed = find_signed_interval_value(left)->get_interval_value(m_slacks);
-    auto left_unsigned = find_unsigned_interval_value(left)->get_interval_value(m_slacks);
+    auto left_signed_rf = find_signed_interval_value(left);
+    auto left_unsigned_rf = find_unsigned_interval_value(left);
+    auto left_signed = left_signed_rf->get_interval_value(m_slacks);
+    auto left_unsigned = left_unsigned_rf->get_interval_value(m_slacks);
     // TODO: Check if these intervals can be bottom
     auto right_signed = interval_t::bottom();
     auto right_unsigned = interval_t::bottom();
+    std::optional<refinement_t> right_signed_rf;
+    std::optional<refinement_t> right_unsigned_rf;
     if (std::holds_alternative<Reg>(right)) {
         auto right_reg = register_t{std::get<Reg>(right).v};
-        right_signed = find_signed_interval_value(right_reg)->get_interval_value(m_slacks);
-        right_unsigned = find_unsigned_interval_value(right_reg)->get_interval_value(m_slacks);
+        right_signed_rf = find_signed_interval_value(right_reg);
+        right_unsigned_rf = find_unsigned_interval_value(right_reg);
+        right_signed = right_signed_rf->get_interval_value(m_slacks);
+        right_unsigned = right_unsigned_rf->get_interval_value(m_slacks);
     } else if (std::holds_alternative<Imm>(right)) {
         auto right_imm = std::get<Imm>(right).v;
         right_signed = interval_t{number_t{right_imm}};
@@ -1382,6 +1388,29 @@ void interval_domain_t::assume_cst(Condition::Op op, bool is64, register_t left,
             assume_unsigned_cst(op, is64, left_signed, left_unsigned, right_signed,
                     right_unsigned, left, right, loc);
             break;
+        }
+    }
+    // This is done to keep the required refinement info at the location
+    // if no new refinement was inserted, we insert the old known refinement
+    register_location_t reg_left_loc{left, loc};
+    auto left_signed_value = find_signed_interval_at_loc(reg_left_loc);
+    auto left_unsigned_value = find_unsigned_interval_at_loc(reg_left_loc);
+    if (!left_signed_value) {
+        m_signed.insert_in_registers(left, loc, *left_signed_rf);
+    }
+    if (!left_unsigned_value) {
+        m_unsigned.insert_in_registers(left, loc, *left_unsigned_rf);
+    }
+    if (auto pright_reg = std::get_if<Reg>(&right)) {
+        register_t reg_right{pright_reg->v};
+        register_location_t reg_right_loc{reg_right, loc};
+        auto right_signed_v = find_signed_interval_at_loc(reg_right_loc);
+        auto right_unsigned_v = find_unsigned_interval_at_loc(reg_right_loc);
+        if (!right_signed_v) {
+            m_signed.insert_in_registers(reg_right, loc, *right_signed_rf);
+        }
+        if (!right_unsigned_v) {
+            m_unsigned.insert_in_registers(reg_right, loc, *right_unsigned_rf);
         }
     }
 }

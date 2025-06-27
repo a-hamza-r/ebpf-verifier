@@ -80,7 +80,7 @@ void print_memory_cell(std::ostream& o, int start, int end,
     }
 }
 
-void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd_t& ptr,
+void print_non_numeric_register(std::ostream& o, crab::register_t r, const crab::ptr_or_mapfd_t& ptr,
         std::optional<crab::refinement_t> d, std::shared_ptr<crab::slacks_t> slacks) {
     if (std::holds_alternative<crab::ptr_with_off_t>(ptr)) {
         o << r << " : " << std::get<crab::ptr_with_off_t>(ptr);
@@ -99,7 +99,7 @@ void print_non_numeric_register(std::ostream& o, Reg r, const crab::ptr_or_mapfd
     }
 }
 
-void print_numeric_register(std::ostream& o, Reg r, crab::refinement_t n, bool is_signed,
+void print_numeric_register(std::ostream& o, crab::register_t r, crab::refinement_t n, bool is_signed,
         std::shared_ptr<crab::slacks_t> slacks) {
     crab::interval_t i = n.get_interval_value(slacks);
     if (i.is_bottom()) {
@@ -120,49 +120,85 @@ void print_numeric_register(std::ostream& o, Reg r, crab::refinement_t n, bool i
     }
 }
 
-void print_register(std::ostream& o, Reg r, const std::optional<crab::ptr_or_mapfd_t>& p,
-        const std::optional<crab::refinement_t>& d, const std::optional<crab::refinement_t>& numeric,
-        bool is_signed, std::shared_ptr<crab::slacks_t> slacks) {
-    if (numeric) print_numeric_register(o, r, *numeric, is_signed, slacks);
-    else if (p) print_non_numeric_register(o, r, *p, d, slacks);
-    else o << r << " : unknown";
+void print_register(std::ostream& o, Reg r,
+                    std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd,
+                    std::optional<crab::refinement_t> offset,
+                    std::optional<crab::refinement_t> numeric,
+                    bool is_signed,
+                    std::shared_ptr<crab::slacks_t> slacks) {
+    crab::register_t reg(r.v);
+    if (ptr_or_mapfd) {
+        print_non_numeric_register(o, reg, *ptr_or_mapfd, offset, slacks);
+    }
+    else if (numeric) {
+        print_numeric_register(o, reg, *numeric, is_signed, slacks);
+    }
+    else {
+        o << reg << " : unknown";
+    }
 }
 
 inline std::string size_(int w) { return std::string("u") + std::to_string(w * 8); }
 
-void print_annotated(std::ostream& o, const Call& call, std::optional<crab::ptr_or_mapfd_t>& p,
-                     std::optional<crab::refinement_t>& d,
-                     std::optional<crab::refinement_t>& n, bool is_signed,
+void print_annotated(std::ostream& o, const Call& call,
+                     std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd,
+                     std::optional<crab::refinement_t> offset,
+                     std::optional<crab::refinement_t> signed_numeric,
+                     std::optional<crab::refinement_t> unsigned_numeric,
                      std::shared_ptr<crab::slacks_t> slacks) {
     o << "  ";
-    print_register(o, Reg{(uint8_t)R0_RETURN_VALUE}, p, d, n, is_signed, slacks);
-    o << " = " << call.name << ":" << call.func << "(...)\n";
+    Reg r0 = Reg{R0_RETURN_VALUE};
+    print_register(o, r0, ptr_or_mapfd, offset, signed_numeric, true, slacks);
+    o << " = " << call.name << ":" << call.func << "(...)";
+    if (unsigned_numeric) {
+        o << "\n\t\t\t";
+        print_register(o, r0, {}, {}, unsigned_numeric, false, slacks);
+    }
+    o << "\n";
 }
 
-void print_annotated(std::ostream& o, const Bin& b, std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::refinement_t>& d, std::optional<crab::refinement_t>& n,
-        bool is_signed, std::shared_ptr<crab::slacks_t> slacks) {
+void print_annotated(std::ostream& o, const Bin& b,
+                     std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd,
+                     std::optional<crab::refinement_t> offset,
+                     std::optional<crab::refinement_t> signed_numeric,
+                     std::optional<crab::refinement_t> unsigned_numeric,
+                     std::shared_ptr<crab::slacks_t> slacks) {
     o << "  ";
-    print_register(o, b.dst, p, d, n, is_signed, slacks);
-    o << " " << b.op << "= " << b.v << "\n";
+    print_register(o, b.dst, ptr_or_mapfd, offset, signed_numeric, true, slacks);
+    o << " " << b.op << "= " << b.v;
+    if (unsigned_numeric) {
+        o << "\n\t\t\t";
+        print_register(o, b.dst, {}, {}, unsigned_numeric, false, slacks);
+    }
+    o << "\n";
 }
 
-void print_annotated(std::ostream& o, const LoadMapFd& u, std::optional<crab::ptr_or_mapfd_t>& p) {
+void print_annotated(std::ostream& o, const LoadMapFd& u,
+                     std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd) {
     o << "  ";
-    print_register(o, u.dst, p, std::nullopt, std::nullopt, false, nullptr);
+    print_register(o, u.dst, ptr_or_mapfd, {}, {}, false, nullptr);
     o << " = map_fd " << u.mapfd << "\n";
 }
 
-void print_annotated(std::ostream& o, const Mem& b, std::optional<crab::ptr_or_mapfd_t>& p,
-        std::optional<crab::refinement_t>& d, std::optional<crab::refinement_t>& n, bool is_signed,
+void print_annotated(std::ostream& o, const Mem& b,
+                     std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd,
+                     std::optional<crab::refinement_t> offset,
+                     std::optional<crab::refinement_t> signed_numeric,
+                     std::optional<crab::refinement_t> unsigned_numeric,
                      std::shared_ptr<crab::slacks_t> slacks) {
+    // This is load operation
     o << "  ";
-    print_register(o, std::get<Reg>(b.value), p, d, n, is_signed, slacks);
+    print_register(o, std::get<Reg>(b.value), ptr_or_mapfd, offset, signed_numeric, true, slacks);
     o << " = ";
     std::string sign = b.access.offset < 0 ? " - " : " + ";
-    int offset = std::abs(b.access.offset);
+    int offset_int = std::abs(b.access.offset);
     o << "*(" << size_(b.access.width) << " *)";
-    o << "(" << b.access.basereg << sign << offset << ")\n";
+    o << "(" << b.access.basereg << sign << offset_int << ")";
+    if (unsigned_numeric) {
+        o << "\n\t\t\t";
+        print_register(o, std::get<Reg>(b.value), {}, {}, unsigned_numeric, false, slacks);
+    }
+    o << "\n";
 }
 
 std::string op(Un::Op op) {
@@ -186,11 +222,18 @@ std::string op(Un::Op op) {
     }
 }
 
-void print_annotated(std::ostream& o, const Un& b, std::optional<crab::refinement_t>& n,
-        bool is_signed, std::shared_ptr<crab::slacks_t> slacks) {
+void print_annotated(std::ostream& o, const Un& b,
+                     std::optional<crab::refinement_t> signed_numeric,
+                     std::optional<crab::refinement_t> unsigned_numeric,
+                     std::shared_ptr<crab::slacks_t> slacks) {
     o << "  ";
-    print_register(o, b.dst, std::nullopt, std::nullopt, n, is_signed, slacks);
-    o << " = " << op(b.op) << " " << b.dst << "\n";
+    print_register(o, b.dst, {}, {}, signed_numeric, true, slacks);
+    o << " = " << op(b.op) << " " << b.dst;
+    if (unsigned_numeric) {
+        o << "\n\t\t\t";
+        print_register(o, b.dst, {}, {}, unsigned_numeric, false, slacks);
+    }
+    o << "\n";
 }
 
 void print_bb(std::ostream& o, const basic_block_t& bb) {

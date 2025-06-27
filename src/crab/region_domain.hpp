@@ -194,7 +194,7 @@ class region_domain_t final {
     void adjust_bb_for_types(location_t);
     void print_ctx(std::ostream& o) const {}
     void print_stack(std::ostream& o) const {}
-    void print_state(std::ostream& o) const {}
+    void print_state_init(std::ostream& o, label_t) const {}
     void print_annotated_bb(std::ostream& o, const basic_block_t& bb) const {};
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void reset_errors() { m_errors.clear(); }

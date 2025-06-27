@@ -134,10 +134,11 @@ static checks_db get_analysis_report(std::ostream& s, cfg_t& cfg, const crab::in
         db = generate_report_inference_domain(cfg, post_invariants);
         if (thread_local_options.print_invariants) {
             auto entry_state = pre_invariants.at(label_t::entry);
-            // print the initial state
-            entry_state.print_state(std::cout);
+            entry_state.print_ctx(s);
             for (const label_t& label : cfg.sorted_labels()) {
-                post_invariants.at(label).print_annotated_bb(std::cout, cfg.get_node(label));
+                const auto& post_inv = post_invariants.at(label);
+                post_inv.print_state_init(s, label);
+                post_inv.print_annotated_bb(s, cfg.get_node(label));
             }
         }
     }

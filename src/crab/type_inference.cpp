@@ -93,27 +93,18 @@ string_invariant inference_domain_t::to_set() const {
     if (is_top()) return string_invariant::top();
     std::set<std::string> result;
     for (uint8_t i = 0; i < NUM_REGISTERS-2; i++) {
-        auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(register_t{i});
-        auto maybe_rf = m_offset.find_refinement_info(register_t{i});
-        if (maybe_ptr_or_mapfd.has_value()) {
+        /*
+        register_t reg{i};
+        auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(reg);
+        auto maybe_rf = m_offset.find_refinement_info(reg);
+        auto maybe_signed = m_interval.find_signed_interval_value(reg);
+        auto maybe_unsigned = m_interval.find_unsigned_interval_value(reg);
             std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, {}, false, m_slacks);
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, maybe_signed, true, m_slacks);
+            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, maybe_unsigned, false, m_slacks);
             result.insert(elem.str());
         }
-        auto maybe_signed_interval = m_interval.find_signed_interval_value(register_t{i});
-        if (maybe_signed_interval.has_value()) {
-            std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf, maybe_signed_interval, true,
-                           m_slacks);
-            result.insert(elem.str());
-        }
-        auto maybe_unsigned_interval = m_interval.find_unsigned_interval_value(register_t{i});
-        if (maybe_unsigned_interval.has_value()) {
-            std::stringstream elem;
-            print_register(elem, Reg{i}, maybe_ptr_or_mapfd, maybe_rf,
-                    maybe_unsigned_interval, false, m_slacks);
-            result.insert(elem.str());
-        }
+        */
     }
    const std::vector<uint64_t>& stack_keys_region = m_region.get_stack_keys();
     for (auto const& k : stack_keys_region) {
@@ -323,23 +314,29 @@ static inline bool same_type(const std::optional<ptr_or_mapfd_t>& ptr_or_mapfd1,
 
 void inference_domain_t::operator()(const Assume& s, location_t loc) {
     Condition cond = s.cond;
-    const auto maybe_left_ptr = m_region.find_ptr_or_mapfd_type(cond.left.v);
-    const auto maybe_left_rf = m_interval.find_interval_value(cond.left.v);
+    register_t left_reg{cond.left.v};
+    const auto maybe_left_ptr = m_region.find_ptr_or_mapfd_type(left_reg);
+    const auto maybe_left_rf = m_interval.find_interval_value(left_reg);
     assert(!maybe_left_ptr.has_value() || !maybe_left_rf.has_value());
     if (const auto pright_reg = std::get_if<Reg>(&cond.right)) {
-        const auto maybe_right_ptr = m_region.find_ptr_or_mapfd_type(pright_reg->v);
-        const auto maybe_right_rf = m_interval.find_interval_value(pright_reg->v);
+        register_t right_reg{pright_reg->v};
+        const auto maybe_right_ptr = m_region.find_ptr_or_mapfd_type(right_reg);
+        const auto maybe_right_rf = m_interval.find_interval_value(right_reg);
         assert(!maybe_right_ptr.has_value() || !maybe_right_rf.has_value());
         if (same_type(maybe_left_ptr, maybe_right_ptr, maybe_left_rf, maybe_right_rf)) {
             if (maybe_left_rf) {
                 // both numbers
-                m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v},
-                        cond.right, loc);
+                m_interval.assume_cst(cond.op, cond.is64, left_reg, cond.right, loc);
             }
             else if (maybe_left_ptr) {
                 if (is_packet_ptr(maybe_left_ptr)) {
                     // both packet pointers
                     m_offset(s, loc);
+                    register_t begin_reg{R12_PKT_BEGIN};
+                    // We keep relevant information at the instruction location
+                    m_region.insert_in_registers(begin_reg, loc, packet_ptr_t{});
+                    m_region.insert_in_registers(left_reg, loc, packet_ptr_t{});
+                    m_region.insert_in_registers(right_reg, loc, packet_ptr_t{});
                 }
                 else {
                     // We do not currently support any assumptions on pointers other than packets
@@ -358,14 +355,14 @@ void inference_domain_t::operator()(const Assume& s, location_t loc) {
             // left is a shared pointer
             const int64_t imm = gsl::narrow_cast<int64_t>(std::get<Imm>(cond.right).v);
             auto shared_ptr = std::get<ptr_with_off_t>(*maybe_left_ptr);
-            m_region.assume_cst(cond.op, shared_ptr, imm, cond.left.v, loc);
+            m_region.assume_cst(cond.op, shared_ptr, imm, left_reg, loc);
         }
         if (is_mapfd_type(maybe_left_ptr)) {
             // left is a mapfd
             // Checks on mapfd values do not affect the program safety reasoning; revisit in future
         }
         else if (maybe_left_rf) {
-            m_interval.assume_cst(cond.op, cond.is64, register_t{cond.left.v}, cond.right, loc);
+            m_interval.assume_cst(cond.op, cond.is64, left_reg, cond.right, loc);
         }
     }
 }
@@ -735,15 +732,31 @@ void inference_domain_t::operator()(const Bin& bin, location_t loc) {
     m_offset.do_bin(bin, dst_signed_rf, src_signed_rf, loc);
 }
 
-void inference_domain_t::do_load(const Mem& b, const Reg& target_reg,
+void inference_domain_t::do_load(const Mem& b, const Reg& target,
         std::optional<ptr_or_mapfd_t> basereg_opt, location_t loc) {
-    bool loaded_in_region = m_region.do_load(b, register_t{target_reg.v}, loc);
-    bool ptrs_in_range = m_offset.do_load(b, register_t{target_reg.v}, basereg_opt, loc);
-    m_interval.do_load(b, register_t{target_reg.v}, basereg_opt, loaded_in_region, ptrs_in_range,
-                       loc);
+    register_t target_reg{target.v};
+    register_t basereg{b.access.basereg.v};
+    bool loaded_in_region = m_region.do_load(b, target_reg, loc);
+    bool ptrs_in_range = m_offset.do_load(b, target_reg, basereg_opt, loc);
+    m_interval.do_load(b, target_reg, basereg_opt, loaded_in_region, ptrs_in_range, loc);
+    if (target_reg != basereg) {
+        // this is done to keep relevant basereg info at the loc
+        m_region.insert_in_registers(basereg, loc, *basereg_opt);
+        if (is_packet_ptr(basereg_opt)) {
+            const auto offset_info = m_offset.find_refinement_info(basereg);
+            m_offset.insert_in_registers(basereg, loc, *offset_info);
+        }
+    }
 }
 
 void inference_domain_t::do_mem_store(const Mem& b, std::optional<ptr_or_mapfd_t>& basereg_opt, location_t loc) {
+    register_t basereg{b.access.basereg.v};
+    // this is done to keep relevant basereg info at the loc
+    m_region.insert_in_registers(basereg, loc, *basereg_opt);
+    if (is_packet_ptr(basereg_opt)) {
+        const auto offset_info = m_offset.find_refinement_info(basereg);
+        m_offset.insert_in_registers(basereg, loc, *offset_info);
+    }
     m_region.do_mem_store(b, loc);
     m_interval.do_mem_store(b, basereg_opt);
     m_offset.do_mem_store(b, basereg_opt);
@@ -774,12 +787,11 @@ void inference_domain_t::operator()(const Mem& b, location_t loc) {
     }
 }
 
-void inference_domain_t::print_state(std::ostream& o) const {
-    print_ctx(o);
+void inference_domain_t::print_state_init(std::ostream& o, label_t label) const {
+    location_t loc{label, 0};
     for (uint8_t i = 0; i < NUM_REGISTERS; ++i) {
         register_t r{i};
         // we currently only call this function for entry point
-        location_t loc{label_t::entry, 0};
         register_location_t r_loc{r, loc};
         auto ptr_or_mapfd = m_region.find_ptr_or_mapfd_at_loc(r_loc);
         auto pkt_offset = m_offset.find_refinement_at_loc(r_loc);
@@ -795,7 +807,7 @@ void inference_domain_t::print_state(std::ostream& o) const {
         }
         else {
             print_register(o, Reg{i}, {}, {}, signed_interval, true, m_slacks);
-            o << ",\n";
+            o << ",\n\t";
             print_register(o, Reg{i}, {}, {}, unsigned_interval, false, m_slacks);
             o << ",\n";
         }
@@ -869,7 +881,6 @@ void inference_domain_t::adjust_bb_for_types(location_t loc) {
 
 void inference_domain_t::operator()(const basic_block_t& bb) {
 
-    // A temporary fix to avoid printing errors for multiple basic blocks
     m_errors.clear();
     m_region.reset_errors();
     m_offset.reset_errors();
@@ -1168,60 +1179,103 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
 
     o << bb.label() << ":\n";
     uint32_t curr_pos = 0;
-    // TODO: add support for printing unsigned intervals as well
     for (const Instruction& statement : bb) {
         ++curr_pos;
         crab::location_t loc{bb.label(), curr_pos};
         o << "   " << curr_pos << ".";
-        // TODO: print unsigned intervals in a proper way
-        if (std::holds_alternative<Call>(statement)) {
+        if (const auto call = std::get_if<Call>(&statement)) {
             auto r0_reg = crab::register_location_t(register_t{R0_RETURN_VALUE}, loc);
             auto region = find_ptr_or_mapfd_at_loc(r0_reg);
             auto rf = find_refinement_at_loc(r0_reg);
             auto signed_interval = find_signed_interval_at_loc(r0_reg);
-            print_annotated(o, std::get<Call>(statement), region, rf, signed_interval, true,
-                            m_slacks);
             auto unsigned_interval = find_unsigned_interval_at_loc(r0_reg);
-            //print_annotated(o, std::get<Call>(statement), region, unsigned_interval, false,
-            //                            m_slacks);
+            print_annotated(o, *call, region, rf, signed_interval, unsigned_interval, m_slacks);
         }
-        else if (std::holds_alternative<Bin>(statement)) {
-            auto b = std::get<Bin>(statement);
-            auto register_location = crab::register_location_t(b.dst.v, loc);
+        else if (const auto bin = std::get_if<Bin>(&statement)) {
+            auto register_location = crab::register_location_t(bin->dst.v, loc);
             auto region = find_ptr_or_mapfd_at_loc(register_location);
             auto rf = find_refinement_at_loc(register_location);
             auto signed_interval = find_signed_interval_at_loc(register_location);
-            print_annotated(o, b, region, rf, signed_interval, true, m_slacks);
             auto unsigned_interval = find_unsigned_interval_at_loc(register_location);
-            //print_annotated(o, b, region, rf, unsigned_interval, false, m_slacks);
+            print_annotated(o, *bin, region, rf, signed_interval, unsigned_interval, m_slacks);
         }
-        else if (std::holds_alternative<Mem>(statement)) {
-            auto u = std::get<Mem>(statement);
-            if (u.is_load) {
-                auto target_reg = std::get<Reg>(u.value);
+        else if (const auto mem = std::get_if<Mem>(&statement)) {
+            if (mem->is_load) {
+                auto target_reg = std::get<Reg>(mem->value);
                 auto target_reg_loc = crab::register_location_t(target_reg.v, loc);
                 auto region = find_ptr_or_mapfd_at_loc(target_reg_loc);
                 auto rf = find_refinement_at_loc(target_reg_loc);
                 auto signed_interval = find_signed_interval_at_loc(target_reg_loc);
-                print_annotated(o, u, region, rf, signed_interval, true, m_slacks);
                 auto unsigned_interval = find_unsigned_interval_at_loc(target_reg_loc);
-                //print_annotated(o, u, region, rf, unsigned_interval, false, m_slacks);
+                print_annotated(o, *mem, region, rf, signed_interval, unsigned_interval, m_slacks);
             }
-            else print_instr(o, u);
+            else print_instr(o, *mem);
+            register_t basereg{mem->access.basereg.v};
+            if (!mem->is_load || register_t{std::get<Reg>(mem->value).v} != basereg) { 
+                // this avoids printing the basereg for loads, when base register is the same as
+                // the target register, as old value has been lost
+                auto basereg_loc = crab::register_location_t(basereg, loc);
+                auto maybe_ptr_or_mapfd = find_ptr_or_mapfd_at_loc(basereg_loc);
+                o << "\t\t\t";
+                print_register(o, mem->access.basereg, maybe_ptr_or_mapfd, {}, {}, false, m_slacks);
+                o << "\n";
+            }
         }
-        else if (std::holds_alternative<LoadMapFd>(statement)) {
-            auto u = std::get<LoadMapFd>(statement);
-            auto reg = crab::register_location_t(u.dst.v, loc);
+        else if (const auto loadmapfd = std::get_if<LoadMapFd>(&statement)) {
+            auto reg = crab::register_location_t(loadmapfd->dst.v, loc);
             auto region = find_ptr_or_mapfd_at_loc(reg);
-            print_annotated(o, u, region);
+            print_annotated(o, *loadmapfd, region);
         }
-        else if (std::holds_alternative<Un>(statement)) {
-            auto u = std::get<Un>(statement);
-            auto reg = crab::register_location_t(u.dst.v, loc);
+        else if (const auto un = std::get_if<Un>(&statement)) {
+            auto reg = crab::register_location_t(un->dst.v, loc);
             auto signed_interval = find_signed_interval_at_loc(reg);
-            print_annotated(o, u, signed_interval, true, m_slacks);
             auto unsigned_interval = find_unsigned_interval_at_loc(reg);
-            print_annotated(o, u, unsigned_interval, false, m_slacks);
+            print_annotated(o, *un, signed_interval, unsigned_interval, m_slacks);
+        }
+        else if (const auto assume = std::get_if<Assume>(&statement)) {
+            // print the actual assume instruction
+            print_instr(o, *assume);
+            Condition cond = assume->cond;
+            // print the left register type info
+            register_location_t left_loc{register_t{cond.left.v}, loc};
+            auto maybe_left_ptr = m_region.find_ptr_or_mapfd_at_loc(left_loc);
+            auto maybe_left_signed = m_interval.find_signed_interval_at_loc(left_loc);
+            auto maybe_left_unsigned = m_interval.find_unsigned_interval_at_loc(left_loc);
+            auto maybe_left_offset = m_offset.find_refinement_at_loc(left_loc);
+            o << "\t\t\t";
+            print_register(o, cond.left, maybe_left_ptr, maybe_left_offset, maybe_left_signed, true, m_slacks);
+            o << "\n";
+            if (maybe_left_unsigned) {
+                // If the left register has an unsigned value, print it as well
+                o << "\t\t\t";
+                print_register(o, cond.left, {}, {}, maybe_left_unsigned, false, m_slacks);
+                o << "\n";
+            }
+            if (const auto right_reg = std::get_if<Reg>(&cond.right)) {
+                // print the right register type info
+                register_location_t right_loc{right_reg->v, loc};
+                const auto maybe_right_ptr = m_region.find_ptr_or_mapfd_at_loc(right_loc);
+                const auto maybe_right_signed = m_interval.find_signed_interval_at_loc(right_loc);
+                const auto maybe_right_unsigned = m_interval.find_unsigned_interval_at_loc(right_loc);
+                const auto maybe_right_offset = m_offset.find_refinement_at_loc(right_loc);
+                o << "\t\t\t";
+                print_register(o, *right_reg, maybe_right_ptr, maybe_right_offset, maybe_right_signed, true, m_slacks);
+                o << "\n";
+                if (maybe_right_unsigned) {
+                    // If the right register has an unsigned value, print it as well
+                    o << "\t\t\t";
+                    print_register(o, *right_reg, {}, {}, maybe_right_unsigned, false, m_slacks);
+                    o << "\n";
+                }
+            }
+            if (maybe_left_offset) {
+                // If the left register is a packet pointer, print the begin pointer as well
+                o << "\t\t\t";
+                register_location_t begin_ptr_reg{register_t{R12_PKT_BEGIN}, loc};
+                auto begin_ptr = m_offset.find_refinement_at_loc(begin_ptr_reg);
+                print_register(o, Reg{R12_PKT_BEGIN}, packet_ptr_t{}, begin_ptr, {}, false, m_slacks);
+                o << "\n";
+            }
         }
         else print_instr(o, statement);
     }

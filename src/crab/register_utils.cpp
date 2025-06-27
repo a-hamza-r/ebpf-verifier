@@ -25,7 +25,7 @@ bool location_t::operator==(const location_t& other) const {
 }
 
 void location_t::write(std::ostream& o) const {
-    o << "line#" << m_line_num << " in " << m_bb_label << " ";
+    o << "instr#" << m_line_num << " in " << m_bb_label << " ";
 }
 
 std::string location_t::to_string() const {

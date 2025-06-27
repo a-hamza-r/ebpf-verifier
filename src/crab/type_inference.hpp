@@ -113,7 +113,7 @@ class inference_domain_t final {
     [[nodiscard]] std::vector<std::string>& get_errors() { return m_errors; }
     void print_ctx(std::ostream&) const;
     void print_stack(std::ostream&) const;
-    void print_state(std::ostream&) const;
+    void print_state_init(std::ostream&, label_t) const;
     void print_annotated_bb(std::ostream&, const basic_block_t&) const;
     std::optional<crab::ptr_or_mapfd_t> find_ptr_or_mapfd_at_loc(const crab::register_location_t&) const;
     std::optional<crab::refinement_t> find_refinement_at_loc(const crab::register_location_t&) const;
