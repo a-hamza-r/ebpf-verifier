@@ -828,6 +828,7 @@ void inference_domain_t::operator()(const Mem& b, location_t loc) {
 }
 
 void inference_domain_t::print_state_init(std::ostream& o, label_t label) const {
+    o << "\n";
     location_t loc{label, 0};
     for (uint8_t i = 0; i < NUM_REGISTERS; ++i) {
         register_t r{i};
