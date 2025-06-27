@@ -140,23 +140,6 @@ void print_register(std::ostream& o, Reg r,
 
 inline std::string size_(int w) { return std::string("u") + std::to_string(w * 8); }
 
-void print_annotated(std::ostream& o, const Call& call,
-                     std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd,
-                     std::optional<crab::refinement_t> offset,
-                     std::optional<crab::refinement_t> signed_numeric,
-                     std::optional<crab::refinement_t> unsigned_numeric,
-                     std::shared_ptr<crab::slacks_t> slacks) {
-    o << "  ";
-    Reg r0 = Reg{R0_RETURN_VALUE};
-    print_register(o, r0, ptr_or_mapfd, offset, signed_numeric, true, slacks);
-    o << " = " << call.name << ":" << call.func << "(...)";
-    if (unsigned_numeric) {
-        o << "\n\t\t\t";
-        print_register(o, r0, {}, {}, unsigned_numeric, false, slacks);
-    }
-    o << "\n";
-}
-
 void print_annotated(std::ostream& o, const Bin& b,
                      std::optional<crab::ptr_or_mapfd_t> ptr_or_mapfd,
                      std::optional<crab::refinement_t> offset,

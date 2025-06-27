@@ -243,6 +243,46 @@ void inference_domain_t::operator()(const Call& u, location_t loc) {
 
     if (is_bottom()) return;
     std::string loc_str = loc.to_string();
+
+    // Hack: keep relevant information about the call at the previous instruction line,
+    // because calls clear the arguments;
+    // this works because the call always has at least one instruction before it
+    // Revisit in the future
+    auto previous_line_num = loc.m_line_num - 1;
+    auto bb_label = loc.m_bb_label;
+    location_t previous_loc{bb_label, previous_line_num};
+    for (uint8_t r = 1; r <= 5; r++) {
+        auto single = std::ranges::find_if(u.singles, [r](ArgSingle arg) {
+            return arg.reg.v == r;
+        });
+        auto pair = std::ranges::find_if(u.pairs, [r](ArgPair arg) {
+            return arg.mem.v == r;
+        });
+        if (single == u.singles.end() && pair == u.pairs.end()) {
+            // If the register is not used, skip it
+            continue;
+        }
+        register_t reg{r};
+        auto maybe_ptr_or_mapfd = m_region.find_ptr_or_mapfd_type(reg);
+        auto maybe_offset = m_offset.find_refinement_info(reg);
+        auto maybe_signed_interval = m_interval.find_signed_interval_value(reg);
+        auto maybe_unsigned_interval = m_interval.find_unsigned_interval_value(reg);
+        if (maybe_ptr_or_mapfd) {
+            m_region.insert_in_registers(reg, previous_loc, *maybe_ptr_or_mapfd);
+            if (is_packet_ptr(maybe_ptr_or_mapfd)) {
+                m_offset.insert_in_registers(reg, previous_loc, *maybe_offset);
+            }
+        }
+        if (maybe_signed_interval) {
+            m_interval.insert_in_registers_signed(reg, previous_loc,
+                    *maybe_signed_interval);
+        }
+        if (maybe_unsigned_interval) {
+            m_interval.insert_in_registers_unsigned(reg, previous_loc,
+                    *maybe_unsigned_interval);
+        }
+    }
+
     stack_cells_t stack_values;
     for (ArgPair param : u.pairs) {
         if (param.kind == ArgPair::Kind::PTR_TO_WRITABLE_MEM) {
@@ -1184,12 +1224,51 @@ void inference_domain_t::print_annotated_bb(std::ostream& o, const basic_block_t
         crab::location_t loc{bb.label(), curr_pos};
         o << "   " << curr_pos << ".";
         if (const auto call = std::get_if<Call>(&statement)) {
-            auto r0_reg = crab::register_location_t(register_t{R0_RETURN_VALUE}, loc);
-            auto region = find_ptr_or_mapfd_at_loc(r0_reg);
-            auto rf = find_refinement_at_loc(r0_reg);
-            auto signed_interval = find_signed_interval_at_loc(r0_reg);
-            auto unsigned_interval = find_unsigned_interval_at_loc(r0_reg);
-            print_annotated(o, *call, region, rf, signed_interval, unsigned_interval, m_slacks);
+            // We kept some relevant type information, but at the previous position
+            crab::location_t prev_loc{bb.label(), curr_pos - 1};
+            register_t r0{R0_RETURN_VALUE};
+            auto r0_loc = crab::register_location_t{r0, loc};
+            auto ptr_or_mapfd = find_ptr_or_mapfd_at_loc(r0_loc);
+            auto offset = find_refinement_at_loc(r0_loc);
+            auto signed_numeric = find_signed_interval_at_loc(r0_loc);
+            auto unsigned_numeric = find_unsigned_interval_at_loc(r0_loc);
+            o << "  ";
+            print_register(o, Reg{R0_RETURN_VALUE}, ptr_or_mapfd, offset, signed_numeric, true,
+                           m_slacks);
+            o << " = " << call->name << ":" << call->func << "(\n";
+            for (uint8_t r = 1; r <= 5; r++) {
+                auto single = std::ranges::find_if(call->singles, [r](ArgSingle arg) {
+                    return arg.reg.v == r;
+                });
+                auto pair = std::ranges::find_if(call->pairs, [r](ArgPair arg) {
+                    return arg.mem.v == r;
+                });
+                if (single == call->singles.end() && pair == call->pairs.end()) {
+                    // If the register is not used, skip it
+                    continue;
+                }
+                register_t r_reg{r};
+                auto r_loc = crab::register_location_t{r_reg, prev_loc};
+                auto maybe_ptr_or_mapfd = find_ptr_or_mapfd_at_loc(r_loc);
+                auto maybe_offset = find_refinement_at_loc(r_loc);
+                auto maybe_signed_interval = find_signed_interval_at_loc(r_loc);
+                auto maybe_unsigned_interval = find_unsigned_interval_at_loc(r_loc);
+                o << "\t\t\t\t\t\t\t";
+                print_register(o, Reg{r}, maybe_ptr_or_mapfd, maybe_offset,
+                               maybe_signed_interval, true, m_slacks);
+                if (maybe_unsigned_interval) {
+                    o << ",\n\t\t\t\t\t\t\t";
+                    print_register(o, Reg{r}, {}, {}, maybe_unsigned_interval, false, m_slacks);
+                }
+                if (r < 5) o << ",";
+                o << "\n";
+            }
+            o << "\t\t\t)";
+            if (unsigned_numeric) {
+                o << "\n\t\t\t";
+                print_register(o, Reg{R0_RETURN_VALUE}, {}, {}, unsigned_numeric, false, m_slacks);
+            }
+            o << "\n";
         }
         else if (const auto bin = std::get_if<Bin>(&statement)) {
             auto register_location = crab::register_location_t(bin->dst.v, loc);

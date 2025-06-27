@@ -23,12 +23,6 @@ void print_memory_cell(std::ostream&, int, int, std::optional<crab::ptr_or_mapfd
                        std::shared_ptr<crab::slacks_t>, crab::region_t);
 
 // Print select transformers
-void print_annotated(std::ostream&, const Call&,
-                     std::optional<crab::ptr_or_mapfd_t>,
-                     std::optional<crab::refinement_t>,
-                     std::optional<crab::refinement_t>,
-                     std::optional<crab::refinement_t>,
-                     std::shared_ptr<crab::slacks_t>);
 void print_annotated(std::ostream&, const Bin&,
                      std::optional<crab::ptr_or_mapfd_t>,
                      std::optional<crab::refinement_t>,
